@@ -1,0 +1,712 @@
+"use client";
+
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  BadgeCheck,
+  CalendarDays,
+  HeartPulse,
+  Download,
+  LineChart,
+  PiggyBank,
+  Plus,
+  RefreshCcw,
+  Sparkles,
+  Target,
+  Trash2,
+  Upload,
+  Wallet
+} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AppShell } from "@/components/app/app-shell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Input, Label, Select } from "@/components/ui/input";
+import { LedPanel } from "@/components/ui/led-panel";
+import { VisualMetric } from "@/components/ui/visual-metric";
+import { formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
+import { transactionCategories } from "../data/defaults";
+import {
+  buildBudgetSummary,
+  buildInsights,
+  buildMayaLocalAnalysis,
+  buildMonthlyFlow,
+  calculateSummary,
+  getGoalProgress
+} from "../lib/calculations";
+import { parseTransactionsCsv } from "../lib/csv";
+import { useFinanceStore } from "../lib/use-finance-store";
+import type { GoalPriority, GoalType, Person, TransactionType } from "../types";
+
+const transactionTypeLabel: Record<TransactionType, string> = {
+  income: "Receita",
+  expense: "Despesa",
+  investment: "Investimento",
+  transfer: "Transferencia"
+};
+
+const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+const goalTypes: Array<{ value: GoalType; label: string }> = [
+  { value: "reserve", label: "Reserva" },
+  { value: "travel", label: "Viagem" },
+  { value: "asset", label: "Patrimonio" },
+  { value: "retirement", label: "Aposentadoria" },
+  { value: "dream", label: "Sonho" }
+];
+const priorities: Array<{ value: GoalPriority; label: string }> = [
+  { value: "low", label: "Baixa" },
+  { value: "medium", label: "Media" },
+  { value: "high", label: "Alta" }
+];
+
+export function FinanceDashboard() {
+  const { state, isHydrated, actions } = useFinanceStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [transactionForm, setTransactionForm] = useState({
+    type: "expense" as TransactionType,
+    description: "",
+    amount: "",
+    category: "Alimentacao",
+    person: "Casal" as Person,
+    date: toInputDate(new Date()),
+    recurring: false
+  });
+  const [goalForm, setGoalForm] = useState({
+    name: "",
+    type: "reserve" as GoalType,
+    targetAmount: "",
+    currentAmount: "",
+    dueDate: toInputDate(new Date(Date.now() + 1000 * 60 * 60 * 24 * 120)),
+    priority: "medium" as GoalPriority
+  });
+  const [feedback, setFeedback] = useState("Dados salvos automaticamente.");
+
+  const summary = useMemo(() => calculateSummary(state), [state]);
+  const flow = useMemo(() => buildMonthlyFlow(state.transactions), [state.transactions]);
+  const insights = useMemo(() => buildInsights(state), [state]);
+  const maya = useMemo(() => buildMayaLocalAnalysis(state), [state]);
+  const budgetSummary = useMemo(() => buildBudgetSummary(state, summary.currentMonth), [state, summary.currentMonth]);
+  const maxFlowValue = Math.max(...flow.flatMap((item) => [item.income, item.expenses, item.investments]), 1);
+
+  function submitTransaction(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = Number(transactionForm.amount.replace(",", "."));
+
+    if (!transactionForm.description.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setFeedback("Preencha descricao e valor valido para salvar a transacao.");
+      return;
+    }
+
+    actions.addTransaction({
+      type: transactionForm.type,
+      description: transactionForm.description.trim(),
+      amount,
+      category: transactionForm.category,
+      person: transactionForm.person,
+      date: transactionForm.date,
+      recurring: transactionForm.recurring
+    });
+
+    setTransactionForm((current) => ({
+      ...current,
+      description: "",
+      amount: ""
+    }));
+    setFeedback("Transacao salva e indicadores recalculados.");
+  }
+
+  function submitGoal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const targetAmount = Number(goalForm.targetAmount.replace(",", "."));
+    const currentAmount = Number(goalForm.currentAmount.replace(",", ".") || 0);
+
+    if (!goalForm.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) {
+      setFeedback("Preencha nome e valor alvo valido para salvar a meta.");
+      return;
+    }
+
+    actions.addGoal({
+      name: goalForm.name.trim(),
+      type: goalForm.type,
+      targetAmount,
+      currentAmount: Number.isFinite(currentAmount) ? currentAmount : 0,
+      dueDate: goalForm.dueDate,
+      priority: goalForm.priority
+    });
+
+    setGoalForm((current) => ({
+      ...current,
+      name: "",
+      targetAmount: "",
+      currentAmount: ""
+    }));
+    setFeedback("Meta criada com sucesso.");
+  }
+
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setFeedback("Backup exportado em JSON.");
+  }
+
+  async function importCsv(file: File) {
+    const text = await file.text();
+    const transactions = parseTransactionsCsv(text);
+
+    if (transactions.length === 0) {
+      setFeedback("Nenhuma transacao valida foi encontrada no CSV.");
+      return;
+    }
+
+    actions.importTransactions(transactions);
+    setFeedback(`${transactions.length} transacao(oes) importada(s) do CSV.`);
+  }
+
+  return (
+    <AppShell>
+      <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="glass-panel flex flex-col rounded-card p-5 lg:min-h-[calc(100vh-2rem)]">
+          <div className="mb-8">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-xl border border-terracotta/40 bg-terracotta/10 text-terracotta">
+                <Sparkles className="size-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-serif text-4xl font-bold leading-none text-bronze">Juntos</p>
+                <p className="text-xs font-bold text-muted">Organizar hoje. Construir o amanha.</p>
+              </div>
+            </div>
+            <Badge tone="info">Sem dados ficticios</Badge>
+          </div>
+
+          <nav className="grid gap-2" aria-label="Modulos do Juntos">
+            {[
+              ["Dashboard", Wallet],
+              ["Transacoes", LineChart],
+              ["Metas", Target],
+              ["Viagens", CalendarDays],
+              ["Insights", Sparkles]
+            ].map(([label, Icon]) => (
+              <a
+                key={label as string}
+                href={`#${String(label).toLowerCase()}`}
+                className="flex min-h-12 items-center gap-3 rounded-lg border border-transparent px-3 text-sm font-black text-muted transition hover:border-bronze/30 hover:bg-cream/[0.05] hover:text-bronze"
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {label as string}
+              </a>
+            ))}
+          </nav>
+
+          <div className="mt-auto rounded-lg border border-bronze/20 bg-cream/[0.04] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-terracotta">Privacidade</p>
+            <p className="mt-2 text-sm text-muted">
+              Exporte um backup sempre que quiser guardar uma copia dos dados.
+            </p>
+          </div>
+        </aside>
+
+        <div className="grid min-w-0 gap-4">
+          <header className="glass-panel rounded-card p-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <p className="eyebrow">Dashboard financeiro do casal</p>
+                <h1 className="mt-1 font-serif text-4xl font-bold leading-tight text-bronze md:text-5xl">
+                  Uma visao clara para decidir com calma.
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted md:text-base">
+                  Cadastre receitas, despesas e metas. O Juntos recalcula os indicadores e transforma informacao
+                  financeira em proximos passos praticos.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={exportBackup}>
+                  <Download className="size-4" aria-hidden="true" />
+                  Exportar
+                </Button>
+                <Button variant="ghost" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="size-4" aria-hidden="true" />
+                  Importar CSV
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  className="hidden"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void importCsv(file);
+                      event.target.value = "";
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <p className="mt-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
+              {isHydrated ? feedback : "Carregando dados..."}
+            </p>
+          </header>
+
+          <LedPanel className="p-5" glow="cyan">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
+              <div>
+                <p className="eyebrow">Resumo do casal</p>
+                <h2 className="mt-2 font-serif text-4xl font-bold leading-tight text-bronze">
+                  {maya.trend === "growth" ? "O mes esta evoluindo." : maya.trend === "drop" ? "Hora de ajustar a rota." : "Cenario estavel e previsivel."}
+                </h2>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">{maya.message}</p>
+              </div>
+              <div className="rounded-2xl border border-bronze/20 bg-bronze/10 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Saude financeira</p>
+                <strong className="mt-2 block font-serif text-5xl text-bronze">{maya.healthScore}/100</strong>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Orcamento usado: {budgetSummary.totalLimit > 0 ? formatPercent(budgetSummary.usedPercent) : "sem limites cadastrados"}.
+                </p>
+              </div>
+            </div>
+          </LedPanel>
+
+          <section id="dashboard" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <VisualMetric
+              icon={<Wallet className="size-5" />}
+              label="Saldo disponivel"
+              value={formatCurrency(summary.availableBalance)}
+              tone={summary.availableBalance >= 0 ? "success" : "warning"}
+            />
+            <VisualMetric
+              icon={<ArrowUpCircle className="size-5" />}
+              label="Receitas do mes"
+              value={formatCurrency(summary.income)}
+              tone="success"
+            />
+            <VisualMetric
+              icon={<ArrowDownCircle className="size-5" />}
+              label="Despesas do mes"
+              value={formatCurrency(summary.expenses)}
+              tone="warning"
+            />
+            <VisualMetric
+              icon={<PiggyBank className="size-5" />}
+              label="Taxa de economia"
+              value={formatPercent(summary.savingsRate)}
+              tone={summary.savingsRate >= 20 ? "success" : "warning"}
+            />
+            <VisualMetric
+              icon={<HeartPulse className="size-5" />}
+              label="Orcamento do mes"
+              value={budgetSummary.totalLimit > 0 ? formatPercent(budgetSummary.usedPercent) : "Novo"}
+              detail={budgetSummary.totalLimit > 0 ? `${formatCurrency(budgetSummary.remaining)} restantes` : "Crie limites por categoria"}
+              tone={budgetSummary.exceededCount > 0 ? "warning" : "info"}
+            />
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <Card id="transacoes">
+              <CardHeader
+                eyebrow="Fluxo de caixa"
+                title="Transacoes"
+                action={<Badge tone="neutral">{state.transactions.length} registros</Badge>}
+              />
+              <form className="grid gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] p-4" onSubmit={submitTransaction}>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Label>
+                    Tipo
+                    <Select
+                      value={transactionForm.type}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({
+                          ...current,
+                          type: event.target.value as TransactionType
+                        }))
+                      }
+                    >
+                      {Object.entries(transactionTypeLabel).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Label>
+                  <Label className="xl:col-span-2">
+                    Descricao
+                    <Input
+                      value={transactionForm.description}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, description: event.target.value }))
+                      }
+                      placeholder="Ex: mercado, salario, aporte..."
+                    />
+                  </Label>
+                  <Label>
+                    Valor
+                    <Input
+                      inputMode="decimal"
+                      value={transactionForm.amount}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, amount: event.target.value }))
+                      }
+                      placeholder="0,00"
+                    />
+                  </Label>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <Label>
+                    Categoria
+                    <Select
+                      value={transactionForm.category}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, category: event.target.value }))
+                      }
+                    >
+                      {transactionCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </Select>
+                  </Label>
+                  <Label>
+                    Pessoa
+                    <Select
+                      value={transactionForm.person}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, person: event.target.value as Person }))
+                      }
+                    >
+                      {personOptions.map((person) => (
+                        <option key={person} value={person}>
+                          {person}
+                        </option>
+                      ))}
+                    </Select>
+                  </Label>
+                  <Label>
+                    Data
+                    <Input
+                      type="date"
+                      value={transactionForm.date}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, date: event.target.value }))
+                      }
+                    />
+                  </Label>
+                  <label className="flex min-h-11 items-center gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] px-3 text-sm font-bold text-muted xl:mt-7">
+                    <input
+                      type="checkbox"
+                      checked={transactionForm.recurring}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({ ...current, recurring: event.target.checked }))
+                      }
+                    />
+                    Recorrente
+                  </label>
+                  <Button type="submit" className="xl:mt-7">
+                    <Plus className="size-4" aria-hidden="true" />
+                    Salvar
+                  </Button>
+                </div>
+              </form>
+
+              <div className="mt-5 grid gap-3">
+                <AnimatePresence initial={false}>
+                  {state.transactions.slice(0, 8).map((transaction) => (
+                    <motion.div
+                      key={transaction.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="grid gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] p-3 md:grid-cols-[1fr_auto_auto]"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-cream">{transaction.description}</strong>
+                          <Badge tone={transaction.type === "income" ? "success" : transaction.type === "expense" ? "warning" : "info"}>
+                            {transactionTypeLabel[transaction.type]}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted">
+                          {transaction.category} - {transaction.person} - {transaction.date}
+                          {transaction.recurring ? " - recorrente" : ""}
+                        </p>
+                      </div>
+                      <strong className="self-center text-lg text-bronze">{formatCurrency(transaction.amount)}</strong>
+                      <Button
+                        variant="ghost"
+                        className="self-center px-3"
+                        aria-label={`Remover ${transaction.description}`}
+                        onClick={() => actions.removeTransaction(transaction.id)}
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                      </Button>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </Card>
+
+            <div className="grid gap-4">
+              <Card id="metas">
+                <CardHeader eyebrow="Sonhos em numeros" title="Metas" />
+                <form className="grid gap-3" onSubmit={submitGoal}>
+                  <Label>
+                    Nome da meta
+                    <Input
+                      value={goalForm.name}
+                      onChange={(event) => setGoalForm((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Ex: viagem, reserva, casa..."
+                    />
+                  </Label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Label>
+                      Tipo
+                      <Select
+                        value={goalForm.type}
+                        onChange={(event) => setGoalForm((current) => ({ ...current, type: event.target.value as GoalType }))}
+                      >
+                        {goalTypes.map((goalType) => (
+                          <option key={goalType.value} value={goalType.value}>
+                            {goalType.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Label>
+                    <Label>
+                      Prioridade
+                      <Select
+                        value={goalForm.priority}
+                        onChange={(event) =>
+                          setGoalForm((current) => ({ ...current, priority: event.target.value as GoalPriority }))
+                        }
+                      >
+                        {priorities.map((priority) => (
+                          <option key={priority.value} value={priority.value}>
+                            {priority.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Label>
+                      Alvo
+                      <Input
+                        inputMode="decimal"
+                        value={goalForm.targetAmount}
+                        onChange={(event) =>
+                          setGoalForm((current) => ({ ...current, targetAmount: event.target.value }))
+                        }
+                        placeholder="0,00"
+                      />
+                    </Label>
+                    <Label>
+                      Atual
+                      <Input
+                        inputMode="decimal"
+                        value={goalForm.currentAmount}
+                        onChange={(event) =>
+                          setGoalForm((current) => ({ ...current, currentAmount: event.target.value }))
+                        }
+                        placeholder="0,00"
+                      />
+                    </Label>
+                    <Label>
+                      Prazo
+                      <Input
+                        type="date"
+                        value={goalForm.dueDate}
+                        onChange={(event) => setGoalForm((current) => ({ ...current, dueDate: event.target.value }))}
+                      />
+                    </Label>
+                  </div>
+                  <Button type="submit">
+                    <Target className="size-4" aria-hidden="true" />
+                    Criar meta
+                  </Button>
+                </form>
+
+                <div className="mt-5 grid gap-3">
+                  {state.goals.map((goal) => {
+                    const progress = getGoalProgress(goal);
+                    return (
+                      <div key={goal.id} className="rounded-lg border border-cream/10 bg-cream/[0.04] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <strong className="text-cream">{goal.name}</strong>
+                            <p className="mt-1 text-sm text-muted">
+                              {formatCurrency(goal.currentAmount)} de {formatCurrency(goal.targetAmount)}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            className="min-h-9 px-3"
+                            aria-label={`Remover meta ${goal.name}`}
+                            onClick={() => actions.removeGoal(goal.id)}
+                          >
+                            <Trash2 className="size-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                        <div className="mt-3 h-2 rounded-full bg-cream/10">
+                          <div
+                            className="h-2 rounded-full bg-gradient-to-r from-bronze to-terracotta"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <Input
+                            inputMode="decimal"
+                            defaultValue={goal.currentAmount}
+                            aria-label={`Valor atual da meta ${goal.name}`}
+                            onBlur={(event) => {
+                              const value = Number(event.target.value.replace(",", "."));
+                              if (Number.isFinite(value) && value >= 0) {
+                                actions.updateGoalAmount(goal.id, value);
+                              }
+                            }}
+                          />
+                          <Badge tone={progress >= 70 ? "success" : "warning"}>{Math.round(progress)}%</Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <Card id="viagens">
+              <CardHeader eyebrow="Tendencia" title="Fluxo dos ultimos meses" />
+              <div className="grid gap-4">
+                {flow.map((month) => (
+                  <div key={month.month} className="grid gap-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <strong className="text-cream">{month.month}</strong>
+                      <span className="text-muted">
+                        {formatCurrency(month.income - month.expenses - month.investments)}
+                      </span>
+                    </div>
+                    <div className="grid gap-1">
+                      <FlowBar label="Receitas" value={month.income} max={maxFlowValue} className="bg-emerald-300" />
+                      <FlowBar label="Despesas" value={month.expenses} max={maxFlowValue} className="bg-terracotta" />
+                      <FlowBar label="Invest." value={month.investments} max={maxFlowValue} className="bg-bronze" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card id="insights">
+              <CardHeader
+                eyebrow="Assistente financeiro"
+                title="Insights"
+                action={<Badge tone="info">MAYA</Badge>}
+              />
+              <div className="grid gap-3">
+                {insights.map((insight) => (
+                  <div key={insight.title} className="rounded-lg border border-cream/10 bg-cream/[0.04] p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <BadgeCheck className="size-4 text-bronze" aria-hidden="true" />
+                      <strong className="text-cream">{insight.title}</strong>
+                    </div>
+                    <p className="text-sm leading-6 text-muted">{insight.body}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/10 p-4 text-sm leading-6 text-amber-100">
+                Quanto mais dados reais forem cadastrados, melhor a MAYA consegue comparar meses, categorias e metas.
+              </div>
+            </Card>
+          </section>
+
+          <Card>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="eyebrow">Dados e seguranca</p>
+                <h2 className="section-title">Backup e limpeza</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+                  Exporte backups antes de limpar dados ou trocar de dispositivo.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={exportBackup}>
+                  <Download className="size-4" aria-hidden="true" />
+                  Backup
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    actions.reset();
+                    setFeedback("Cadastros limpos. Cadastre informacoes reais para iniciar a analise.");
+                  }}
+                >
+                  <RefreshCcw className="size-4" aria-hidden="true" />
+                  Limpar cadastros
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
+    </AppShell>
+  );
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  tone
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: "success" | "warning";
+}) {
+  return (
+    <Card className="min-h-36">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-muted">{label}</p>
+          <strong className="mt-3 block font-serif text-3xl text-bronze">{value}</strong>
+        </div>
+        <div className="grid size-11 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze">
+          {icon}
+        </div>
+      </div>
+      <Badge tone={tone} className="mt-4">
+        {tone === "success" ? "Saudavel" : "Revisar"}
+      </Badge>
+    </Card>
+  );
+}
+
+function FlowBar({
+  label,
+  value,
+  max,
+  className
+}: {
+  label: string;
+  value: number;
+  max: number;
+  className: string;
+}) {
+  return (
+    <div className="grid grid-cols-[5rem_minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted">
+      <span>{label}</span>
+      <div className="h-2 overflow-hidden rounded-full bg-cream/10">
+        <div className={`h-2 rounded-full ${className}`} style={{ width: `${Math.max(4, (value / max) * 100)}%` }} />
+      </div>
+      <strong className="text-right text-cream">{formatCurrency(value)}</strong>
+    </div>
+  );
+}

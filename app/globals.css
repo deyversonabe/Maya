@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #102118;
+  --foreground: #fff5e9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(184, 121, 69, 0.08), transparent 22%, transparent 78%, rgba(73, 198, 192, 0.08)),
+    linear-gradient(180deg, rgba(255, 245, 233, 0.04), transparent 18rem),
+    linear-gradient(135deg, #08160f 0%, #102118 42%, #1f3026 100%);
+  color: var(--foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #102118;
+  color: #fff5e9;
+}
+
+select option:checked {
+  background-color: #b87945;
+  color: #08160f;
+}
+
+select option:disabled {
+  color: #d7cbbd;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(196, 106, 67, 0.45);
+  color: #fff5e9;
+}
+
+::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(8, 22, 15, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(8, 22, 15, 0.8);
+  border-radius: 999px;
+  background: rgba(184, 121, 69, 0.55);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(196, 106, 67, 0.8);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(184, 121, 69, 0.4);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-container {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .app-container section.rounded-card,
+  .app-container .glass-panel {
+    padding: 1rem !important;
+  }
+
+  .app-container {
+    overflow-wrap: anywhere;
+  }
+}
+
+@layer components {
+  .app-container {
+    @apply mx-auto min-h-screen w-full max-w-[1560px] px-4 py-4 sm:px-6 lg:px-8;
+  }
+
+  .glass-panel {
+    @apply border border-bronze/20 bg-moss-800/70 shadow-soft backdrop-blur-xl;
+  }
+
+  .section-title {
+    @apply font-serif text-2xl font-bold leading-tight text-bronze;
+  }
+
+  .eyebrow {
+    @apply text-xs font-black uppercase tracking-[0.16em] text-terracotta;
+  }
+
+  .field {
+    @apply min-h-11 w-full rounded-lg border border-cream/15 bg-cream/[0.06] px-3 text-sm text-cream outline-none transition placeholder:text-muted/60 focus:border-bronze focus:ring-4 focus:ring-bronze/20;
+  }
+}

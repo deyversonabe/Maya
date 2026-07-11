@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  INVESTMENT
+  TRANSFER
+}
+
+enum GoalType {
+  RESERVE
+  TRAVEL
+  ASSET
+  RETIREMENT
+  DREAM
+}
+
+enum GoalPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Household {
+  id           String        @id @default(cuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  members      Membership[]
+  transactions Transaction[]
+  goals        Goal[]
+  budgets      Budget[]
+  auditLogs    AuditLog[]
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  name        String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  memberships Membership[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  householdId String
+  role        String
+  createdAt   DateTime  @default(now())
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, householdId])
+  @@index([householdId])
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  householdId String
+  type        TransactionType
+  description String
+  amount      Decimal         @db.Decimal(12, 2)
+  category    String
+  person      String
+  occurredAt  DateTime
+  recurring   Boolean         @default(false)
+  recurrenceGroupId String?
+  installmentGroupId String?
+  installmentNumber Int?
+  installmentTotal  Int?
+  source      String          @default("manual")
+  receiptImageName String?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  household   Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, occurredAt])
+  @@index([householdId, type])
+  @@index([householdId, category])
+  @@index([householdId, recurrenceGroupId])
+  @@index([householdId, installmentGroupId])
+}
+
+model Goal {
+  id            String       @id @default(cuid())
+  householdId   String
+  name          String
+  type          GoalType
+  priority      GoalPriority @default(MEDIUM)
+  targetAmount  Decimal      @db.Decimal(12, 2)
+  currentAmount Decimal      @db.Decimal(12, 2)
+  dueDate       DateTime
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  household     Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, dueDate])
+}
+
+model Budget {
+  id          String    @id @default(cuid())
+  householdId String
+  month       String
+  category    String
+  limitAmount Decimal   @db.Decimal(12, 2)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, month, category])
+  @@index([householdId, month])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  householdId String
+  actorId     String?
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, createdAt])
+}

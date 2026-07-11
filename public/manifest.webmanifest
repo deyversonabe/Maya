@@ -1,0 +1,17 @@
+{
+  "name": "Juntos",
+  "short_name": "Juntos",
+  "description": "Organizacao financeira e planejamento do casal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#102118",
+  "theme_color": "#102118",
+  "icons": [
+    {
+      "src": "/brand/juntos-maya-logo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
