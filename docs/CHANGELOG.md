@@ -36,6 +36,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Pagina `Meses` implementada para visualizar entradas, saidas, investimentos, transferencias e lancamentos discriminados por mes.
 - Estrutura inicial de WhatsApp Cloud API direto adicionada para receber comprovantes sem n8n.
 - Guia `WHATSAPP_SETUP.md` adicionado com variaveis, configuracao na Meta e passo a passo de deploy.
+- Paginas publicas `/privacy`, `/terms` e `/data-deletion` adicionadas para configuracao do app na Meta.
 
 ### Fixed
 
