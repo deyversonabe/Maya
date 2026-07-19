@@ -1,8 +1,8 @@
 {
-  "name": "juntos",
+  "name": "maya",
   "version": "0.1.0",
   "private": true,
-  "description": "Juntos: plataforma de organizacao financeira e planejamento do casal.",
+  "description": "Maya: plataforma de organizacao financeira e planejamento do casal.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
