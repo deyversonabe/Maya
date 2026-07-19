@@ -7,8 +7,8 @@ export const metadata: Metadata = {
     "Aplicativo financeiro premium com MAYA, assistente para organizar receitas, despesas, metas e planejamento do casal.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/brand/juntos-maya-logo.png",
-    apple: "/brand/juntos-maya-logo.png"
+    icon: "/brand/juntos-maya-favicon.png",
+    apple: "/brand/juntos-maya-favicon.png"
   }
 };
 
