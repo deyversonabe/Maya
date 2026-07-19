@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             width={180}
             height={180}
             priority
-                    className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
+                                  className="h-36 w-60 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
           />
         </Link>
 
