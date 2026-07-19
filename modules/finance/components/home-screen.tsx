@@ -1,74 +1,28 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   Bot,
-  Camera,
-  CalendarDays,
-  ChartNoAxesCombined,
-  ChevronRight,
   Database,
-  BellRing,
   HeartPulse,
   ReceiptText,
+  Send,
   ShieldCheck,
   Target,
   WalletCards
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
 import { AppShell } from "@/components/app/app-shell";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { buildBudgetSummary, buildDataQualityReport, buildMayaLocalAnalysis, calculateSummary } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
-
-const actions = [
-  {
-    href: "/dashboard",
-    icon: ChartNoAxesCombined,
-    title: "Ver saude financeira",
-    description: "Saldo, desempenho mensal, metas e tendencia em tempo real."
-  },
-  {
-    href: "/months",
-    icon: CalendarDays,
-    title: "Ver meses",
-    description: "Entradas, saidas, somas e lancamentos separados por mes."
-  },
-  {
-    href: "/expenses",
-    icon: ReceiptText,
-    title: "Adicionar despesa",
-    description: "Manual, recorrente, parcelada ou por foto de nota."
-  },
-  {
-    href: "/bills",
-    icon: BellRing,
-    title: "Contas a pagar",
-    description: "Boletos, Pix, vencimentos, anexos, alertas e status."
-  },
-  {
-    href: "/budgets",
-    icon: WalletCards,
-    title: "Planejar orcamentos",
-    description: "Defina limites por categoria e acompanhe saldo restante."
-  },
-  {
-    href: "/maya",
-    icon: Bot,
-    title: "Falar com a MAYA",
-    description: "Assistente financeira com leitura de cenario e proximos passos."
-  },
-  {
-    href: "/data",
-    icon: Database,
-    title: "Central de dados",
-    description: "Qualidade da analise, backup, privacidade e conexoes futuras."
-  }
-];
+import type { MayaAnalysis } from "../types";
 
 export function HomeScreen() {
   const { state } = useFinanceStore();
@@ -76,6 +30,36 @@ export function HomeScreen() {
   const maya = buildMayaLocalAnalysis(state);
   const quality = buildDataQualityReport(state);
   const budgetSummary = buildBudgetSummary(state, summary.currentMonth);
+
+  const [question, setQuestion] = useState("");
+  const [reply, setReply] = useState(maya.message);
+  const [isLoading, setIsLoading] = useState(false);
+
+  async function askMaya(prompt: string) {
+    const trimmed = prompt.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/maya/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state, question: trimmed })
+      });
+      const nextAnalysis = (await response.json()) as MayaAnalysis;
+      setReply(nextAnalysis.message);
+    } catch {
+      const fallback = buildMayaLocalAnalysis(state, trimmed);
+      setReply(fallback.message);
+    } finally {
+      setIsLoading(false);
+      setQuestion("");
+    }
+  }
 
   return (
     <AppShell>
@@ -88,32 +72,37 @@ export function HomeScreen() {
 
         <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-center">
           <div>
-            <motion.h1
-              className="max-w-4xl font-serif text-5xl font-bold leading-[0.98] text-bronze md:text-7xl"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7 }}
-            >
-              Um centro financeiro vivo para o casal.
-            </motion.h1>
-            <p className="mt-5 max-w-3xl text-lg leading-8 text-muted">
-              Controle despesas por mes, registre parcelas e recorrencias, anexe notas pelo celular e converse com
-              a MAYA para entender crescimento, queda e saude financeira sem ansiedade.
-            </p>
+            <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-left">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.7 }}
+                className="relative shrink-0"
+              >
+                <div className="absolute inset-0 -z-10 rounded-full bg-bronze/30 blur-2xl" />
+                <Image
+                  src="/brand/maya-avatar-welcome.png"
+                  alt="MAYA"
+                  width={260}
+                  height={260}
+                  priority
+                  className="h-48 w-48 rounded-full border border-bronze/30 object-cover object-top shadow-soft drop-shadow-[0_0_28px_rgba(196,106,67,0.45)] sm:h-64 sm:w-64"
+                />
+              </motion.div>
 
-            <div className="mt-7 grid gap-3 sm:flex sm:flex-wrap">
-              <Button asChildCompat>
-                <Link href="/expenses">
-                  <Camera className="size-4" aria-hidden="true" />
-                  Abrir despesas
-                </Link>
-              </Button>
-              <Button variant="secondary" asChildCompat>
-                <Link href="/maya">
-                  Falar com MAYA
-                  <ChevronRight className="size-4" aria-hidden="true" />
-                </Link>
-              </Button>
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.1 }}
+              >
+                <p className="eyebrow">Bem-vindos de volta</p>
+                <h1 className="mt-2 font-serif text-4xl font-bold leading-[1.05] text-bronze md:text-6xl">
+                  Ola! Eu sou a MAYA.
+                </h1>
+                <p className="mt-3 max-w-xl text-base leading-7 text-muted">
+                  A assessora financeira particular do casal: precisao de dados, elegancia e um cuidado humano que acompanha cada decisao com voces.
+                </p>
+              </motion.div>
             </div>
 
             <div className="mt-7 grid gap-3 md:grid-cols-4">
@@ -146,6 +135,31 @@ export function HomeScreen() {
                 tone={quality.level === "consistent" ? "success" : quality.level === "partial" ? "info" : "warning"}
               />
             </div>
+
+            <div className="mt-6 rounded-2xl border border-bronze/20 bg-cream/[0.05] p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-muted">
+                <Bot className="size-4 text-bronze" aria-hidden="true" />
+                Fale rapido com a MAYA
+              </div>
+              <p className="mb-3 text-sm leading-6 text-cream/90">{isLoading ? "MAYA esta pensando..." : reply}</p>
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void askMaya(question);
+                }}
+              >
+                <Input
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  placeholder="Pergunte algo para a MAYA..."
+                />
+                <Button type="submit" disabled={isLoading}>
+                  <Send className="size-4" aria-hidden="true" />
+                  Enviar
+                </Button>
+              </form>
+            </div>
           </div>
 
           <Card className="relative min-h-[28rem] overflow-hidden bg-moss-900/80">
@@ -175,31 +189,6 @@ export function HomeScreen() {
           </Card>
         </div>
       </LedPanel>
-
-      <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        {actions.map((action, index) => {
-          const Icon = action.icon;
-
-          return (
-            <motion.div
-              key={action.href}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.08 }}
-            >
-              <Link href={action.href} className="block h-full">
-                <Card className="h-full transition hover:-translate-y-1 hover:border-bronze/40 hover:bg-moss-700/60">
-                  <div className="mb-5 grid size-12 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze">
-                    <Icon className="size-5" aria-hidden="true" />
-                  </div>
-                  <h2 className="section-title">{action.title}</h2>
-                  <p className="mt-3 text-sm leading-6 text-muted">{action.description}</p>
-                </Card>
-              </Link>
-            </motion.div>
-          );
-        })}
-      </section>
 
       <section className="mt-4 grid gap-4 md:grid-cols-3">
         <Feature icon={<ReceiptText />} title="Despesas por mes" text="Filtros mensais, recorrencias e parcelas aparecem exatamente no mes correto." />
