@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="sticky top-3 z-30 mb-4 flex flex-col gap-4 rounded-card border border-bronze/20 bg-moss-950/80 p-3 shadow-soft backdrop-blur-2xl lg:flex-row lg:items-center lg:justify-between">
         <Link
           href="/"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-bronze/10 bg-gradient-to-br from-cream/[0.07] to-bronze/[0.05] px-3 py-2 transition hover:border-bronze/40 hover:bg-bronze/10 focus:outline-none focus:ring-4 focus:ring-bronze/25"
+                  className="group flex min-h-16 items-center justify-center rounded-xl border border-bronze/10 bg-gradient-to-br from-cream/[0.07] to-bronze/[0.05] px-3 py-2 transition hover:border-bronze/40 hover:bg-bronze/10 focus:outline-none focus:ring-4 focus:ring-bronze/25"
           aria-label="Voltar para o inicio"
           title="Voltar para o inicio"
         >
@@ -36,12 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             width={180}
             height={180}
             priority
-            className="h-14 w-14 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
+                    className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
           />
-          <div>
-            <strong className="font-serif text-2xl leading-none text-bronze">Juntos Maya</strong>
-            <p className="text-xs font-bold text-muted">Voltar ao inicio</p>
-          </div>
         </Link>
 
         <nav className="hidden gap-2 md:grid md:grid-cols-4 xl:grid-cols-9" aria-label="Navegacao principal">
