@@ -10,12 +10,15 @@ import {
   RefreshCcw,
   ShieldCheck,
   Sparkles,
-  WalletCards
+  WalletCards,
+  Trash2,
+  UserPlus
 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { Input, Label } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { buildDataQualityReport } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -41,6 +44,7 @@ export function DataCenterPage() {
   const quality = useMemo(() => buildDataQualityReport(state), [state]);
   const transactionCount = state.transactions.length;
   const receiptCount = state.transactions.filter((transaction) => transaction.source === "receipt").length;
+  const [newMemberName, setNewMemberName] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -68,7 +72,7 @@ export function DataCenterPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado com seus dados atuais.");
@@ -77,6 +81,30 @@ export function DataCenterPage() {
   function resetLocalData() {
     actions.reset();
     setFeedback("Cadastros limpos. O sistema volta a iniciar sem informacoes financeiras cadastradas.");
+  }
+
+  function addMember() {
+    const trimmed = newMemberName.trim();
+
+    if (!trimmed) {
+      setFeedback("Digite um nome para cadastrar a pessoa.");
+      return;
+    }
+
+    const member = actions.addMember(trimmed);
+
+    if (!member) {
+      setFeedback("Essa pessoa ja esta cadastrada.");
+      return;
+    }
+
+    setNewMemberName("");
+    setFeedback(`${member.name} foi cadastrado(a) e ja aparece nas opcoes de lancamento.`);
+  }
+
+  function removeMember(id: string) {
+    actions.removeMember(id);
+    setFeedback("Pessoa removida do cadastro do casal.");
   }
 
   return (
@@ -134,7 +162,37 @@ export function DataCenterPage() {
           </Card>
 
           <Card>
-            <CardHeader
+          <CardHeader eyebrow="Pessoas" title="Pessoas do casal" />
+          <p className="mb-4 text-sm leading-6 text-muted">
+          Cadastre quem usa o Maya para identificar quem lancou cada transacao e evitar duplicidade.
+          </p>
+            <div className="flex gap-2">
+            <Input
+              value={newMemberName}
+              onChange={(event) => setNewMemberName(event.target.value)}
+              placeholder="Nome da pessoa"
+              />
+            <Button onClick={addMember}>
+            <UserPlus className="size-4" aria-hidden="true" />
+            Adicionar
+            </Button></div>
+            <div className="mt-4 grid gap-2">
+              {state.members.length === 0 ? (
+<p className="text-sm text-muted">Nenhuma pessoa cadastrada ainda.</p>
+      ) : (
+      state.members.map((member) => (
+        <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] p-3">
+        <strong className="text-cream">{member.name}</strong>
+        <Button variant="ghost" className="min-h-9 px-3" aria-label={`Remover ${member.name}`} onClick={() => removeMember(member.id)}>
+        <Trash2 className="size-4" aria-hidden="true" />
+        </Button></div>
+        ))
+      )}
+            </div>
+          </Card>
+
+          <Card>
+          <CardHeader
               eyebrow="Qualidade"
               title="Base da MAYA"
               action={<Badge tone={quality.level === "consistent" ? "success" : quality.level === "partial" ? "warning" : "neutral"}>{quality.label}</Badge>}
@@ -189,7 +247,7 @@ export function DataCenterPage() {
             <div className="flex items-start gap-3">
               <LockKeyhole className="mt-1 size-5 text-bronze" aria-hidden="true" />
               <p className="text-sm leading-6 text-muted">
-                O Juntos Maya usa apenas os dados que voces cadastram ou confirmam. Nenhuma despesa extraida de imagem
+                O  Maya usa apenas os dados que voces cadastram ou confirmam. Nenhuma despesa extraida de imagem
                 e salva sem revisao.
               </p>
             </div>
