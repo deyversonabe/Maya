@@ -31,14 +31,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Image
             src="/brand/juntos-maya-logo.png"
-            alt="Juntos Maya"
+            alt="Maya"
             width={180}
             height={180}
             priority
             className="h-14 w-14 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
           />
           <div>
-            <strong className="font-serif text-2xl leading-none text-bronze">Juntos Maya</strong>
+            <strong className="font-serif text-2xl leading-none text-bronze">Maya</strong>
             <p className="text-xs font-bold text-muted">Voltar ao inicio</p>
           </div>
         </Link>
