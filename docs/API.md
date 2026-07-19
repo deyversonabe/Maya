@@ -215,6 +215,49 @@ Cada endpoint deve registrar:
 - Erros esperados.
 - Efeitos colaterais.
 
+## Endpoints atuais
+
+### POST `/api/maya/receipt`
+
+Objetivo: ler uma imagem financeira enviada pelo usuario e devolver um rascunho revisavel.
+
+Permissoes: sem autenticacao nesta etapa local, mas sem exposicao de segredos ao frontend.
+
+Entrada:
+
+- `imageDataUrl`: imagem em data URL.
+- `fileName`: nome do arquivo, opcional.
+- `documentKind`: `expense`, `income` ou `bill`, opcional.
+
+Saida:
+
+- `financialDraft`: rascunho normalizado de despesa, renda ou conta a pagar.
+- `expenseDraft`: compatibilidade com a primeira versao de despesas por nota.
+- `needsReview`: sempre `true`.
+- `message`: orientacao curta para revisao.
+
+Regras:
+
+- A rota limita tamanho de imagem.
+- A rota usa `OPENAI_API_KEY` apenas no servidor.
+- Quando a OpenAI nao estiver configurada ou falhar, retorna rascunho seguro com campos essenciais vazios.
+- A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
+- A IA pode retornar itens de nota ou linhas de extrato em `items`, mas esses itens sao informativos ate que o usuario confirme o lancamento.
+- O frontend deve exigir preenchimento manual dos campos obrigatorios antes de salvar.
+- O frontend deve verificar duplicidade por data, valor e tipo antes de persistir renda ou despesa.
+- Quando houver possivel duplicidade, o frontend deve pedir confirmacao explicita do usuario.
+
+Erros esperados:
+
+- `400`: imagem ausente ou invalida.
+- `413`: imagem maior que o limite permitido.
+- `500`: falha inesperada de leitura.
+
+Efeitos colaterais:
+
+- Nenhum dado financeiro e salvo pela API.
+- O salvamento acontece somente no cliente apos confirmacao do usuario.
+
 ## Pendencias
 
 - Definir abordagem de API apos escolha da stack.

@@ -108,15 +108,95 @@ Regra: `ReceiptDraft` so vira `Transaction` apos confirmacao humana dentro do ap
 
 Essas entidades so devem ser implementadas quando a base tecnica for criada, mas o desenho das funcionalidades deve considerar esse futuro.
 
+## Contas a pagar
+
+A entidade conceitual `PayableBill` representa uma conta futura ou vencida que ainda nao precisa virar transacao financeira paga.
+
+Campos essenciais de PayableBill:
+
+- `id`.
+- `title`.
+- `description`.
+- `amount`.
+- `category`.
+- `person`.
+- `dueDate`.
+- `paymentMethod`: boleto, Pix, cartao ou outro.
+- `paymentCode`.
+- `recurrence`.
+- `recurrenceGroupId`.
+- `installmentGroupId`.
+- `installmentNumber`.
+- `installmentTotal`.
+- `status`: pendente, pago ou atrasado.
+- `source`: manual, anexo ou importacao.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `notes`.
+- `paidAt`.
+- `createdAt`.
+
+Regras:
+
+- Contas sao agrupadas pelo mes de `dueDate`.
+- Contas pagas mantem historico e nao devem ser removidas automaticamente.
+- Status atrasado pode ser calculado pela data atual mesmo quando o valor persistido ainda estiver como pendente.
+- Anexos confirmados pelo usuario podem ficar no armazenamento local enquanto nao existir storage seguro em nuvem.
+- Quando banco real existir, anexos devem migrar para storage privado com referencia no registro.
+
+## Rascunhos de documentos financeiros
+
+A leitura de imagem da MAYA retorna `FinancialDocumentDraft`, que pode representar despesa, renda ou conta a pagar.
+
+Campos essenciais:
+
+- `kind`: despesa, renda ou conta.
+- `title`.
+- `description`.
+- `amount`.
+- `category`.
+- `documentDate`.
+- `dueDate`.
+- `entryDate`.
+- `paymentMethod`.
+- `paymentCode`.
+- `confidence`.
+- `missingFields`.
+- `items`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+
+Regra: nenhum rascunho vira `Transaction` ou `PayableBill` sem confirmacao humana.
+
+## Duplicidade
+
+A deteccao de duplicidade nesta etapa e feita no cliente, antes de salvar no armazenamento local.
+
+Regras para `Transaction`:
+
+- Comparar somente renda e despesa.
+- Considerar possivel duplicidade quando `type`, `date` e `amount` forem equivalentes.
+- Comparar valores com tolerancia de centavos.
+- Nao apagar, mesclar ou bloquear definitivamente registros duplicados.
+- Exigir confirmacao explicita do usuario quando houver repeticao.
+
+Regras para `PayableBill`:
+
+- Considerar possivel duplicidade quando `dueDate` e `amount` forem equivalentes.
+- Mostrar titulo e categoria das contas existentes antes de confirmar.
+- Permitir salvar duplicidade quando for intencional.
+
 ## Migracao local
 
-O armazenamento local passa a usar `schemaVersion = 2`.
+O armazenamento local passa a usar `schemaVersion = 3`.
 
 Regras:
 
 - Estados antigos `schemaVersion = 1` devem migrar automaticamente.
-- A migracao deve preservar transacoes, metas e perfil.
+- Estados antigos `schemaVersion = 2` devem migrar automaticamente.
+- A migracao deve preservar transacoes, metas, orcamentos, perfil e contas.
 - `budgets` deve ser inicializado como lista vazia quando nao existir.
+- `bills` deve ser inicializado como lista vazia quando nao existir.
 - Nenhum dado do usuario deve ser apagado durante migracao.
 - Novas instalacoes devem iniciar sem transacoes, metas ou orcamentos ficticios.
 - Dados demonstrativos de versoes antigas devem ser removidos durante a migracao sem remover dados manuais do usuario.

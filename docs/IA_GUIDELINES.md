@@ -49,7 +49,7 @@ Nesta etapa, o app usa insights locais deterministicas:
 
 ## MAYA
 
-MAYA e a assistente financeira do casal no Maya.
+MAYA e a assistente financeira do Juntos.
 
 Personalidade:
 
@@ -83,9 +83,6 @@ Limites:
 - Quando a qualidade estiver insuficiente ou parcial, MAYA deve priorizar orientacoes de cadastro e organizacao dos dados.
 - A interface nao deve exibir nomes de provedores, chaves, modelos ou modos tecnicos; isso deve permanecer restrito ao codigo, logs seguros e documentacao tecnica.
 - Comprovantes vindos do WhatsApp seguem as mesmas regras: a MAYA cria rascunho revisavel e nunca deve salvar despesa automaticamente.
-- Antes de confirmar um lancamento, a MAYA deve revisar localmente se ha possivel duplicidade (mesmo tipo, valor e data proxima) e nunca deve salvar automaticamente um lancamento identificado como duplicata exata.
-- Pix, TED, DOC ou transferencias entre contas proprias do casal nao devem ser tratados como receita ou despesa real; a MAYA deve sugerir o tipo "transferencia" quando a descricao indicar isso, sem reclassificar sozinha sem confirmacao humana.
-- A MAYA nunca deve tomar decisoes irreversiveis (excluir, mesclar ou reclassificar lancamentos) sem confirmacao explicita da pessoa usuaria; ela apenas sinaliza avisos e sugestoes.
 
 Esses insights nao devem ser apresentados como IA generativa real. Quando a OpenAI for conectada, o modulo deve manter fallback local e validar todas as respostas.
 

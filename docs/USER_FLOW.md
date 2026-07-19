@@ -103,6 +103,37 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 6. Usuario pode limpar dados locais quando quiser reiniciar o uso.
 7. Sistema deixa claro que Open Finance ainda e preparo futuro, nao conexao ativa.
 
+### Contas a pagar
+
+1. Usuario acessa Contas.
+2. Usuario escolhe cadastrar manualmente ou anexar uma imagem.
+3. Quando houver imagem, MAYA le o documento e preenche um rascunho com titulo, descricao, valor, vencimento, categoria, tipo de pagamento e codigo quando existir.
+4. Sistema deixa vazios os campos que nao foram identificados com confianca.
+5. Usuario revisa e completa titulo, valor e vencimento antes de salvar.
+6. Sistema salva a conta no mes do vencimento.
+7. Usuario acompanha status pendente, pago ou atrasado.
+8. Usuario pode copiar codigo Pix/boleto.
+9. Usuario pode marcar como pago.
+10. Sistema mostra contas vencendo, alerta 48h antes, alerta do dia e resumo mensal.
+
+### Leitura de renda por imagem
+
+1. Usuario acessa Dashboard.
+2. Usuario seleciona tipo Receita e anexa imagem de comprovante ou documento de entrada.
+3. MAYA cria rascunho revisavel com descricao, valor, categoria e data de entrada quando legivel.
+4. Usuario completa campos faltantes.
+5. Sistema verifica se ja existe renda ou despesa com a mesma data, mesmo valor e mesmo tipo.
+6. Se houver possivel duplicidade, sistema pede confirmacao antes de salvar.
+7. Sistema salva a receita no mes da data de entrada.
+
+### Confirmacao de duplicidade
+
+1. Usuario tenta salvar renda, despesa ou conta.
+2. Sistema compara data, valor e tipo com os registros existentes.
+3. Sistema exibe os registros possivelmente duplicados quando encontrar coincidencia.
+4. Usuario escolhe cancelar ou confirmar o salvamento mesmo assim.
+5. Sistema so salva duplicidade apos confirmacao explicita.
+
 ### Consentimento financeiro futuro
 
 1. Usuario escolhe conectar uma instituicao quando a integracao real existir.

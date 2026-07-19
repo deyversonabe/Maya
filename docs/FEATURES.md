@@ -102,10 +102,6 @@ Escopo:
 - Central de Dados e Confianca para visualizar cadastros, qualidade da analise, backup, privacidade e preparo para futuras conexoes financeiras.
 - Indicador de qualidade dos dados para mostrar se a analise da MAYA esta completa, parcial ou insuficiente.
 - Modelo de consentimento inspirado em Open Finance para futuras integracoes, sem conexao bancaria real nesta etapa.
-- Cadastro de pessoas do casal (Pessoas do casal) para identificar quem lancou cada transacao, usado como opcoes dinamicas de "Pessoa" nos formularios.
-- Deteccao automatica de duplicidade ao salvar despesa manual, transacao rapida ou importar CSV, bloqueando repeticoes exatas e avisando sobre repeticoes provaveis (ex: mesma despesa lancada pela nota e pelo extrato).
-- Categoria "Transferencia interna" e revisao da MAYA que sinaliza quando uma descricao parece Pix/transferencia entre contas proprias, reforcando que esse tipo nao deve contar como receita ou despesa real.
-- Camada de validacao local da MAYA (`modules/ai/validation.ts` e `POST /api/maya/validate`) que revisa um lancamento antes da confirmacao, sinalizando duplicidade, campos obrigatorios ausentes e sugestao de transferencia interna.
 
 Fora de escopo nesta etapa:
 
@@ -195,3 +191,71 @@ Fora de escopo nesta etapa:
 - Iniciar pagamentos.
 - Armazenar consentimentos em servidor.
 - Sincronizar dados entre dispositivos.
+
+### Contas a pagar e alertas
+
+Objetivo: permitir que o casal acompanhe boletos, Pix copia e cola, vencimentos, anexos e status de pagamento sem depender de banco conectado.
+
+Escopo:
+
+- Cadastrar contas manualmente.
+- Anexar imagem de conta, boleto, Pix, comprovante ou documento financeiro.
+- Usar a MAYA para ler titulo, descricao, valor, categoria, data do documento, data de vencimento, codigo de pagamento e tipo de documento.
+- Exigir revisao humana antes de salvar qualquer dado extraido por IA.
+- Exigir preenchimento manual do titulo quando a imagem nao trouxer uma identificacao confiavel.
+- Organizar contas pelo mes de vencimento.
+- Registrar boleto, Pix copia e cola, categoria, valor, recorrencia, parcelas, status, anexo e observacoes.
+- Copiar codigo Pix/boleto para a area de transferencia.
+- Marcar conta como paga.
+- Mostrar status pendente, pago ou atrasado.
+- Calcular alertas 48h antes do vencimento, alerta de vencimento no dia e resumo de contas atrasadas.
+- Exibir lista de contas vencendo, resumo do dia e resumo do mes.
+
+Fora de escopo nesta etapa:
+
+- Pagar boletos ou Pix dentro do app.
+- Agendar pagamento bancario real.
+- Cobrar tarifa, intermediar dinheiro ou iniciar transacao financeira.
+- Enviar alertas por WhatsApp enquanto a Meta nao liberar o numero de producao.
+- Garantir notificacao em segundo plano com o navegador fechado sem backend, push ou permissao nativa.
+
+### Leitura de anexos financeiros
+
+Objetivo: transformar imagens enviadas pelo usuario em rascunhos revisaveis de despesa, renda ou conta a pagar.
+
+Escopo:
+
+- Enviar imagem para rota server-side da MAYA.
+- Nunca enviar chave OpenAI ao frontend.
+- Retornar rascunho com confianca e campos faltantes.
+- Ler descricoes e itens de notas, comprovantes e extratos bancarios quando estiverem legiveis.
+- Usar campos vazios quando a imagem nao sustentar uma informacao.
+- Bloquear salvamento quando titulo, valor ou data obrigatoria estiverem ausentes.
+- Salvar o anexo confirmado junto do lancamento ou da conta correspondente.
+- Verificar duplicidade por data, valor e tipo antes de salvar renda ou despesa.
+- Pedir confirmacao quando o novo lancamento tiver mesma data e mesmo valor de outro ja cadastrado.
+
+Fora de escopo nesta etapa:
+
+- OCR local offline.
+- Garantia de leitura perfeita de documentos ilegiveis.
+- Criacao automatica sem confirmacao do usuario.
+- Conciliacao bancaria automatica.
+
+### Confirmacao de duplicidade
+
+Objetivo: evitar que uma mesma renda, despesa ou conta seja cadastrada duas vezes por engano.
+
+Escopo:
+
+- Comparar novos lancamentos com os registros existentes por data, valor e tipo.
+- Comparar contas a pagar por vencimento e valor.
+- Exibir os registros possivelmente duplicados antes de salvar.
+- Permitir cancelar ou confirmar o salvamento mesmo assim.
+- Aplicar a regra em cadastros manuais, anexos lidos pela MAYA, recorrencias e parcelas.
+
+Fora de escopo nesta etapa:
+
+- Remover duplicidades automaticamente.
+- Mesclar registros automaticamente.
+- Usar banco conectado para conciliacao com transacoes reais.

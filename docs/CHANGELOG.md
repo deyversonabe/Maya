@@ -39,12 +39,15 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Paginas publicas `/privacy`, `/terms` e `/data-deletion` adicionadas para configuracao do app na Meta.
 - Estado atual da configuracao do numero WhatsApp salvo em `docs/WHATSAPP_CONFIGURATION_STATUS.md`.
 - Flag `WHATSAPP_ENABLED` adicionada para publicar o produto sem depender da aprovacao da Meta.
-- Marca unificada: textos e metadados que citavam "Juntos Maya" foram revisados para manter apenas "Maya" em toda a interface, paginas legais e manifest.
-- Cadastro de pessoas do casal implementado (`HouseholdMember`), com criacao, remocao e uso automatico como opcoes de "Pessoa" nos formularios de transacao.
-- Deteccao de lancamentos duplicados implementada em `modules/finance/lib/duplicates.ts`, comparando tipo, valor, data e descricao normalizada para identificar duplicidade exata (bloqueio automatico) ou provavel (aviso).
-- Categoria "Transferencia interna" adicionada e reforco de que transferencias/Pix entre contas proprias nao contam como receita ou despesa real no saldo do mes.
-- Camada de revisao local da MAYA criada em `modules/ai/validation.ts` e exposta em `POST /api/maya/validate`, sinalizando duplicidade, campos obrigatorios ausentes e possiveis transferencias internas antes de confirmar um lancamento.
-- `schemaVersion` local avancado para 3, com migracao automatica que preserva dados existentes e cria pessoas padrao quando ausentes.
+- Modulo `Contas` adicionado para contas a pagar, boletos, Pix copia e cola, vencimentos, anexos, status, recorrencias, parcelas e alertas.
+- Leitura de anexos financeiros ampliada para rascunhos de despesa, renda ou conta a pagar, sempre com revisao humana antes de salvar.
+- Migracao local para `schemaVersion = 3`, preservando dados existentes e adicionando `bills`.
+- Resumos de contas vencendo, resumo do dia e resumo do mes adicionados ao fluxo financeiro.
+- Confirmacao de duplicidade adicionada para renda, despesa e contas quando data/vencimento e valor coincidirem.
+- Exibicao de itens lidos pela MAYA em notas, comprovantes e extratos antes da confirmacao do usuario.
+- Headers HTTP de seguranca adicionados globalmente em `next.config.mjs`.
+- Webhook WhatsApp passa a ignorar eventos POST quando `WHATSAPP_ENABLED` nao estiver ativo.
+- Manifesto PWA mantido para instalacao como app pelo navegador com `display: standalone`.
 
 ### Fixed
 

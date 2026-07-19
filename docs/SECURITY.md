@@ -62,6 +62,24 @@ Quando houver frontend/backend:
 - Configurar CORS de forma restritiva.
 - Definir headers de seguranca.
 
+## Headers HTTP de seguranca
+
+O projeto aplica headers globais em `next.config.mjs` para todas as rotas.
+
+Headers configurados:
+
+- `Content-Security-Policy`: restringe origem padrao a `self`, bloqueia objetos, bloqueia carregamento em frames de terceiros e limita imagens, fontes, conexoes e workers.
+- `Strict-Transport-Security`: reforca uso de HTTPS em producao.
+- `X-Frame-Options`: impede uso da aplicacao dentro de iframe externo.
+- `X-Content-Type-Options`: evita interpretacao incorreta de tipos de arquivo.
+- `Referrer-Policy`: reduz vazamento de contexto ao navegar para outros dominios.
+- `Permissions-Policy`: bloqueia microfone, geolocalizacao, pagamentos, USB e rastreamento por cohort; camera fica permitida apenas para a propria origem porque o produto possui anexos por camera.
+
+Observacoes:
+
+- `script-src` e `style-src` permitem inline por compatibilidade com Next.js/React nesta etapa. Uma politica com nonce/hash deve ser avaliada quando a aplicacao tiver pipeline de seguranca mais maduro.
+- `connect-src` permite a propria origem e dominios Supabase para preparo futuro de sincronizacao/autenticacao.
+
 ## IA e OpenAI
 
 Recursos de IA devem seguir tambem `docs/IA_GUIDELINES.md`.
@@ -82,12 +100,15 @@ Ao enviar foto de nota ou comprovante:
 - A chave OpenAI deve existir somente em ambiente seguro.
 - A resposta deve gerar rascunho, nao lancamento automatico.
 - O usuario deve confirmar antes de salvar qualquer despesa.
-- Imagens nao devem ser persistidas nesta etapa; apenas metadados e dados confirmados.
+- Imagens confirmadas pelo usuario podem ser mantidas no armazenamento local nesta etapa para compor anexos de contas/despesas.
+- Quando houver backend real, imagens devem migrar para storage privado com controle de acesso.
+- Leituras da MAYA devem verificar possivel duplicidade por data e valor antes de salvar renda ou despesa.
 
 ## WhatsApp
 
 - O webhook do WhatsApp deve validar `WHATSAPP_VERIFY_TOKEN` no desafio inicial.
 - Eventos recebidos devem validar `x-hub-signature-256` com `WHATSAPP_APP_SECRET` quando configurado.
+- Eventos POST so devem ser processados quando `WHATSAPP_ENABLED=true`.
 - Tokens do WhatsApp devem existir apenas em variaveis de ambiente.
 - Imagens recebidas devem ser processadas no servidor e nao devem ser armazenadas nesta etapa.
 - A resposta para o usuario deve ser curta, segura e sem IDs internos.
@@ -114,22 +135,11 @@ Ao identificar vulnerabilidade ou incidente:
 5. Registrar o incidente e a mitigacao.
 6. Adicionar testes ou verificacoes para prevenir recorrencia.
 
-## Auditoria de seguranca (2026-07-19)
-
-Revisao completa de seguranca realizada nesta data. Mudancas aplicadas:
-
-- Headers HTTP de seguranca adicionados em `next.config.mjs`: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy e Permissions-Policy.
-- Webhook do WhatsApp reforcado com verificacao explicita de `WHATSAPP_ENABLED` antes de processar qualquer payload, alem da validacao de assinatura ja existente.
-- Confirmado que nenhuma chave secreta (OpenAI, WhatsApp) e exposta ao cliente; apenas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` sao publicas, o que e seguro por design (protegidas por Row Level Security).
-- Confirmado que imagens de comprovantes nao sao persistidas em nenhuma camada; apenas o rascunho estruturado retorna ao cliente.
-- Recomendacao futura (ainda nao implementada): reduzir o volume de dados financeiros brutos enviados a OpenAI em `generateMayaAnalysis`, e priorizar autenticacao real de usuario (ex.: Supabase Auth) antes de uso com dados sensiveis reais em producao, ja que hoje qualquer pessoa com acesso ao navegador ve todos os dados locais.
-
 ## Pendencias
 
 - Definir mecanismo de autenticacao.
 - Definir matriz inicial de papeis e permissoes.
 - Definir politica formal de retencao de dados.
 - Definir processo de gestao de segredos por ambiente.
-
-- Priorizar autenticacao real de usuario (ex.: Supabase Auth) como proximo passo critico antes de qualquer uso com dados financeiros reais e sensiveis em producao.
-- Avaliar rate limiting nas rotas de IA (`/api/maya/analyze` e `/api/maya/receipt`) para reduzir custo e risco de abuso.
+- Implementar rate limiting nas rotas `/api/maya/analyze` e `/api/maya/receipt`.
+- Implementar storage privado para anexos quando sair do armazenamento local.

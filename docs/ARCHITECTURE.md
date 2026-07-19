@@ -124,7 +124,21 @@ Regras arquiteturais:
 - Chamadas a IA ficam em rotas server-side dentro de `app/api/maya`.
 - Toda resposta da IA deve ter fallback local.
 - A leitura de nota deve retornar dados revisaveis pelo usuario antes de virar despesa.
+- A leitura de documentos financeiros deve retornar rascunhos revisaveis para despesa, renda ou conta a pagar.
+- Campos nao confirmados pela imagem devem ser tratados como ausentes, nao como inferencias.
 - A MAYA nao deve julgar o casal; deve orientar com linguagem clara, acolhedora e objetiva.
+
+## Contas e alertas
+
+Contas a pagar ficam no modulo financeiro e devem ser independentes de pagamentos reais.
+
+Diretrizes:
+
+- O dominio de contas deve representar boletos, Pix copia e cola, recorrencias, parcelas, anexos e status.
+- Alertas de vencimento devem ser calculados localmente a partir de `dueDate`.
+- O status atrasado pode ser derivado em tempo de exibicao para evitar dados obsoletos.
+- O app pode preparar texto de resumo, mas envio externo depende de canal configurado e autorizado.
+- Pagamento, agendamento bancario e iniciacao Pix ficam fora do escopo ate existir parceiro regulado, consentimento, auditoria e seguranca adequados.
 
 ## Multi-tenancy
 
