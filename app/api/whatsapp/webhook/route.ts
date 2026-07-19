@@ -28,6 +28,10 @@ export function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (process.env.WHATSAPP_ENABLED !== "true") {
+    return NextResponse.json({ received: true, processed: 0, ignored: 0, repliesSent: 0 });
+  }
+  
   const rawBody = await request.text();
   const isValidSignature = verifyMetaSignature({
     rawBody,
