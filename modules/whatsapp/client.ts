@@ -17,6 +17,10 @@ export class WhatsAppClientError extends Error {
 }
 
 export function getWhatsAppConfig(): WhatsAppConfig | null {
+  if (process.env.WHATSAPP_ENABLED !== "true") {
+    return null;
+  }
+
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
