@@ -55,6 +55,10 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Painel editavel de dados do anexo adicionado para revisar nome/titulo, descricao, valor, data, categoria, pessoa e observacoes antes de salvar.
 - Sincronizacao online com Supabase Auth adicionada para acessar os mesmos dados no celular e no desktop.
 - Migracao SQL `supabase/migrations/20260719_finance_states.sql` adicionada com RLS por usuario.
+- Script administrativo e guia `AUTH_USERS_SETUP.md` adicionados para criar usuarios iniciais no Supabase Auth sem versionar senhas.
+- Workspace financeiro compartilhado adicionado para usuarios autorizados verem a mesma base em todos os aparelhos.
+- Supabase Realtime adicionado ao estado financeiro compartilhado para propagar alteracoes entre aparelhos.
+- Bloqueio de sessao por inatividade e fechamento de aba adicionado para exigir senha novamente.
 
 ### Fixed
 

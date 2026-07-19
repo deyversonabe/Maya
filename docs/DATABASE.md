@@ -6,12 +6,12 @@ Este documento define padroes de dados e deve ser atualizado sempre que tabelas,
 
 A recomendacao inicial e usar PostgreSQL via Supabase para dados transacionais, por oferecer integridade, consultas consistentes e boa evolucao para SaaS.
 
-Na entrega funcional inicial, enquanto as credenciais reais do Supabase nao existem, o aplicativo usa armazenamento local versionado no navegador. Quando `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` estao configuradas, o app habilita conta por e-mail/senha e sincronizacao online do estado financeiro.
+Na entrega funcional inicial, enquanto as credenciais reais do Supabase nao existem, o aplicativo usa armazenamento local versionado no navegador. Quando `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` estao configuradas, o app habilita conta por e-mail/senha e sincronizacao online do estado financeiro compartilhado pelos usuarios autorizados.
 
 Camadas de dados:
 
 - Atual sem conta online: `localStorage` com schema versionado para transacoes, metas, preferencias e historico basico.
-- Atual com conta online: Supabase Auth + tabela `finance_states` protegida por RLS.
+- Atual com conta online: Supabase Auth + workspace financeiro compartilhado protegido por RLS e membros autorizados.
 - Proxima etapa: separar entidades financeiras em tabelas relacionais normalizadas.
 - Futuro SaaS: Supabase Auth, Row Level Security, auditoria e backups.
 
@@ -50,31 +50,39 @@ Entidades provaveis:
 
 ## Sincronizacao online atual
 
-A sincronizacao online atual usa uma tabela unica para preservar velocidade de entrega e reduzir risco de migracao neste MVP.
+A sincronizacao online atual usa um workspace financeiro compartilhado para preservar velocidade de entrega e permitir que Deyveron, Tom e outros membros autorizados vejam a mesma base em qualquer aparelho.
 
-Tabela: `public.finance_states`.
+Tabelas:
 
-Campos:
+- `public.finance_workspaces`: identifica a base compartilhada.
+- `public.finance_workspace_members`: vincula usuarios autenticados ao workspace e define papel.
+- `public.finance_workspace_states`: guarda o `FinanceState` compartilhado em JSONB.
 
-- `id`: UUID primario.
-- `user_id`: usuario autenticado do Supabase, unico por conta.
+Campos principais de `finance_workspace_states`:
+
+- `workspace_id`: workspace compartilhado.
 - `state`: JSONB com `FinanceState` versionado.
+- `updated_by`: usuario que salvou a ultima alteracao.
 - `created_at`: criacao do registro.
 - `updated_at`: ultima atualizacao no banco.
 
 Regras:
 
 - RLS deve estar ativo.
-- `select`, `insert`, `update` e `delete` sao permitidos somente quando `auth.uid() = user_id`.
-- Ao entrar na conta, o app compara dados locais e online.
+- Leitura e escrita sao permitidas somente para usuarios presentes em `finance_workspace_members`.
+- O workspace padrao do MVP usa `00000000-0000-4000-8000-000000000001`.
+- Ao entrar na conta, o app compara dados locais e dados compartilhados online.
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
 - Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase.
+- A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
 - Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
+- Quando Supabase esta configurado e nao existe sessao autenticada, o app nao deve exibir dados financeiros locais.
 - `attachmentDataUrl` nao e enviado para a nuvem nesta etapa para evitar payloads grandes em JSONB; o nome do anexo e os dados extraidos sao preservados.
 
 Arquivo SQL:
 
 - `supabase/migrations/20260719_finance_states.sql`.
+- `supabase/migrations/20260719_shared_finance_workspace.sql`.
 
 ## Modelo financeiro inicial
 

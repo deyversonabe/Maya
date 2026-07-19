@@ -49,14 +49,21 @@ Sem Supabase configurado, o MVP funcional salva dados financeiros no navegador d
 - Nao ha sincronizacao entre dispositivos.
 - Nao ha controle de acesso por usuario.
 
-Com Supabase configurado, o app habilita conta por e-mail/senha e sincroniza o estado financeiro na tabela `finance_states`.
+Com Supabase configurado, o app habilita conta por e-mail/senha e sincroniza o estado financeiro em um workspace compartilhado por membros autorizados.
 
 Regras de seguranca:
 
 - A chave anonima do Supabase pode ficar no frontend, mas o acesso aos dados depende de RLS.
-- A tabela `finance_states` deve permitir acesso apenas ao proprio `user_id`.
+- A `SUPABASE_SERVICE_ROLE_KEY` nunca deve ser enviada ao navegador, nunca deve usar prefixo `NEXT_PUBLIC_` e nunca deve ser colocada em codigo de cliente.
+- Scripts administrativos que usam service role devem ser executados localmente por administrador e sem registrar segredos em log.
+- Senhas iniciais de usuarios devem ser definidas fora do GitHub e trocadas no primeiro acesso quando possivel.
+- Senhas curtas de 4 digitos so sao aceitaveis como bootstrap temporario em ambiente controlado; para dados financeiros reais, usar senhas fortes.
+- As tabelas `finance_workspaces`, `finance_workspace_members` e `finance_workspace_states` devem permitir acesso apenas a usuarios membros do workspace.
+- Criar usuario no Supabase Auth nao deve liberar dados automaticamente; o usuario precisa ser membro do workspace compartilhado.
+- Com Supabase ativo, dados financeiros nao devem ficar visiveis quando a sessao estiver bloqueada ou encerrada.
+- Fechamento de aba e inatividade devem marcar a sessao como bloqueada e exigir senha no retorno.
 - Dados locais sao usados como cache e fallback.
-- Ao entrar, dados locais podem ser enviados para a nuvem do usuario autenticado.
+- Ao entrar, dados locais podem ser enviados para a nuvem compartilhada do workspace autenticado.
 - Anexos em base64 nao devem ser enviados para JSONB nesta etapa; storage privado deve ser usado antes de sincronizar arquivos reais.
 - Backups continuam disponiveis como copia manual controlada pelo usuario.
 

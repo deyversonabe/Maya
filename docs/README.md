@@ -22,6 +22,7 @@ Leia primeiro:
 - `CONTRIBUTING.md`: processo de contribuicao e Definition of Done.
 - `DEPLOYMENT.md`: como subir a estrutura correta no GitHub e Vercel.
 - `SUPABASE_SETUP.md`: como ativar conta online e sincronizacao entre aparelhos.
+- `AUTH_USERS_SETUP.md`: como criar usuarios iniciais, senhas e recuperacao administrativa no Supabase Auth.
 - `WHATSAPP_SETUP.md`: como configurar WhatsApp Cloud API direto, sem n8n.
 - `WHATSAPP_CONFIGURATION_STATUS.md`: estado atual da configuracao do numero WhatsApp na Meta e Vercel.
 - `ROADMAP.md`: fases planejadas de evolucao.
@@ -37,7 +38,7 @@ Esta etapa estabelece a base documental e a primeira aplicacao funcional do proj
 
 A stack alvo definida pelo Prompt Mestre e Next.js, React, TypeScript, TailwindCSS, shadcn/ui, Framer Motion, Supabase, PostgreSQL, Prisma, Vercel, GitHub e OpenAI API.
 
-O MVP atual permite uso funcional com persistencia local no navegador. Quando Supabase estiver configurado, o app habilita conta por e-mail/senha e sincronizacao online entre celular e desktop. OpenAI real continua dependente de chave segura na Vercel.
+O MVP atual permite uso funcional com persistencia local no navegador. Quando Supabase estiver configurado, o app habilita conta por e-mail/senha, workspace financeiro compartilhado e sincronizacao online entre usuarios autorizados, celular e desktop. OpenAI real continua dependente de chave segura na Vercel.
 
 ## Sincronizacao online
 
@@ -45,9 +46,12 @@ Para ativar acesso aos mesmos dados em aparelhos diferentes:
 
 1. Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Vercel.
 2. Execute `supabase/migrations/20260719_finance_states.sql` no SQL Editor do Supabase.
-3. Faca redeploy.
-4. No app, abra `Dados` e entre ou crie conta.
-5. Use o mesmo e-mail no celular e no desktop.
+3. Execute `supabase/migrations/20260719_shared_finance_workspace.sql` no SQL Editor do Supabase.
+4. Configure `NEXT_PUBLIC_MAYA_WORKSPACE_ID` e `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES` na Vercel.
+5. Faca redeploy.
+6. Crie os usuarios iniciais seguindo `AUTH_USERS_SETUP.md`.
+7. No app, abra `Dados` e entre.
+8. Usuarios autorizados passam a ver a mesma base financeira.
 
 ## MAYA e OpenAI na Vercel
 

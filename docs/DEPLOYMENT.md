@@ -93,6 +93,8 @@ Para ativar sincronizacao online com Supabase:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_MAYA_WORKSPACE_ID`
+- `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES`
 - `DATABASE_URL`
 
 ## Sincronizacao online com Supabase
@@ -103,16 +105,20 @@ Para salvar dados online e acessar do celular e desktop:
 2. Em Authentication, mantenha login por e-mail/senha ativo.
 3. Abra SQL Editor.
 4. Execute o conteudo de `supabase/migrations/20260719_finance_states.sql`.
-5. Na Vercel, configure:
+5. Execute o conteudo de `supabase/migrations/20260719_shared_finance_workspace.sql`.
+6. Na Vercel, configure:
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_publica
+NEXT_PUBLIC_MAYA_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
+NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES=15
 ```
 
-6. Faca redeploy.
-7. No app, abra `Dados` e crie/entre na conta.
-8. Entre com o mesmo e-mail no celular e no desktop.
+7. Faca redeploy.
+8. Crie usuarios e membros seguindo `docs/AUTH_USERS_SETUP.md`.
+9. No app, abra `Dados` e entre na conta.
+10. Usuarios autorizados passam a ver a mesma base financeira.
 
 Observacao: nesta etapa, os dados financeiros sincronizam online; anexos originais ainda devem migrar para storage privado em etapa futura.
 

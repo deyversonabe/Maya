@@ -180,8 +180,11 @@ Objetivo: dar ao usuario clareza sobre cadastros, qualidade da analise, privacid
 Escopo:
 
 - Criar conta ou entrar com e-mail e senha quando Supabase estiver configurado.
-- Migrar dados ja existentes no aparelho para a conta online.
-- Sincronizar alteracoes confirmadas para ver os mesmos dados em celular e desktop.
+- Criar usuarios iniciais pelo Supabase Auth com nome de exibicao, recuperacao administrativa e vinculo ao workspace compartilhado.
+- Migrar dados ja existentes no aparelho para a base compartilhada.
+- Sincronizar alteracoes confirmadas para todos os usuarios autorizados e aparelhos.
+- Receber atualizacoes de outros aparelhos por Supabase Realtime.
+- Bloquear a sessao por inatividade ou fechamento de aba e pedir senha no retorno.
 - Exibir contagem de transacoes, metas e orcamentos cadastrados.
 - Exibir recursos disponiveis em linguagem de produto, sem nomes de infraestrutura.
 - Exibir qualidade da analise da MAYA com itens que faltam cadastrar.

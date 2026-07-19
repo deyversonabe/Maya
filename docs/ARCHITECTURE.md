@@ -164,10 +164,12 @@ Fluxo:
 
 1. O app carrega dados locais para preservar uso offline e dados ja existentes no aparelho.
 2. Se Supabase estiver configurado, o app verifica a sessao do usuario.
-3. Ao entrar na conta, o app busca `finance_states` do usuario.
+3. Ao entrar na conta, o app busca `finance_workspace_states` do workspace compartilhado.
 4. Quando houver dados locais e online, as listas sao combinadas por `id`.
 5. Depois da carga inicial, alteracoes confirmadas sao enviadas para a nuvem com debounce.
-6. Sem Supabase ou sem sessao, o app continua funcionando localmente.
+6. O app assina mudancas do workspace pelo Supabase Realtime para refletir transacoes criadas em outro aparelho.
+7. Com Supabase configurado e sem sessao autenticada, os dados financeiros locais ficam bloqueados ate o usuario digitar a senha.
+8. Sem Supabase configurado, o app continua funcionando localmente.
 
 Limites conhecidos:
 
@@ -175,6 +177,7 @@ Limites conhecidos:
 - Edicoes simultaneas em dois aparelhos usam conciliacao simples por `id`.
 - Delecoes offline concorrentes podem exigir revisao futura com tombstones/auditoria.
 - Anexos originais devem migrar para storage privado antes de sincronizacao completa de arquivos.
+- O modelo compartilhado atual atende um workspace familiar; para SaaS, criar workspaces dinamicos por organizacao/assinatura.
 
 ## Processamento assincrono
 

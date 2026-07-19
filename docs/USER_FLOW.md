@@ -99,23 +99,31 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Usuario acessa Dados.
 2. Sistema mostra onde os dados estao armazenados no momento.
-3. Se sincronizacao online estiver configurada, usuario cria conta ou entra com e-mail e senha.
-4. Sistema migra dados locais existentes para a conta online quando necessario.
-5. Sistema mostra status de IA, conta online e futura conexao financeira.
-6. Sistema calcula a qualidade da analise da MAYA.
-7. Usuario pode exportar backup JSON.
-8. Usuario pode limpar dados locais quando quiser reiniciar o uso.
-9. Sistema deixa claro que Open Finance ainda e preparo futuro, nao conexao ativa.
+3. Se sincronizacao online estiver configurada, usuario entra com e-mail e senha criados no Supabase Auth.
+4. Sistema verifica se o usuario e membro da base compartilhada.
+5. Sistema migra dados locais existentes para a base compartilhada quando necessario.
+6. Sistema mostra status de IA, conta online e futura conexao financeira.
+7. Sistema calcula a qualidade da analise da MAYA.
+8. Usuario pode exportar backup JSON.
+9. Usuario pode limpar dados locais quando quiser reiniciar o uso.
+10. Sistema deixa claro que Open Finance ainda e preparo futuro, nao conexao ativa.
 
 ### Sincronizacao entre celular e desktop
 
-1. Usuario cadastra despesas, contas, metas ou orcamentos em um aparelho.
-2. Usuario abre Dados e entra na conta online.
-3. Sistema envia os dados locais para a conta protegida.
-4. Usuario entra com o mesmo e-mail em outro aparelho.
-5. Sistema carrega os dados salvos online.
-6. Alteracoes futuras sao sincronizadas automaticamente apos confirmacao.
-7. Se a nuvem estiver indisponivel, o app continua local e tenta novamente quando o usuario acionar sincronizacao.
+1. Usuario autorizado cadastra despesas, contas, metas ou orcamentos em um aparelho.
+2. Sistema salva automaticamente na base compartilhada quando a sessao esta online.
+3. Outros usuarios autorizados e outros aparelhos recebem a atualizacao pela assinatura online.
+4. Se o aparelho estiver offline, o app preserva dados locais e tenta sincronizar no retorno.
+5. Se a sessao ficar sem uso ou a aba for fechada, o app pede senha no retorno.
+
+### Usuarios e recuperacao
+
+1. Administrador cria usuarios iniciais pelo Supabase Auth seguindo `docs/AUTH_USERS_SETUP.md`.
+2. Administrador adiciona cada usuario ao workspace compartilhado.
+3. Sistema usa e-mail como login tecnico e nome de exibicao para identificar pessoas como Deyveron e Tom.
+4. Senhas iniciais nao sao armazenadas no repositorio.
+5. Recuperacao de senha e iniciada pelo painel do Supabase.
+6. Conta administradora usa `deyversonsilvaf@gmail.com` como e-mail de recuperacao administrativa.
 
 ### Contas a pagar
 
