@@ -114,8 +114,8 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
               value={password}
               autoComplete={mode === "signIn" ? "current-password" : "new-password"}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="minimo 6 caracteres"
-              minLength={6}
+              placeholder={mode === "signIn" ? "sua senha" : "minimo 6 caracteres"}
+              minLength={mode === "signIn" ? 1 : 6}
               required
             />
           </Label>
