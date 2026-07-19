@@ -1,6 +1,6 @@
 export type TransactionType = "income" | "expense" | "investment" | "transfer";
 
-export type Person = "Pessoa 1" | "Pessoa 2" | "Casal";
+export type Person = string;
 
 export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 
@@ -9,6 +9,14 @@ export type GoalPriority = "low" | "medium" | "high";
 export type TransactionSource = "manual" | "receipt" | "import";
 
 export type BudgetStatus = "safe" | "attention" | "exceeded";
+
+export type DuplicateConfidence = "exact" | "likely";
+
+export interface HouseholdMember {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
 export interface Transaction {
   id: string;
@@ -57,8 +65,9 @@ export interface HouseholdProfile {
 }
 
 export interface FinanceState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   profile: HouseholdProfile;
+  members: HouseholdMember[];
   transactions: Transaction[];
   goals: Goal[];
   budgets: Budget[];
@@ -123,7 +132,35 @@ export interface ExpenseDraft {
   source: TransactionSource;
   receiptImageName?: string;
   items?: Array<{
-    name: string;
-    amount?: number;
+  name: string;
+  amount?: number;
   }>;
+}
+
+export interface DuplicateMatch {
+  transaction: Transaction;
+  confidence: DuplicateConfidence;
+  reason: string;
+}
+
+export interface TransactionReviewIssue {
+  level: "warning" | "info";
+  code: string;
+  message: string;
+}
+
+export interface TransactionReviewInput {
+  type: TransactionType;
+  description: string;
+  amount: number;
+  category: string;
+  person: Person;
+  date: string;
+}
+
+export interface TransactionReview {
+  ok: boolean;
+  issues: TransactionReviewIssue[];
+  duplicate: DuplicateMatch | null;
+  suggestedType: TransactionType | null;
 }
