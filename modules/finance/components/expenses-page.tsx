@@ -13,6 +13,7 @@ import { formatCurrency, toInputDate } from "@/lib/utils";
 import { transactionCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
+import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinancialDocumentDraft, Person, Transaction, TransactionType } from "../types";
 
@@ -71,7 +72,7 @@ export function ExpensesPage() {
     setFeedback("MAYA esta lendo o comprovante e preparando um rascunho...");
 
     try {
-      const imageDataUrl = await fileToDataUrl(file);
+      const imageDataUrl = await fileToOptimizedImageDataUrl(file);
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,8 +92,12 @@ export function ExpensesPage() {
       }
 
       setFeedback(buildDraftFeedback(result.message, result.financialDraft));
-    } catch {
-      setFeedback("Nao consegui ler a imagem. Voce pode preencher a despesa manualmente.");
+    } catch (error) {
+      setFeedback(
+        error instanceof Error && error.message === "image_too_large"
+          ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
+          : "Nao consegui ler a imagem. Voce pode preencher a despesa manualmente."
+      );
     } finally {
       setIsReadingReceipt(false);
     }
@@ -513,13 +518,4 @@ function clampCount(value: number, min: number, max: number) {
   }
 
   return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }

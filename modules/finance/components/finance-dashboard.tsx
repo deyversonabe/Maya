@@ -39,6 +39,7 @@ import {
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
+import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinancialDocumentDraft, GoalPriority, GoalType, Person, Transaction, TransactionType } from "../types";
 
@@ -110,7 +111,7 @@ export function FinanceDashboard() {
     setFeedback("MAYA esta lendo o anexo e preparando um rascunho...");
 
     try {
-      const imageDataUrl = await fileToDataUrl(file);
+      const imageDataUrl = await fileToOptimizedImageDataUrl(file);
       const documentKind = transactionForm.type === "income" ? "income" : "expense";
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
@@ -144,8 +145,12 @@ export function FinanceDashboard() {
         date
       }));
       setFeedback(buildDraftFeedback(result.message, draft));
-    } catch {
-      setFeedback("Nao consegui ler o anexo. Preencha a transacao manualmente.");
+    } catch (error) {
+      setFeedback(
+        error instanceof Error && error.message === "image_too_large"
+          ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
+          : "Nao consegui ler o anexo. Preencha a transacao manualmente."
+      );
     }
   }
 
@@ -906,13 +911,4 @@ function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {
   }
 
   return `${message ?? "Rascunho criado."} Complete manualmente: ${draft.missingFields.join(", ")}.`;
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }

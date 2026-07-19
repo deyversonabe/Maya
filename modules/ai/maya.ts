@@ -11,6 +11,8 @@ import type {
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5-mini";
+const DEFAULT_VISION_MODEL = "gpt-4o-mini";
+const OPENAI_TIMEOUT_MS = 7_500;
 
 export async function generateMayaAnalysis({
   state,
@@ -27,13 +29,7 @@ export async function generateMayaAnalysis({
   }
 
   try {
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
+    const response = await fetchOpenAIResponse(apiKey, {
         model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
         input: [
           {
@@ -67,8 +63,9 @@ export async function generateMayaAnalysis({
             ]
           }
         ],
-        max_output_tokens: 1000
-      })
+        max_output_tokens: 1000,
+        store: false,
+        text: { format: { type: "json_object" } }
     });
 
     if (!response.ok) {
@@ -120,14 +117,8 @@ export async function readReceiptWithMaya({
   }
 
   try {
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL,
+    const response = await fetchOpenAIResponse(apiKey, {
+        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
@@ -153,26 +144,50 @@ export async function readReceiptWithMaya({
               },
               {
                 type: "input_image",
+                detail: "high",
                 image_url: imageDataUrl
               }
             ]
           }
         ],
-        max_output_tokens: 700
-      })
+        max_output_tokens: 900,
+        store: false,
+        text: { format: { type: "json_object" } }
     });
 
     if (!response.ok) {
+      const error = await parseOpenAIError(response);
+      logReceiptReadFailure(error, documentKind);
+
       return {
         financialDraft: fallbackDraft,
         expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
         needsReview: true,
-        message: "Nao consegui ler o anexo agora. O rascunho manual continua disponivel."
+        message: buildReceiptFailureMessage(error)
       };
     }
 
     const data = (await response.json()) as OpenAIResponse;
     const parsed = parseJsonObject(getOutputText(data));
+
+    if (Object.keys(parsed).length === 0) {
+      logReceiptReadFailure(
+        {
+          category: "invalid_output",
+          status: 200,
+          code: "empty_or_invalid_json"
+        },
+        documentKind
+      );
+
+      return {
+        financialDraft: fallbackDraft,
+        expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
+        needsReview: true,
+        message: "MAYA nao encontrou dados confiaveis no anexo. Preencha manualmente antes de salvar."
+      };
+    }
+
     const financialDraft = normalizeFinancialDraft(parsed, fallbackDraft, documentKind);
 
     return {
@@ -181,12 +196,15 @@ export async function readReceiptWithMaya({
       needsReview: true,
       message: "MAYA leu o anexo e criou um rascunho. Revise antes de salvar."
     };
-  } catch {
+  } catch (error) {
+    const failure = normalizeCaughtFailure(error);
+    logReceiptReadFailure(failure, documentKind);
+
     return {
       financialDraft: fallbackDraft,
       expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
       needsReview: true,
-      message: "Nao consegui concluir a leitura da imagem. Voce ainda pode preencher manualmente."
+      message: buildReceiptFailureMessage(failure)
     };
   }
 }
@@ -198,6 +216,138 @@ interface OpenAIResponse {
       text?: string;
     }>;
   }>;
+}
+
+type OpenAIFailureCategory =
+  | "auth"
+  | "quota"
+  | "model"
+  | "image"
+  | "timeout"
+  | "temporary"
+  | "invalid_output"
+  | "unknown";
+
+interface OpenAIFailure {
+  category: OpenAIFailureCategory;
+  status?: number;
+  code?: string;
+  requestId?: string;
+  message?: string;
+}
+
+async function fetchOpenAIResponse(apiKey: string, payload: Record<string, unknown>) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
+  try {
+    return await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function parseOpenAIError(response: Response): Promise<OpenAIFailure> {
+  const requestId = response.headers.get("x-request-id") ?? response.headers.get("openai-request-id") ?? undefined;
+  const body = await response.text();
+  const parsed = parseJsonObject(body);
+  const error = typeof parsed.error === "object" && parsed.error !== null ? (parsed.error as Record<string, unknown>) : parsed;
+  const code = toCleanString(error.code) || toCleanString(error.type) || `http_${response.status}`;
+  const message = toCleanString(error.message);
+
+  return {
+    category: categorizeOpenAIError(response.status, code, message),
+    status: response.status,
+    code,
+    requestId,
+    message: sanitizeLogText(message)
+  };
+}
+
+function normalizeCaughtFailure(error: unknown): OpenAIFailure {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return { category: "timeout", code: "request_timeout" };
+  }
+
+  if (error instanceof Error && error.name === "AbortError") {
+    return { category: "timeout", code: "request_timeout" };
+  }
+
+  return {
+    category: "temporary",
+    code: error instanceof Error ? sanitizeLogText(error.name || "request_failed") : "request_failed",
+    message: error instanceof Error ? sanitizeLogText(error.message) : undefined
+  };
+}
+
+function categorizeOpenAIError(status: number, code: string, message: string): OpenAIFailureCategory {
+  const text = `${code} ${message}`.toLowerCase();
+
+  if (status === 401 || status === 403 || text.includes("api key") || text.includes("auth")) {
+    return "auth";
+  }
+
+  if (status === 429 || text.includes("quota") || text.includes("rate limit") || text.includes("billing")) {
+    return "quota";
+  }
+
+  if (text.includes("model") || text.includes("unsupported") || text.includes("does not exist")) {
+    return "model";
+  }
+
+  if (text.includes("image") || text.includes("base64") || text.includes("file size") || text.includes("mime")) {
+    return "image";
+  }
+
+  if (status >= 500) {
+    return "temporary";
+  }
+
+  return "unknown";
+}
+
+function buildReceiptFailureMessage(error: OpenAIFailure) {
+  switch (error.category) {
+    case "auth":
+      return "A leitura automatica nao esta autorizada no servidor. O rascunho manual continua disponivel.";
+    case "quota":
+      return "A leitura automatica atingiu o limite de uso agora. Revise manualmente ou tente novamente mais tarde.";
+    case "model":
+      return "A leitura automatica precisa de ajuste na configuracao do servidor. O rascunho manual continua disponivel.";
+    case "image":
+      return "A imagem nao foi aceita para leitura. Tente outra foto em JPG/PNG, com boa luz, ou preencha manualmente.";
+    case "timeout":
+      return "A leitura demorou mais que o esperado. Tente novamente com uma foto mais nitida ou preencha manualmente.";
+    case "invalid_output":
+      return "MAYA nao encontrou dados confiaveis no anexo. Preencha manualmente antes de salvar.";
+    case "temporary":
+    case "unknown":
+    default:
+      return "Nao consegui ler o anexo agora. O rascunho manual continua disponivel.";
+  }
+}
+
+function logReceiptReadFailure(error: OpenAIFailure, documentKind: FinancialDocumentKind) {
+  console.warn("maya_receipt_read_failed", {
+    category: error.category,
+    status: error.status,
+    code: error.code,
+    requestId: error.requestId,
+    documentKind,
+    message: error.message
+  });
+}
+
+function sanitizeLogText(value: string) {
+  return value.replace(/\s+/g, " ").slice(0, 180);
 }
 
 function buildFallbackFinancialDraft(

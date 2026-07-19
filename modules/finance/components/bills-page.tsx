@@ -28,6 +28,7 @@ import {
   getBillEffectiveStatus
 } from "../lib/calculations";
 import { findBillDuplicateMatches, type BillDuplicateMatch } from "../lib/duplicates";
+import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BillStatus,
@@ -112,7 +113,7 @@ export function BillsPage() {
     setFeedback("MAYA esta lendo a conta e preenchendo o rascunho...");
 
     try {
-      const imageDataUrl = await fileToDataUrl(file);
+      const imageDataUrl = await fileToOptimizedImageDataUrl(file);
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,8 +133,12 @@ export function BillsPage() {
       }
 
       setFeedback(buildDraftFeedback(result.message, result.financialDraft));
-    } catch {
-      setFeedback("Nao consegui ler a imagem. Preencha a conta manualmente.");
+    } catch (error) {
+      setFeedback(
+        error instanceof Error && error.message === "image_too_large"
+          ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
+          : "Nao consegui ler a imagem. Preencha a conta manualmente."
+      );
     } finally {
       setIsReadingDocument(false);
     }
@@ -842,13 +847,4 @@ function clampCount(value: number, min: number, max: number) {
   }
 
   return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
