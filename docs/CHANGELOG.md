@@ -39,6 +39,12 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Paginas publicas `/privacy`, `/terms` e `/data-deletion` adicionadas para configuracao do app na Meta.
 - Estado atual da configuracao do numero WhatsApp salvo em `docs/WHATSAPP_CONFIGURATION_STATUS.md`.
 - Flag `WHATSAPP_ENABLED` adicionada para publicar o produto sem depender da aprovacao da Meta.
+- Marca unificada: textos e metadados que citavam "Juntos Maya" foram revisados para manter apenas "Maya" em toda a interface, paginas legais e manifest.
+- Cadastro de pessoas do casal implementado (`HouseholdMember`), com criacao, remocao e uso automatico como opcoes de "Pessoa" nos formularios de transacao.
+- Deteccao de lancamentos duplicados implementada em `modules/finance/lib/duplicates.ts`, comparando tipo, valor, data e descricao normalizada para identificar duplicidade exata (bloqueio automatico) ou provavel (aviso).
+- Categoria "Transferencia interna" adicionada e reforco de que transferencias/Pix entre contas proprias nao contam como receita ou despesa real no saldo do mes.
+- Camada de revisao local da MAYA criada em `modules/ai/validation.ts` e exposta em `POST /api/maya/validate`, sinalizando duplicidade, campos obrigatorios ausentes e possiveis transferencias internas antes de confirmar um lancamento.
+- `schemaVersion` local avancado para 3, com migracao automatica que preserva dados existentes e cria pessoas padrao quando ausentes.
 
 ### Fixed
 
