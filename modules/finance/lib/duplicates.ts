@@ -1,4 +1,4 @@
-import type { PayableBill, Transaction } from "../types";
+import type { DuplicateTransactionResult, PayableBill, Transaction } from "../types";
 
 export interface TransactionDuplicateMatch {
   incoming: Omit<Transaction, "id" | "createdAt">;
@@ -47,6 +47,54 @@ export function findBillDuplicateMatches(
   );
 }
 
+export function findDuplicateTransaction(
+  candidate: Pick<Transaction, "type" | "description" | "amount" | "date">,
+  existingTransactions: Transaction[]
+): DuplicateTransactionResult | null {
+  if (candidate.type !== "income" && candidate.type !== "expense") {
+    return null;
+  }
+
+  const exact = existingTransactions.find(
+    (transaction) =>
+      transaction.type === candidate.type &&
+      transaction.date === candidate.date &&
+      areSameMoneyValue(transaction.amount, candidate.amount)
+  );
+
+  if (exact) {
+    return {
+      transaction: exact,
+      confidence: "exact"
+    };
+  }
+
+  const similar = existingTransactions.find(
+    (transaction) =>
+      transaction.type === candidate.type &&
+      areSameMoneyValue(transaction.amount, candidate.amount) &&
+      areDatesNear(transaction.date, candidate.date)
+  );
+
+  return similar
+    ? {
+        transaction: similar,
+        confidence: "similar"
+      }
+    : null;
+}
+
 function areSameMoneyValue(left: number, right: number) {
   return Math.round(left * 100) === Math.round(right * 100);
+}
+
+function areDatesNear(left: string, right: string) {
+  const leftTime = Date.parse(`${left}T12:00:00`);
+  const rightTime = Date.parse(`${right}T12:00:00`);
+
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) {
+    return false;
+  }
+
+  return Math.abs(leftTime - rightTime) <= 2 * 86_400_000;
 }

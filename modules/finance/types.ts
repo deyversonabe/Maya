@@ -200,3 +200,30 @@ export interface BillAlert {
   priority: "info" | "warning" | "critical";
   triggerAt: string;
 }
+
+export interface TransactionReviewInput {
+  type: TransactionType;
+  description: string;
+  amount: number;
+  category: string;
+  person: Person;
+  date: string;
+}
+
+export interface DuplicateTransactionResult {
+  transaction: Transaction;
+  confidence: "exact" | "similar";
+}
+
+export interface TransactionReviewIssue {
+  level: "info" | "warning";
+  code: "missing_description" | "invalid_amount" | "missing_person" | "possible_duplicate" | "possible_internal_transfer";
+  message: string;
+}
+
+export interface TransactionReview {
+  ok: boolean;
+  issues: TransactionReviewIssue[];
+  duplicate: DuplicateTransactionResult | null;
+  suggestedType: TransactionType | null;
+}
