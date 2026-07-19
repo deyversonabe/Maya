@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Juntos | Organizar hoje. Construir o amanha.",
+  title: "Maya | Organizar hoje. Construir o amanha.",
   description:
     "Aplicativo financeiro premium com MAYA, assistente para organizar receitas, despesas, metas e planejamento do casal.",
   manifest: "/manifest.webmanifest",
