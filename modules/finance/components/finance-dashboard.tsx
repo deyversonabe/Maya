@@ -38,8 +38,8 @@ import {
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { GoalPriority, GoalType, Person, TransactionType } from "../types";
-
+import type { GoalPriority, GoalType, Person, TransactionReview, TransactionType } from "../types";
+import { reviewTransactionEntry } from "../../ai/validation";
 const transactionTypeLabel: Record<TransactionType, string> = {
   income: "Receita",
   expense: "Despesa",
@@ -86,6 +86,7 @@ export function FinanceDashboard() {
     priority: "medium" as GoalPriority
   });
   const [feedback, setFeedback] = useState("Dados salvos automaticamente.");
+  const [mayaReview, setMayaReview] = useState<TransactionReview | null>(null);
 
   const summary = useMemo(() => calculateSummary(state), [state]);
   const flow = useMemo(() => buildMonthlyFlow(state.transactions), [state.transactions]);
@@ -103,6 +104,19 @@ export function FinanceDashboard() {
       return;
     }
 
+                  const review = reviewTransactionEntry({
+                    candidate: {
+                      type: transactionForm.type,
+                      description: transactionForm.description.trim(),
+                      amount,
+                      category: transactionForm.category,
+                      person: transactionForm.person,
+                      date: transactionForm.date
+                    },
+                    state
+                  });
+    setMayaReview(review);
+
 const result = actions.addTransaction({
   type: transactionForm.type,
   description: transactionForm.description.trim(),
@@ -118,15 +132,18 @@ const result = actions.addTransaction({
       return;
     }
 
+    const transferIssue = review.issues.find((issue) => issue.code === "possible_internal_transfer");
+    const reviewNote = transferIssue ? ` ${transferIssue.message}` : "";
+
     setTransactionForm((current) => ({
       ...current,
       description: "",
       amount: ""
     }));
     setFeedback(
-      result.duplicate
+(      result.duplicate
       ? "Transacao salva. A MAYA encontrou um lancamento parecido, confira para evitar duplicidade."
-      : "Transacao salva e indicadores recalculados."
+      : "Transacao salva e indicadores recalculados." )+ reviewNote
       );
   }
 
@@ -270,6 +287,13 @@ const result = actions.importTransactions(transactions);
             <p className="mt-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
               {isHydrated ? feedback : "Carregando dados..."}
             </p>
+            {mayaReview && mayaReview.issues.length > 0 ? (
+      <div className="mt-3 grid gap-2 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+      <strong className="text-xs font-black uppercase tracking-[0.08em]">Analise da MAYA</strong>
+        {mayaReview.issues.map((issue, index) => (
+        <p key={index}>{issue.message}</p>
+        ))}</div>
+      ) : null}
           </header>
 
           <LedPanel className="p-5" glow="cyan">
