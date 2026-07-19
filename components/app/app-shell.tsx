@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, CalendarDays, Database, Home, ReceiptText, Target, WalletCards } from "lucide-react";
+import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, ReceiptText, Target, WalletCards } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/months", label: "Meses", icon: CalendarDays },
   { href: "/expenses", label: "Despesas", icon: ReceiptText },
+  { href: "/bills", label: "Contas", icon: BellRing },
   { href: "/budgets", label: "Orcamentos", icon: WalletCards },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/data", label: "Dados", icon: Database },
@@ -31,19 +32,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Image
             src="/brand/juntos-maya-logo.png"
-            alt="Maya"
+            alt="Juntos Maya"
             width={180}
             height={180}
             priority
             className="h-14 w-14 object-contain drop-shadow-[0_0_18px_rgba(196,106,67,0.35)] transition group-hover:scale-[1.03]"
           />
           <div>
-            <strong className="font-serif text-2xl leading-none text-bronze">Maya</strong>
+            <strong className="font-serif text-2xl leading-none text-bronze">Juntos Maya</strong>
             <p className="text-xs font-bold text-muted">Voltar ao inicio</p>
           </div>
         </Link>
 
-        <nav className="hidden gap-2 md:grid md:grid-cols-4 xl:grid-cols-8" aria-label="Navegacao principal">
+        <nav className="hidden gap-2 md:grid md:grid-cols-4 xl:grid-cols-9" aria-label="Navegacao principal">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
@@ -69,9 +70,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {children}
 
-      <nav className="fixed inset-x-2 bottom-3 z-40 grid grid-cols-7 gap-1 rounded-2xl border border-bronze/20 bg-moss-950/92 p-2 shadow-soft backdrop-blur-2xl md:hidden" aria-label="Navegacao mobile">
+      <nav className="fixed inset-x-2 bottom-3 z-40 grid grid-cols-8 gap-1 rounded-2xl border border-bronze/20 bg-moss-950/92 p-2 shadow-soft backdrop-blur-2xl md:hidden" aria-label="Navegacao mobile">
         {navItems
-          .filter((item) => ["/", "/months", "/expenses", "/budgets", "/goals", "/data", "/maya"].includes(item.href))
+          .filter((item) => ["/", "/months", "/expenses", "/bills", "/budgets", "/goals", "/data", "/maya"].includes(item.href))
           .map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
