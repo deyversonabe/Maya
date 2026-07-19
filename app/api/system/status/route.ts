@@ -12,6 +12,11 @@ export function GET() {
       backup: {
         available: true
       },
+      sync: {
+        available: Boolean(
+          process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        )
+      },
       whatsapp: {
         available: Boolean(
           process.env.WHATSAPP_ENABLED === "true" &&
