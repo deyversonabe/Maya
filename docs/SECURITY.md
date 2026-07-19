@@ -114,9 +114,22 @@ Ao identificar vulnerabilidade ou incidente:
 5. Registrar o incidente e a mitigacao.
 6. Adicionar testes ou verificacoes para prevenir recorrencia.
 
+## Auditoria de seguranca (2026-07-19)
+
+Revisao completa de seguranca realizada nesta data. Mudancas aplicadas:
+
+- Headers HTTP de seguranca adicionados em `next.config.mjs`: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy e Permissions-Policy.
+- Webhook do WhatsApp reforcado com verificacao explicita de `WHATSAPP_ENABLED` antes de processar qualquer payload, alem da validacao de assinatura ja existente.
+- Confirmado que nenhuma chave secreta (OpenAI, WhatsApp) e exposta ao cliente; apenas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` sao publicas, o que e seguro por design (protegidas por Row Level Security).
+- Confirmado que imagens de comprovantes nao sao persistidas em nenhuma camada; apenas o rascunho estruturado retorna ao cliente.
+- Recomendacao futura (ainda nao implementada): reduzir o volume de dados financeiros brutos enviados a OpenAI em `generateMayaAnalysis`, e priorizar autenticacao real de usuario (ex.: Supabase Auth) antes de uso com dados sensiveis reais em producao, ja que hoje qualquer pessoa com acesso ao navegador ve todos os dados locais.
+
 ## Pendencias
 
 - Definir mecanismo de autenticacao.
 - Definir matriz inicial de papeis e permissoes.
 - Definir politica formal de retencao de dados.
 - Definir processo de gestao de segredos por ambiente.
+
+Priorizar autenticacao real de usuario (ex.: Supabase Auth) como proximo passo critico antes de qualquer uso com dados financeiros reais e sensiveis em producao.
+Avaliar rate limiting nas rotas de IA (`/api/maya/analyze` e `/api/maya/receipt`) para reduzir custo e risco de abuso.
