@@ -131,5 +131,6 @@ Revisao completa de seguranca realizada nesta data. Mudancas aplicadas:
 - Definir politica formal de retencao de dados.
 - Definir processo de gestao de segredos por ambiente.
 
-Priorizar autenticacao real de usuario (ex.: Supabase Auth) como proximo passo critico antes de qualquer uso com dados financeiros reais e sensiveis em producao.
+- Priorizar autenticacao real de usuario (ex.: Supabase Auth) como proximo passo critico antes de qualquer uso com dados financeiros reais e sensiveis em producao.
 Avaliar rate limiting nas rotas de IA (`/api/maya/analyze` e `/api/maya/receipt`) para reduzir custo e risco de abuso.
+- 
