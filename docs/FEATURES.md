@@ -102,6 +102,10 @@ Escopo:
 - Central de Dados e Confianca para visualizar cadastros, qualidade da analise, backup, privacidade e preparo para futuras conexoes financeiras.
 - Indicador de qualidade dos dados para mostrar se a analise da MAYA esta completa, parcial ou insuficiente.
 - Modelo de consentimento inspirado em Open Finance para futuras integracoes, sem conexao bancaria real nesta etapa.
+- Cadastro de pessoas do casal (Pessoas do casal) para identificar quem lancou cada transacao, usado como opcoes dinamicas de "Pessoa" nos formularios.
+- Deteccao automatica de duplicidade ao salvar despesa manual, transacao rapida ou importar CSV, bloqueando repeticoes exatas e avisando sobre repeticoes provaveis (ex: mesma despesa lancada pela nota e pelo extrato).
+- Categoria "Transferencia interna" e revisao da MAYA que sinaliza quando uma descricao parece Pix/transferencia entre contas proprias, reforcando que esse tipo nao deve contar como receita ou despesa real.
+- Camada de validacao local da MAYA (`modules/ai/validation.ts` e `POST /api/maya/validate`) que revisa um lancamento antes da confirmacao, sinalizando duplicidade, campos obrigatorios ausentes e sugestao de transferencia interna.
 
 Fora de escopo nesta etapa:
 
