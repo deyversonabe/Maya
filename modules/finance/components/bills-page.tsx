@@ -37,6 +37,7 @@ import type {
   PaymentMethod,
   Person
 } from "../types";
+import { FinancialDocumentReview } from "./financial-document-review";
 
 type BillPlan = "single" | "recurring" | "installment";
 
@@ -106,6 +107,34 @@ export function BillsPage() {
       paymentCode: draft.paymentCode ?? "",
       notes: draft.attachmentImageName ? `Anexo: ${draft.attachmentImageName}` : current.notes
     }));
+  }
+
+  function updateDocumentDraft(patch: Partial<FinancialDocumentDraft>) {
+    setDocumentDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const updated = { ...current, ...patch };
+
+      setForm((formCurrent) => ({
+        ...formCurrent,
+        title: "title" in patch ? updated.title : formCurrent.title,
+        description: "description" in patch ? updated.description : formCurrent.description,
+        amount: "amount" in patch ? (updated.amount > 0 ? String(updated.amount) : "") : formCurrent.amount,
+        category: "category" in patch ? updated.category : formCurrent.category,
+        person: "person" in patch ? updated.person : formCurrent.person,
+        dueDate:
+          "dueDate" in patch || "documentDate" in patch || "entryDate" in patch
+            ? updated.dueDate || updated.documentDate || updated.entryDate || formCurrent.dueDate
+            : formCurrent.dueDate,
+        paymentMethod: "paymentMethod" in patch ? updated.paymentMethod ?? formCurrent.paymentMethod : formCurrent.paymentMethod,
+        paymentCode: "paymentCode" in patch ? updated.paymentCode ?? "" : formCurrent.paymentCode,
+        notes: "notes" in patch ? updated.notes ?? "" : formCurrent.notes
+      }));
+
+      return updated;
+    });
   }
 
   async function handleDocumentFile(file: File) {
@@ -341,6 +370,19 @@ export function BillsPage() {
           </div>
 
           <form className="grid gap-4" onSubmit={submitBill}>
+            {documentDraft ? (
+              <FinancialDocumentReview
+                draft={documentDraft}
+                categories={transactionCategories}
+                persons={personOptions}
+                dateField="dueDate"
+                dateLabel="Vencimento"
+                titleLabel="Titulo"
+                showPayment
+                onChange={updateDocumentDraft}
+              />
+            ) : null}
+
             {documentDraft?.items?.length ? <DraftItems items={documentDraft.items} /> : null}
 
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px]">

@@ -19,6 +19,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { LedPanel } from "@/components/ui/led-panel";
 import { buildDataQualityReport } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
+import { CloudAccountPanel } from "./cloud-account-panel";
 
 type SystemStatus = {
   maya: {
@@ -35,7 +36,7 @@ type SystemStatus = {
 };
 
 export function DataCenterPage() {
-  const { state, isHydrated, actions } = useFinanceStore();
+  const { state, isHydrated, actions, cloud } = useFinanceStore();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [feedback, setFeedback] = useState("Central pronta para revisar dados, backups e conexoes.");
   const quality = useMemo(() => buildDataQualityReport(state), [state]);
@@ -110,6 +111,15 @@ export function DataCenterPage() {
         <div className="grid gap-4">
           <Card>
             <CardHeader
+              eyebrow="Conta"
+              title="Sincronizacao online"
+              action={<Badge tone={cloud.email ? "success" : cloud.isConfigured ? "info" : "warning"}>{cloud.email ? "Conectada" : "Pendente"}</Badge>}
+            />
+            <CloudAccountPanel cloud={cloud} />
+          </Card>
+
+          <Card>
+            <CardHeader
               eyebrow="Dados"
               title="Resumo dos cadastros"
               action={<Badge tone={transactionCount > 0 ? "success" : "neutral"}>{transactionCount} lancamentos</Badge>}
@@ -162,10 +172,10 @@ export function DataCenterPage() {
               />
               <StatusRow
                 icon={<Database />}
-                label="Backup"
-                value="Manual"
-                detail="Voce pode exportar uma copia dos dados sempre que quiser guardar ou atualizar o projeto."
-                tone="neutral"
+                label="Conta online"
+                value={cloud.email ? "Ativa" : "Opcional"}
+                detail={cloud.email ? "Alteracoes salvas para acessar em outros aparelhos." : "Entre na sua conta para sincronizar celular e computador."}
+                tone={cloud.email ? "success" : "neutral"}
               />
               <StatusRow
                 icon={<WalletCards />}

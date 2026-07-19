@@ -42,6 +42,7 @@ import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from 
 import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinancialDocumentDraft, GoalPriority, GoalType, Person, Transaction, TransactionType } from "../types";
+import { FinancialDocumentReview } from "./financial-document-review";
 
 const transactionTypeLabel: Record<TransactionType, string> = {
   income: "Receita",
@@ -154,6 +155,33 @@ export function FinanceDashboard() {
     }
   }
 
+  function updateTransactionDraft(patch: Partial<FinancialDocumentDraft>) {
+    setTransactionDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const updated = { ...current, ...patch };
+
+      setTransactionForm((formCurrent) => ({
+        ...formCurrent,
+        description:
+          "description" in patch || "title" in patch
+            ? updated.description || updated.title
+            : formCurrent.description,
+        amount: "amount" in patch ? (updated.amount > 0 ? String(updated.amount) : "") : formCurrent.amount,
+        category: "category" in patch ? updated.category : formCurrent.category,
+        person: "person" in patch ? updated.person : formCurrent.person,
+        date:
+          "entryDate" in patch || "documentDate" in patch || "dueDate" in patch
+            ? updated.entryDate || updated.documentDate || updated.dueDate || formCurrent.date
+            : formCurrent.date
+      }));
+
+      return updated;
+    });
+  }
+
   function submitTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number(transactionForm.amount.replace(",", "."));
@@ -174,7 +202,8 @@ export function FinanceDashboard() {
       source: transactionDraft ? "receipt" : "manual",
       receiptImageName: transactionDraft?.attachmentImageName,
       attachmentImageName: transactionDraft?.attachmentImageName,
-      attachmentDataUrl: transactionDraft?.attachmentDataUrl
+      attachmentDataUrl: transactionDraft?.attachmentDataUrl,
+      notes: transactionDraft?.notes
     } satisfies Omit<Transaction, "id" | "createdAt">;
 
     const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
@@ -454,6 +483,17 @@ export function FinanceDashboard() {
                     }}
                   />
                 </div>
+                {transactionDraft ? (
+                  <FinancialDocumentReview
+                    draft={transactionDraft}
+                    categories={transactionCategories}
+                    persons={personOptions}
+                    dateField={transactionDraft.kind === "income" ? "entryDate" : "documentDate"}
+                    dateLabel={transactionDraft.kind === "income" ? "Data de entrada" : "Data da nota"}
+                    onChange={updateTransactionDraft}
+                  />
+                ) : null}
+
                 {transactionDraft?.items?.length ? <DraftItems items={transactionDraft.items} /> : null}
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <Label>

@@ -16,6 +16,7 @@ import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from 
 import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinancialDocumentDraft, Person, Transaction, TransactionType } from "../types";
+import { FinancialDocumentReview } from "./financial-document-review";
 
 type ExpensePlan = "single" | "recurring" | "installment";
 
@@ -65,6 +66,34 @@ export function ExpensesPage() {
       date,
       notes: draft.attachmentImageName ? `Anexo: ${draft.attachmentImageName}` : current.notes
     }));
+  }
+
+  function updateReceiptDraft(patch: Partial<FinancialDocumentDraft>) {
+    setReceiptDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const updated = { ...current, ...patch };
+
+      setForm((formCurrent) => ({
+        ...formCurrent,
+        description:
+          "description" in patch || "title" in patch
+            ? updated.description || updated.title
+            : formCurrent.description,
+        amount: "amount" in patch ? (updated.amount > 0 ? String(updated.amount) : "") : formCurrent.amount,
+        category: "category" in patch ? updated.category : formCurrent.category,
+        person: "person" in patch ? updated.person : formCurrent.person,
+        date:
+          "documentDate" in patch || "dueDate" in patch || "entryDate" in patch
+            ? updated.documentDate || updated.dueDate || updated.entryDate || formCurrent.date
+            : formCurrent.date,
+        notes: "notes" in patch ? updated.notes ?? "" : formCurrent.notes
+      }));
+
+      return updated;
+    });
   }
 
   async function handleReceiptFile(file: File) {
@@ -238,6 +267,17 @@ export function ExpensesPage() {
                 setFeedback("Salvamento cancelado. Revise os dados antes de tentar novamente.");
               }}
               onConfirm={() => saveExpenses(duplicateReview.transactions)}
+            />
+          ) : null}
+
+          {receiptDraft ? (
+            <FinancialDocumentReview
+              draft={receiptDraft}
+              categories={transactionCategories}
+              persons={personOptions}
+              dateField="documentDate"
+              dateLabel="Data da nota"
+              onChange={updateReceiptDraft}
             />
           ) : null}
 
