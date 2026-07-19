@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const recoveryAdminEmail = process.env.MAYA_RECOVERY_ADMIN_EMAIL || "deyversonsilvaf@gmail.com";
+const workspaceId = process.env.MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
 const allowWeakInitialPasswords = process.env.MAYA_ALLOW_WEAK_INITIAL_PASSWORDS === "true";
 const updateExistingPasswords = process.env.MAYA_UPDATE_EXISTING_PASSWORDS === "true";
 
@@ -46,11 +47,51 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   }
 });
 
+await ensureSharedWorkspace();
+
 for (const user of users) {
-  await upsertAuthUser(user);
+  const authUser = await upsertAuthUser(user);
+  await ensureWorkspaceMember(authUser.id, user.username === "Deyveron" ? "admin" : "member");
 }
 
-console.log("Usuarios iniciais processados com sucesso.");
+console.log("Usuarios iniciais e acesso compartilhado processados com sucesso.");
+
+async function ensureSharedWorkspace() {
+  const initialState = {
+    schemaVersion: 3,
+    profile: {
+      familyName: "MAYA",
+      people: ["Pessoa 1", "Pessoa 2"]
+    },
+    transactions: [],
+    goals: [],
+    budgets: [],
+    bills: [],
+    updatedAt: new Date().toISOString()
+  };
+
+  const { error: workspaceError } = await supabase
+    .from("finance_workspaces")
+    .upsert({ id: workspaceId, name: "MAYA" }, { onConflict: "id" });
+
+  if (workspaceError) {
+    throw new Error(
+      `Nao foi possivel preparar o workspace compartilhado. Execute a migracao 20260719_shared_finance_workspace.sql. Detalhe: ${workspaceError.message}`
+    );
+  }
+
+  const { error: stateError } = await supabase.from("finance_workspace_states").upsert(
+    {
+      workspace_id: workspaceId,
+      state: initialState
+    },
+    { onConflict: "workspace_id", ignoreDuplicates: true }
+  );
+
+  if (stateError) {
+    throw new Error(`Nao foi possivel preparar a base compartilhada: ${stateError.message}`);
+  }
+}
 
 async function upsertAuthUser(user) {
   const existing = await findUserByEmail(user.email);
@@ -80,10 +121,10 @@ async function upsertAuthUser(user) {
 
     const passwordNote = updateExistingPasswords ? "senha atualizada" : "senha mantida";
     console.log(`Atualizado: ${user.username} <${maskEmail(user.email)}> (${passwordNote}).`);
-    return;
+    return existing;
   }
 
-  const { error } = await supabase.auth.admin.createUser({
+  const { data, error } = await supabase.auth.admin.createUser({
     email: user.email,
     password: user.password,
     email_confirm: true,
@@ -94,7 +135,29 @@ async function upsertAuthUser(user) {
     throw new Error(`Nao foi possivel criar ${user.username}: ${error.message}`);
   }
 
+  if (!data.user) {
+    throw new Error(`Usuario ${user.username} foi criado sem retorno de identificador.`);
+  }
+
   console.log(`Criado: ${user.username} <${maskEmail(user.email)}>.`);
+  return data.user;
+}
+
+async function ensureWorkspaceMember(userId, role) {
+  const { error } = await supabase.from("finance_workspace_members").upsert(
+    {
+      workspace_id: workspaceId,
+      user_id: userId,
+      role
+    },
+    { onConflict: "workspace_id,user_id" }
+  );
+
+  if (error) {
+    throw new Error(`Nao foi possivel liberar acesso compartilhado para o usuario: ${error.message}`);
+  }
+
+  console.log(`Acesso compartilhado liberado como ${role}.`);
 }
 
 async function findUserByEmail(email) {
