@@ -13,7 +13,11 @@ export function GET() {
         available: true
       },
       whatsapp: {
-        available: Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)
+        available: Boolean(
+          process.env.WHATSAPP_ENABLED === "true" &&
+            process.env.WHATSAPP_ACCESS_TOKEN &&
+            process.env.WHATSAPP_PHONE_NUMBER_ID
+        )
       },
       connections: {
         status: "future",
