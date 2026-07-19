@@ -105,3 +105,4 @@ function getMobileLabel(label: string) {
 
   return label;
 }
+
