@@ -150,7 +150,7 @@ export function FinanceDashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado em JSON.");
@@ -179,14 +179,14 @@ export function FinanceDashboard() {
                 <Sparkles className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-serif text-4xl font-bold leading-none text-bronze">Juntos</p>
+                <p className="font-serif text-4xl font-bold leading-none text-bronze">Maya</p>
                 <p className="text-xs font-bold text-muted">Organizar hoje. Construir o amanha.</p>
               </div>
             </div>
             <Badge tone="info">Sem dados ficticios</Badge>
           </div>
 
-          <nav className="grid gap-2" aria-label="Modulos do Juntos">
+          <nav className="grid gap-2" aria-label="Modulos do Maya">
             {[
               ["Dashboard", Wallet],
               ["Transacoes", LineChart],
@@ -222,7 +222,7 @@ export function FinanceDashboard() {
                   Uma visao clara para decidir com calma.
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted md:text-base">
-                  Cadastre receitas, despesas e metas. O Juntos recalcula os indicadores e transforma informacao
+                  Cadastre receitas, despesas e metas. O Maya recalcula os indicadores e transforma informacao
                   financeira em proximos passos praticos.
                 </p>
               </div>
