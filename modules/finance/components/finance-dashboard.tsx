@@ -47,7 +47,7 @@ const transactionTypeLabel: Record<TransactionType, string> = {
   transfer: "Transferencia"
 };
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+
 const goalTypes: Array<{ value: GoalType; label: string }> = [
   { value: "reserve", label: "Reserva" },
   { value: "travel", label: "Viagem" },
@@ -63,6 +63,10 @@ const priorities: Array<{ value: GoalPriority; label: string }> = [
 
 export function FinanceDashboard() {
   const { state, isHydrated, actions } = useFinanceStore();
+  const personOptions = useMemo(() => {
+    const names = state.members.map((member) => member.name);
+    return names.includes("Casal") ? names : [...names, "Casal"];
+  }, [state.members]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [transactionForm, setTransactionForm] = useState({
     type: "expense" as TransactionType,
@@ -99,22 +103,31 @@ export function FinanceDashboard() {
       return;
     }
 
-    actions.addTransaction({
-      type: transactionForm.type,
-      description: transactionForm.description.trim(),
-      amount,
-      category: transactionForm.category,
-      person: transactionForm.person,
-      date: transactionForm.date,
-      recurring: transactionForm.recurring
-    });
+const result = actions.addTransaction({
+  type: transactionForm.type,
+  description: transactionForm.description.trim(),
+  amount,
+  category: transactionForm.category,
+  person: transactionForm.person,
+  date: transactionForm.date,
+  recurring: transactionForm.recurring
+});
+
+    if (!result.saved) {
+      setFeedback("A MAYA identificou esse lancamento como duplicado e nao salvou novamente.");
+      return;
+    }
 
     setTransactionForm((current) => ({
       ...current,
       description: "",
       amount: ""
     }));
-    setFeedback("Transacao salva e indicadores recalculados.");
+    setFeedback(
+      result.duplicate
+      ? "Transacao salva. A MAYA encontrou um lancamento parecido, confira para evitar duplicidade."
+      : "Transacao salva e indicadores recalculados."
+      );
   }
 
   function submitGoal(event: React.FormEvent<HTMLFormElement>) {
@@ -165,8 +178,12 @@ export function FinanceDashboard() {
       return;
     }
 
-    actions.importTransactions(transactions);
-    setFeedback(`${transactions.length} transacao(oes) importada(s) do CSV.`);
+const result = actions.importTransactions(transactions);
+    setFeedback(
+      result.skippedCount > 0
+      ? `${result.addedCount} transacao(oes) importada(s) do CSV. A MAYA ignorou ${result.skippedCount} por parecer duplicada(s).`
+      : `${result.addedCount} transacao(oes) importada(s) do CSV.`
+      );
   }
 
   return (
