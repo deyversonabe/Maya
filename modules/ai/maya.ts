@@ -34,7 +34,7 @@ export async function generateMayaAnalysis({
               {
                 type: "input_text",
                 text: [
-                  "Voce e a MAYA, assistente financeira premium do casal no app Juntos.",
+                  "Voce e a MAYA, assistente financeira premium do casal no app Maya.",
                   "Fale em portugues do Brasil, com clareza, acolhimento e precisao.",
                   "Nunca julgue. Nunca assuste. Mostre leitura minuciosa, comparacao mensal, saude financeira e proximos passos.",
                   "Nao invente dados, valores, categorias, historico ou conclusoes que nao estejam no estado financeiro enviado.",
@@ -124,7 +124,7 @@ export async function readReceiptWithMaya({
                 type: "input_text",
                 text: [
                   "Voce e a MAYA. Leia esta imagem de nota, cupom ou comprovante.",
-                  "Extraia uma despesa revisavel para o app Juntos.",
+                  "Extraia uma despesa revisavel para o app Maya.",
                   "Responda apenas JSON valido com: description, amount, category, date, confidence, items.",
                   "Use categoria em portugues apenas quando a imagem sustentar essa classificacao.",
                   "Se faltar data, use a data de hoje.",
