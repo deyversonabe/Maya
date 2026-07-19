@@ -1,101 +1,52 @@
-import type { DuplicateMatch, Transaction, TransactionType } from "../types";
+import type { PayableBill, Transaction } from "../types";
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const AMOUNT_TOLERANCE = 0.005;
-const EXACT_WINDOW_DAYS = 1;
-const LIKELY_WINDOW_DAYS = 3;
-
-export function normalizeText(value: string): string {
-  return value
-  .normalize("NFD")
-  .replace(/[\u0300-\u036f]/g, "")
-  .toLowerCase()
-  .trim()
-  .replace(/\s+/g, " ");
+export interface TransactionDuplicateMatch {
+  incoming: Omit<Transaction, "id" | "createdAt">;
+  existing: Transaction;
 }
 
-function daysBetween(dateA: string, dateB: string): number {
-  const a = new Date(dateA).getTime();
-  const b = new Date(dateB).getTime();
-
-if (Number.isNaN(a) || Number.isNaN(b)) {
-  return Number.POSITIVE_INFINITY;
+export interface BillDuplicateMatch {
+  incoming: Omit<PayableBill, "id" | "createdAt">;
+  existing: PayableBill;
 }
 
-return Math.abs(a - b) / DAY_IN_MS;
+export function findTransactionDuplicateMatches(
+  existingTransactions: Transaction[],
+  incomingTransactions: Array<Omit<Transaction, "id" | "createdAt">>
+): TransactionDuplicateMatch[] {
+  return incomingTransactions.flatMap((incoming) => {
+    if (incoming.type !== "income" && incoming.type !== "expense") {
+      return [];
+    }
+
+    return existingTransactions
+      .filter(
+        (existing) =>
+          existing.type === incoming.type &&
+          existing.date === incoming.date &&
+          areSameMoneyValue(existing.amount, incoming.amount)
+      )
+      .map((existing) => ({
+        incoming,
+        existing
+      }));
+  });
 }
 
-function sameAmount(a: number, b: number): boolean {
-  return Math.abs(a - b) <= AMOUNT_TOLERANCE;
+export function findBillDuplicateMatches(
+  existingBills: PayableBill[],
+  incomingBills: Array<Omit<PayableBill, "id" | "createdAt">>
+): BillDuplicateMatch[] {
+  return incomingBills.flatMap((incoming) =>
+    existingBills
+      .filter((existing) => existing.dueDate === incoming.dueDate && areSameMoneyValue(existing.amount, incoming.amount))
+      .map((existing) => ({
+        incoming,
+        existing
+      }))
+  );
 }
 
-interface DuplicateCandidate {
-  type: TransactionType;
-  description: string;
-  amount: number;
-  date: string;
-}
-
-export function findDuplicateTransaction(
-  candidate: DuplicateCandidate,
-  existing: Transaction[]
-  ): DuplicateMatch | null {
-  const candidateText = normalizeText(candidate.description);
-
-let bestMatch: DuplicateMatch | null = null;
-
-for (const transaction of existing) {
-  if (transaction.type !== candidate.type) {
-    continue;
-  }
-
-  if (!sameAmount(transaction.amount, candidate.amount)) {
-    continue;
-  }
-
-  const gap = daysBetween(transaction.date, candidate.date);
-  const existingText = normalizeText(transaction.description);
-  const sameDescription = existingText === candidateText;
-
-  if (gap <= EXACT_WINDOW_DAYS && sameDescription) {
-    return {
-      transaction,
-      confidence: "exact",
-      reason: "Mesmo valor, mesma descricao e mesma data de um lancamento ja existente."
-    };
-  }
-
-  if (gap <= LIKELY_WINDOW_DAYS && sameDescription) {
-    bestMatch = {
-      transaction,
-      confidence: "likely",
-      reason: "Valor igual e data proxima de um lancamento ja existente, pode ser o mesmo evento (ex: despesa da nota e do extrato)."
-    };
-  }
-}
-
-return bestMatch;
-}
-
-export function partitionDuplicates(
-  candidates: Transaction[],
-  existing: Transaction[]
-  ): { accepted: Transaction[]; skipped: Array<{ transaction: Transaction; duplicate: DuplicateMatch }> } {
-  const accepted: Transaction[] = [];
-  const skipped: Array<{ transaction: Transaction; duplicate: DuplicateMatch }> = [];
-  const pool = [...existing];
-
-for (const candidate of candidates) {
-  const duplicate = findDuplicateTransaction(candidate, pool);
-
-  if (duplicate && duplicate.confidence === "exact") {
-    skipped.push({ transaction: candidate, duplicate });
-    continue;
-  }
-
-  accepted.push(candidate);
-  pool.push(candidate);
-}
-
-return { accepted, skipped };
+function areSameMoneyValue(left: number, right: number) {
+  return Math.round(left * 100) === Math.round(right * 100);
 }

@@ -1,5 +1,13 @@
 import { buildMayaLocalAnalysis } from "@/modules/finance/lib/calculations";
-import type { ExpenseDraft, FinanceState, MayaAnalysis } from "@/modules/finance/types";
+import type {
+  ExpenseDraft,
+  FinanceState,
+  FinancialDocumentDraft,
+  FinancialDocumentKind,
+  MayaAnalysis,
+  PaymentMethod,
+  TransactionType
+} from "@/modules/finance/types";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5-mini";
@@ -34,7 +42,7 @@ export async function generateMayaAnalysis({
               {
                 type: "input_text",
                 text: [
-                  "Voce e a MAYA, assistente financeira premium do casal no app Maya.",
+                  "Voce e a MAYA, assistente financeira premium do casal no app Juntos.",
                   "Fale em portugues do Brasil, com clareza, acolhimento e precisao.",
                   "Nunca julgue. Nunca assuste. Mostre leitura minuciosa, comparacao mensal, saude financeira e proximos passos.",
                   "Nao invente dados, valores, categorias, historico ou conclusoes que nao estejam no estado financeiro enviado.",
@@ -86,21 +94,25 @@ export async function generateMayaAnalysis({
 
 export async function readReceiptWithMaya({
   imageDataUrl,
-  fileName
+  fileName,
+  documentKind = "expense"
 }: {
   imageDataUrl: string;
   fileName?: string;
+  documentKind?: FinancialDocumentKind;
 }): Promise<{
+  financialDraft: FinancialDocumentDraft;
   expenseDraft: ExpenseDraft;
   needsReview: true;
   message: string;
 }> {
-  const fallbackDraft = buildFallbackExpenseDraft(fileName);
+  const fallbackDraft = buildFallbackFinancialDraft(fileName, documentKind, imageDataUrl);
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     return {
-      expenseDraft: fallbackDraft,
+      financialDraft: fallbackDraft,
+      expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
       needsReview: true,
       message:
         "MAYA preparou um rascunho seguro. Preencha ou revise os dados manualmente antes de confirmar."
@@ -123,12 +135,20 @@ export async function readReceiptWithMaya({
               {
                 type: "input_text",
                 text: [
-                  "Voce e a MAYA. Leia esta imagem de nota, cupom ou comprovante.",
-                  "Extraia uma despesa revisavel para o app Maya.",
-                  "Responda apenas JSON valido com: description, amount, category, date, confidence, items.",
+                  "Voce e a MAYA. Leia esta imagem financeira com cuidado.",
+                  "O usuario quer um rascunho revisavel para o app Juntos.",
+                  `Tipo solicitado: ${documentKind}.`,
+                  "A imagem pode ser nota, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
+                  "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, confidence, missingFields, items, notes.",
+                  "kind deve ser expense, income ou bill.",
+                  "paymentMethod deve ser boleto, pix, card ou other quando existir.",
+                  "items deve listar itens de nota ou linhas de extrato com name, amount, date, type e category quando legiveis.",
+                  "Em extrato bancario, use type income para entrada e expense para saida quando a propria linha sustentar essa classificacao.",
+                  "Use datas no formato YYYY-MM-DD.",
+                  "Para conta a pagar, dueDate e a data de vencimento. Para renda, entryDate e a data de entrada.",
                   "Use categoria em portugues apenas quando a imagem sustentar essa classificacao.",
-                  "Se faltar data, use a data de hoje.",
-                  "Nao invente valores, itens, estabelecimento ou categoria quando nao houver confianca."
+                  "Nao invente titulo, descricao, valor, datas, codigo, estabelecimento ou categoria quando nao houver confianca.",
+                  "Se um campo nao estiver legivel, use string vazia e inclua o nome dele em missingFields."
                 ].join(" ")
               },
               {
@@ -144,44 +164,29 @@ export async function readReceiptWithMaya({
 
     if (!response.ok) {
       return {
-        expenseDraft: fallbackDraft,
+        financialDraft: fallbackDraft,
+        expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
         needsReview: true,
-        message: "Nao consegui ler a nota agora. O rascunho manual continua disponivel."
+        message: "Nao consegui ler o anexo agora. O rascunho manual continua disponivel."
       };
     }
 
     const data = (await response.json()) as OpenAIResponse;
     const parsed = parseJsonObject(getOutputText(data));
-    const amount = clampNumber(parsed.amount, 0, 9999999, 0);
-    const date = typeof parsed.date === "string" ? parsed.date.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const financialDraft = normalizeFinancialDraft(parsed, fallbackDraft, documentKind);
 
     return {
-      expenseDraft: {
-        description: typeof parsed.description === "string" ? parsed.description : fallbackDraft.description,
-        amount,
-        category: typeof parsed.category === "string" ? parsed.category : fallbackDraft.category,
-        date,
-        person: "Casal",
-        confidence: clampNumber(parsed.confidence, 0, 1, 0.6),
-        source: "receipt",
-        receiptImageName: fileName,
-        items: Array.isArray(parsed.items)
-          ? parsed.items
-              .map((item) => ({
-                name: String((item as { name?: unknown }).name ?? ""),
-                amount: Number((item as { amount?: unknown }).amount)
-              }))
-              .filter((item) => item.name)
-          : []
-      },
+      financialDraft,
+      expenseDraft: buildExpenseDraftFromFinancialDraft(financialDraft),
       needsReview: true,
-      message: "MAYA leu a nota e criou um rascunho. Revise antes de salvar."
+      message: "MAYA leu o anexo e criou um rascunho. Revise antes de salvar."
     };
   } catch {
     return {
-      expenseDraft: fallbackDraft,
+      financialDraft: fallbackDraft,
+      expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
       needsReview: true,
-      message: "Nao consegui concluir a leitura da imagem. Voce ainda pode salvar a despesa manualmente."
+      message: "Nao consegui concluir a leitura da imagem. Voce ainda pode preencher manualmente."
     };
   }
 }
@@ -195,17 +200,111 @@ interface OpenAIResponse {
   }>;
 }
 
-function buildFallbackExpenseDraft(fileName?: string): ExpenseDraft {
+function buildFallbackFinancialDraft(
+  fileName: string | undefined,
+  kind: FinancialDocumentKind,
+  imageDataUrl?: string
+): FinancialDocumentDraft {
   return {
-    description: "Comprovante pendente de revisao",
+    kind,
+    title: "",
+    description: "",
     amount: 0,
     category: "Outros",
-    date: new Date().toISOString().slice(0, 10),
+    documentDate: "",
+    dueDate: kind === "bill" ? "" : undefined,
+    entryDate: kind === "income" ? "" : undefined,
     person: "Casal",
+    paymentMethod: kind === "bill" ? "boleto" : undefined,
+    paymentCode: "",
     confidence: 0,
+    source: kind === "bill" ? "attachment" : "receipt",
+    attachmentImageName: fileName,
+    attachmentDataUrl: imageDataUrl,
+    missingFields:
+      kind === "bill"
+        ? ["title", "amount", "dueDate"]
+        : kind === "income"
+          ? ["description", "amount", "entryDate"]
+          : ["description", "amount", "documentDate"],
+    items: [],
+    notes: fileName ? `Anexo pendente de revisao: ${fileName}` : ""
+  };
+}
+
+function normalizeFinancialDraft(
+  parsed: Record<string, unknown>,
+  fallback: FinancialDocumentDraft,
+  requestedKind: FinancialDocumentKind
+): FinancialDocumentDraft {
+  const kind = normalizeKind(parsed.kind, requestedKind);
+  const title = toCleanString(parsed.title);
+  const description = toCleanString(parsed.description);
+  const amount = clampNumber(parsed.amount, 0, 9999999, 0);
+  const documentDate = toDateString(parsed.documentDate) || toDateString(parsed.date);
+  const dueDate = toDateString(parsed.dueDate) || (kind === "bill" ? documentDate : "");
+  const entryDate = toDateString(parsed.entryDate) || (kind === "income" ? documentDate : "");
+  const category = toCleanString(parsed.category) || fallback.category;
+  const paymentMethod = normalizePaymentMethod(parsed.paymentMethod, fallback.paymentMethod);
+  const paymentCode = toCleanString(parsed.paymentCode);
+  const missingFields = new Set<string>(
+    Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String) : []
+  );
+
+  if (kind === "bill" && !title) {
+    missingFields.add("title");
+  }
+
+  if (!description && kind !== "bill") {
+    missingFields.add("description");
+  }
+
+  if (amount <= 0) {
+    missingFields.add("amount");
+  }
+
+  if (kind === "bill" && !dueDate) {
+    missingFields.add("dueDate");
+  }
+
+  if (kind === "income" && !entryDate) {
+    missingFields.add("entryDate");
+  }
+
+  if (kind === "expense" && !documentDate) {
+    missingFields.add("documentDate");
+  }
+
+  return {
+    ...fallback,
+    kind,
+    title,
+    description,
+    amount,
+    category,
+    documentDate,
+    dueDate: dueDate || undefined,
+    entryDate: entryDate || undefined,
+    paymentMethod,
+    paymentCode,
+    confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
+    missingFields: Array.from(missingFields),
+    items: normalizeItems(parsed.items),
+    notes: toCleanString(parsed.notes) || fallback.notes
+  };
+}
+
+function buildExpenseDraftFromFinancialDraft(draft: FinancialDocumentDraft): ExpenseDraft {
+  return {
+    description: draft.description || draft.title,
+    amount: draft.amount,
+    category: draft.category,
+    date: draft.documentDate || draft.dueDate || draft.entryDate || "",
+    person: draft.person,
+    confidence: draft.confidence,
     source: "receipt",
-    receiptImageName: fileName,
-    items: []
+    receiptImageName: draft.attachmentImageName,
+    items: draft.items
   };
 }
 
@@ -238,6 +337,63 @@ function parseJsonObject(text: string): Record<string, unknown> {
       return {};
     }
   }
+}
+
+function normalizeKind(value: unknown, fallback: FinancialDocumentKind): FinancialDocumentKind {
+  return value === "expense" || value === "income" || value === "bill" ? value : fallback;
+}
+
+function normalizePaymentMethod(value: unknown, fallback?: PaymentMethod): PaymentMethod | undefined {
+  if (value === "boleto" || value === "pix" || value === "card" || value === "other") {
+    return value;
+  }
+
+  return fallback;
+}
+
+function toCleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function toDateString(value: unknown) {
+  const text = toCleanString(value);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return "";
+  }
+
+  return text;
+}
+
+function normalizeItems(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => ({
+      name: String((item as { name?: unknown }).name ?? "").trim(),
+      amount: Number((item as { amount?: unknown }).amount),
+      date: toDateString((item as { date?: unknown }).date),
+      type: normalizeTransactionType((item as { type?: unknown }).type),
+      category: toCleanString((item as { category?: unknown }).category)
+    }))
+    .filter((item) => item.name)
+    .map((item) => ({
+      name: item.name,
+      amount: Number.isFinite(item.amount) ? item.amount : undefined,
+      date: item.date || undefined,
+      type: item.type,
+      category: item.category || undefined
+    }));
+}
+
+function normalizeTransactionType(value: unknown): TransactionType | undefined {
+  if (value === "income" || value === "expense" || value === "investment" || value === "transfer") {
+    return value;
+  }
+
+  return undefined;
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number) {

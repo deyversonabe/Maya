@@ -12,25 +12,29 @@ import { LedPanel } from "@/components/ui/led-panel";
 import { formatCurrency, toInputDate } from "@/lib/utils";
 import { transactionCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth } from "../lib/calculations";
+import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { ExpenseDraft, Person, Transaction, TransactionReview, TransactionType } from "../types";
-import { reviewTransactionEntry } from "../../ai/validation";
+import type { FinancialDocumentDraft, Person, Transaction, TransactionType } from "../types";
+
 type ExpensePlan = "single" | "recurring" | "installment";
+
+const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+
+type ExpenseDuplicateReview = {
+  transactions: Array<Omit<Transaction, "id" | "createdAt">>;
+  matches: TransactionDuplicateMatch[];
+};
 
 export function ExpensesPage() {
   const { state, actions } = useFinanceStore();
-  const personOptions = useMemo(() => {
-    const names = state.members.map((member) => member.name);
-    return names.includes("Casal") ? names : [...names, "Casal"];
-  }, [state.members]);
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA revisar.");
-  const [receiptDraft, setReceiptDraft] = useState<ExpenseDraft | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState<FinancialDocumentDraft | null>(null);
+  const [duplicateReview, setDuplicateReview] = useState<ExpenseDuplicateReview | null>(null);
   const [isReadingReceipt, setIsReadingReceipt] = useState(false);
-  const [mayaReview, setMayaReview] = useState<TransactionReview | null>(null);
   const [form, setForm] = useState({
     description: "",
     amount: "",
@@ -48,16 +52,17 @@ export function ExpensesPage() {
   );
   const monthTotal = monthTransactions.reduce((total, transaction) => total + transaction.amount, 0);
 
-  function applyDraft(draft: ExpenseDraft) {
+  function applyDraft(draft: FinancialDocumentDraft) {
+    const date = draft.documentDate || draft.dueDate || "";
     setReceiptDraft(draft);
     setForm((current) => ({
       ...current,
-      description: draft.description,
+      description: draft.description || draft.title,
       amount: draft.amount > 0 ? String(draft.amount) : current.amount,
       category: draft.category || current.category,
       person: draft.person,
-      date: draft.date || current.date,
-      notes: draft.receiptImageName ? `Nota anexada: ${draft.receiptImageName}` : current.notes
+      date,
+      notes: draft.attachmentImageName ? `Anexo: ${draft.attachmentImageName}` : current.notes
     }));
   }
 
@@ -72,19 +77,20 @@ export function ExpensesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl,
-          fileName: file.name
+          fileName: file.name,
+          documentKind: "expense"
         })
       });
       const result = (await response.json()) as {
-        expenseDraft?: ExpenseDraft;
+        financialDraft?: FinancialDocumentDraft;
         message?: string;
       };
 
-      if (result.expenseDraft) {
-        applyDraft(result.expenseDraft);
+      if (result.financialDraft) {
+        applyDraft(result.financialDraft);
       }
 
-      setFeedback(result.message ?? "Rascunho criado. Revise antes de salvar.");
+      setFeedback(buildDraftFeedback(result.message, result.financialDraft));
     } catch {
       setFeedback("Nao consegui ler a imagem. Voce pode preencher a despesa manualmente.");
     } finally {
@@ -96,23 +102,10 @@ export function ExpensesPage() {
     event.preventDefault();
     const amount = Number(form.amount.replace(",", "."));
 
-    if (!form.description.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setFeedback("Preencha descricao e valor valido para salvar.");
+    if (!form.description.trim() || !Number.isFinite(amount) || amount <= 0 || !form.date) {
+      setFeedback("Preencha descricao, valor e data para salvar.");
       return;
     }
-
-    const review = reviewTransactionEntry({
-      candidate: {
-        type: "expense",
-        description: form.description.trim(),
-        amount,
-        category: form.category,
-        person: form.person,
-        date: form.date
-      },
-      state
-    });
-    setMayaReview(review);
 
     const transactions = createPlannedExpenses({
       description: form.description.trim(),
@@ -124,28 +117,34 @@ export function ExpensesPage() {
       months: Number(form.months),
       installments: Number(form.installments),
       notes: form.notes,
-      receiptImageName: receiptDraft?.receiptImageName,
+      attachmentImageName: receiptDraft?.attachmentImageName,
+      attachmentDataUrl: receiptDraft?.attachmentDataUrl,
       source: receiptDraft ? "receipt" : "manual"
     });
 
-const result = actions.addTransactions(transactions);
-    const skippedNote =
-      result.skippedCount > 0
-    ? ` A MAYA identificou e ignorou ${result.skippedCount} lancamento(s) que pareciam duplicados.`
-      : "";
-    const transferIssue = review.issues.find((issue) => issue.code === "possible_internal_transfer");
-    const reviewNote = transferIssue ? ` ${transferIssue.message}` : "";
+    const duplicates = findTransactionDuplicateMatches(state.transactions, transactions);
+
+    if (duplicates.length > 0) {
+      setDuplicateReview({ transactions, matches: duplicates });
+      setFeedback("Possivel duplicidade encontrada. Confirme antes de salvar esta despesa.");
+      return;
+    }
+
+    saveExpenses(transactions);
+  }
+
+  function saveExpenses(transactions: Array<Omit<Transaction, "id" | "createdAt">>) {
+    actions.addTransactions(transactions);
     setFeedback(
-      (form.plan === "installment"
-       ? `${result.addedCount} parcelas foram criadas nos meses futuros.`
-       : form.plan === "recurring"
-       ? `${result.addedCount} despesas recorrentes foram criadas.`
-       : result.addedCount > 0
-       ? "Despesa salva com sucesso."
-       : "Essa despesa parece duplicada e nao foi salva novamente.") + skippedNote + reviewNote
-      );
+      form.plan === "installment"
+        ? `${transactions.length} parcelas foram criadas nos meses futuros.`
+        : form.plan === "recurring"
+          ? `${transactions.length} despesas recorrentes foram criadas.`
+          : "Despesa salva com sucesso."
+    );
     setSelectedMonth(form.date.slice(0, 7));
     setReceiptDraft(null);
+    setDuplicateReview(null);
     setForm((current) => ({
       ...current,
       description: "",
@@ -226,13 +225,18 @@ const result = actions.addTransactions(transactions);
             {feedback}
           </p>
 
-          {mayaReview && mayaReview.issues.length > 0 ? (
-      <div className="mb-4 grid gap-2 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
-      <strong className="text-xs font-black uppercase tracking-[0.08em]">Analise da MAYA</strong>
-        {mayaReview.issues.map((issue, index) => (
-        <p key={index}>{issue.message}</p>
-        ))}</div>
-      ) : null}
+          {duplicateReview ? (
+            <DuplicateTransactionReview
+              matches={duplicateReview.matches}
+              onCancel={() => {
+                setDuplicateReview(null);
+                setFeedback("Salvamento cancelado. Revise os dados antes de tentar novamente.");
+              }}
+              onConfirm={() => saveExpenses(duplicateReview.transactions)}
+            />
+          ) : null}
+
+          {receiptDraft?.items?.length ? <DraftItems items={receiptDraft.items} /> : null}
 
           <form className="grid gap-4" onSubmit={submitExpense}>
             <div className="grid gap-3 lg:grid-cols-[1fr_160px]">
@@ -390,7 +394,8 @@ function createPlannedExpenses({
   months,
   installments,
   notes,
-  receiptImageName,
+  attachmentImageName,
+  attachmentDataUrl,
   source
 }: {
   description: string;
@@ -402,7 +407,8 @@ function createPlannedExpenses({
   months: number;
   installments: number;
   notes?: string;
-  receiptImageName?: string;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
   source: "manual" | "receipt";
 }): Array<Omit<Transaction, "id" | "createdAt">> {
   const count = plan === "recurring" ? clampCount(months, 1, 60) : plan === "installment" ? clampCount(installments, 1, 120) : 1;
@@ -421,9 +427,19 @@ function createPlannedExpenses({
     installmentNumber: plan === "installment" ? index + 1 : undefined,
     installmentTotal: plan === "installment" ? count : undefined,
     source,
-    receiptImageName,
+    receiptImageName: attachmentImageName,
+    attachmentImageName,
+    attachmentDataUrl,
     notes
   }));
+}
+
+function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {
+  if (!draft || draft.missingFields.length === 0) {
+    return message ?? "Rascunho criado. Revise antes de salvar.";
+  }
+
+  return `${message ?? "Rascunho criado."} Complete manualmente: ${draft.missingFields.join(", ")}.`;
 }
 
 function buildAvailableMonths(transactions: Transaction[]) {
@@ -438,6 +454,57 @@ function buildAvailableMonths(transactions: Transaction[]) {
 
   transactions.forEach((transaction) => months.add(transaction.date.slice(0, 7)));
   return Array.from(months).sort();
+}
+
+function DuplicateTransactionReview({
+  matches,
+  onCancel,
+  onConfirm
+}: {
+  matches: TransactionDuplicateMatch[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="mb-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4">
+      <h3 className="font-serif text-xl font-bold text-amber-100">Confirmar valor duplicado?</h3>
+      <p className="mt-2 text-sm leading-6 text-amber-50">
+        Ja existe lancamento com a mesma data, mesmo valor e mesmo tipo. Confira antes de salvar novamente.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {matches.slice(0, 4).map((match) => (
+          <div key={`${match.existing.id}_${match.incoming.date}_${match.incoming.amount}`} className="rounded-lg border border-amber-200/20 bg-moss-950/40 p-3 text-sm">
+            <strong className="text-cream">{match.existing.description}</strong>
+            <p className="mt-1 text-amber-50">
+              {match.existing.date} - {formatCurrency(match.existing.amount)} - novo: {match.incoming.description}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Revisar antes
+        </Button>
+        <Button onClick={onConfirm}>Salvar mesmo assim</Button>
+      </div>
+    </div>
+  );
+}
+
+function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["items"]> }) {
+  return (
+    <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+      <h3 className="font-serif text-xl font-bold text-cyan-50">Itens lidos pela MAYA</h3>
+      <div className="mt-3 grid gap-2">
+        {items.slice(0, 8).map((item, index) => (
+          <div key={`${item.name}_${index}`} className="grid gap-1 rounded-lg border border-cyan-200/20 bg-moss-950/35 p-3 text-sm sm:grid-cols-[1fr_auto]">
+            <span className="text-cyan-50">{item.name}</span>
+            <strong className="text-bronze">{typeof item.amount === "number" ? formatCurrency(item.amount) : "valor nao lido"}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function clampCount(value: number, min: number, max: number) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownCircle, ArrowUpCircle, CalendarDays, PiggyBank, Repeat, Trash2, WalletCards } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, BellRing, CalendarDays, PiggyBank, Repeat, Trash2, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { formatCurrency } from "@/lib/utils";
-import { getTransactionsByMonth } from "../lib/calculations";
+import { buildBillSummary, getBillEffectiveStatus, getTransactionsByMonth } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { Transaction, TransactionType } from "../types";
+import type { PayableBill, Transaction, TransactionType } from "../types";
 
 const transactionTypeConfig: Record<
   TransactionType,
@@ -53,12 +53,13 @@ const transactionOrder: TransactionType[] = ["income", "expense", "investment", 
 
 export function MonthsPage() {
   const { state, actions } = useFinanceStore();
-  const availableMonths = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
+  const availableMonths = useMemo(() => buildAvailableMonths(state.transactions, state.bills), [state.transactions, state.bills]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const monthTransactions = useMemo(
     () => getTransactionsByMonth(state.transactions, selectedMonth).sort((a, b) => b.date.localeCompare(a.date)),
     [state.transactions, selectedMonth]
   );
+  const billSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
   const totals = useMemo(() => calculateMonthTotals(monthTransactions), [monthTransactions]);
   const grouped = useMemo(() => groupByType(monthTransactions), [monthTransactions]);
 
@@ -92,11 +93,12 @@ export function MonthsPage() {
         </div>
       </LedPanel>
 
-      <section className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MonthMetric label="Entradas" value={formatCurrency(totals.income)} tone="success" icon={<ArrowUpCircle className="size-5" />} />
         <MonthMetric label="Saidas" value={formatCurrency(totals.expense)} tone="warning" icon={<ArrowDownCircle className="size-5" />} />
         <MonthMetric label="Investimentos" value={formatCurrency(totals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
         <MonthMetric label="Transferencias" value={formatCurrency(totals.transfer)} tone="neutral" icon={<Repeat className="size-5" />} />
+        <MonthMetric label="Contas pendentes" value={formatCurrency(billSummary.pendingTotal)} tone="warning" icon={<BellRing className="size-5" />} />
         <MonthMetric label="Saldo do mes" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
       </section>
 
@@ -122,6 +124,7 @@ export function MonthsPage() {
               />
             ))
           )}
+          <BillsMonthGroup bills={billSummary.monthBills} total={billSummary.pendingTotal} />
         </div>
 
         <Card>
@@ -131,6 +134,7 @@ export function MonthsPage() {
             <SummaryRow label="Total de saidas" value={formatCurrency(totals.expense)} />
             <SummaryRow label="Total investido" value={formatCurrency(totals.investment)} />
             <SummaryRow label="Transferencias" value={formatCurrency(totals.transfer)} />
+            <SummaryRow label="Contas pendentes" value={formatCurrency(billSummary.pendingTotal)} />
             <SummaryRow label="Saldo final" value={formatCurrency(totals.balance)} highlight />
           </div>
           <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50">
@@ -140,6 +144,48 @@ export function MonthsPage() {
         </Card>
       </section>
     </AppShell>
+  );
+}
+
+function BillsMonthGroup({ bills, total }: { bills: PayableBill[]; total: number }) {
+  return (
+    <Card>
+      <CardHeader eyebrow="Contas a pagar" title="Vencimentos do mes" action={<Badge tone="warning">{formatCurrency(total)}</Badge>} />
+
+      {bills.length === 0 ? (
+        <p className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4 text-sm leading-6 text-muted">
+          Nenhuma conta cadastrada para vencimento neste mes.
+        </p>
+      ) : (
+        <div className="grid gap-3">
+          {bills
+            .slice()
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .map((bill) => {
+              const status = getBillEffectiveStatus(bill);
+              return (
+                <div key={bill.id} className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <BellRing className="size-4 text-bronze" aria-hidden="true" />
+                        <strong className="text-cream">{bill.title}</strong>
+                        <Badge tone={status === "paid" ? "success" : status === "overdue" ? "warning" : "info"}>
+                          {status === "paid" ? "Pago" : status === "overdue" ? "Atrasado" : "Pendente"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm leading-6 text-muted">
+                        {bill.category} - {bill.person} - vencimento {bill.dueDate}
+                      </p>
+                    </div>
+                    <strong className="text-lg text-bronze">{formatCurrency(bill.amount)}</strong>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -285,7 +331,7 @@ function sumByType(transactions: Transaction[], type: TransactionType) {
     .reduce((total, transaction) => total + transaction.amount, 0);
 }
 
-function buildAvailableMonths(transactions: Transaction[]) {
+function buildAvailableMonths(transactions: Transaction[], bills: PayableBill[]) {
   const months = new Set<string>();
   const current = new Date();
 
@@ -296,5 +342,6 @@ function buildAvailableMonths(transactions: Transaction[]) {
   }
 
   transactions.forEach((transaction) => months.add(transaction.date.slice(0, 7)));
+  bills.forEach((bill) => months.add(bill.dueDate.slice(0, 7)));
   return Array.from(months).sort();
 }

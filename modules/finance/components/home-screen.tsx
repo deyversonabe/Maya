@@ -9,6 +9,7 @@ import {
   ChartNoAxesCombined,
   ChevronRight,
   Database,
+  BellRing,
   HeartPulse,
   ReceiptText,
   ShieldCheck,
@@ -42,6 +43,12 @@ const actions = [
     icon: ReceiptText,
     title: "Adicionar despesa",
     description: "Manual, recorrente, parcelada ou por foto de nota."
+  },
+  {
+    href: "/bills",
+    icon: BellRing,
+    title: "Contas a pagar",
+    description: "Boletos, Pix, vencimentos, anexos, alertas e status."
   },
   {
     href: "/budgets",

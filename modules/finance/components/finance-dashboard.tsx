@@ -6,6 +6,7 @@ import {
   ArrowUpCircle,
   BadgeCheck,
   CalendarDays,
+  FileImage,
   HeartPulse,
   Download,
   LineChart,
@@ -37,9 +38,10 @@ import {
   getGoalProgress
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
+import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { GoalPriority, GoalType, Person, TransactionReview, TransactionType } from "../types";
-import { reviewTransactionEntry } from "../../ai/validation";
+import type { FinancialDocumentDraft, GoalPriority, GoalType, Person, Transaction, TransactionType } from "../types";
+
 const transactionTypeLabel: Record<TransactionType, string> = {
   income: "Receita",
   expense: "Despesa",
@@ -47,7 +49,7 @@ const transactionTypeLabel: Record<TransactionType, string> = {
   transfer: "Transferencia"
 };
 
-
+const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
 const goalTypes: Array<{ value: GoalType; label: string }> = [
   { value: "reserve", label: "Reserva" },
   { value: "travel", label: "Viagem" },
@@ -61,13 +63,23 @@ const priorities: Array<{ value: GoalPriority; label: string }> = [
   { value: "high", label: "Alta" }
 ];
 
+type TransactionDuplicateReview = {
+  transaction: Omit<Transaction, "id" | "createdAt">;
+  matches: TransactionDuplicateMatch[];
+};
+
+type TransactionImportDuplicateReview = {
+  transactions: Transaction[];
+  matches: TransactionDuplicateMatch[];
+};
+
 export function FinanceDashboard() {
   const { state, isHydrated, actions } = useFinanceStore();
-  const personOptions = useMemo(() => {
-    const names = state.members.map((member) => member.name);
-    return names.includes("Casal") ? names : [...names, "Casal"];
-  }, [state.members]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const transactionImageRef = useRef<HTMLInputElement>(null);
+  const [transactionDraft, setTransactionDraft] = useState<FinancialDocumentDraft | null>(null);
+  const [duplicateReview, setDuplicateReview] = useState<TransactionDuplicateReview | null>(null);
+  const [importDuplicateReview, setImportDuplicateReview] = useState<TransactionImportDuplicateReview | null>(null);
   const [transactionForm, setTransactionForm] = useState({
     type: "expense" as TransactionType,
     description: "",
@@ -86,7 +98,6 @@ export function FinanceDashboard() {
     priority: "medium" as GoalPriority
   });
   const [feedback, setFeedback] = useState("Dados salvos automaticamente.");
-  const [mayaReview, setMayaReview] = useState<TransactionReview | null>(null);
 
   const summary = useMemo(() => calculateSummary(state), [state]);
   const flow = useMemo(() => buildMonthlyFlow(state.transactions), [state.transactions]);
@@ -95,56 +106,93 @@ export function FinanceDashboard() {
   const budgetSummary = useMemo(() => buildBudgetSummary(state, summary.currentMonth), [state, summary.currentMonth]);
   const maxFlowValue = Math.max(...flow.flatMap((item) => [item.income, item.expenses, item.investments]), 1);
 
+  async function importTransactionImage(file: File) {
+    setFeedback("MAYA esta lendo o anexo e preparando um rascunho...");
+
+    try {
+      const imageDataUrl = await fileToDataUrl(file);
+      const documentKind = transactionForm.type === "income" ? "income" : "expense";
+      const response = await fetch("/api/maya/receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageDataUrl,
+          fileName: file.name,
+          documentKind
+        })
+      });
+      const result = (await response.json()) as {
+        financialDraft?: FinancialDocumentDraft;
+        message?: string;
+      };
+
+      if (!result.financialDraft) {
+        setFeedback(result.message ?? "Nao consegui ler o anexo. Preencha manualmente.");
+        return;
+      }
+
+      const draft = result.financialDraft;
+      const date = draft.entryDate || draft.documentDate || draft.dueDate || "";
+      setTransactionDraft(draft);
+      setTransactionForm((current) => ({
+        ...current,
+        type: draft.kind === "income" ? "income" : draft.kind === "expense" ? "expense" : current.type,
+        description: draft.description || draft.title,
+        amount: draft.amount > 0 ? String(draft.amount) : current.amount,
+        category: draft.category || current.category,
+        person: draft.person,
+        date
+      }));
+      setFeedback(buildDraftFeedback(result.message, draft));
+    } catch {
+      setFeedback("Nao consegui ler o anexo. Preencha a transacao manualmente.");
+    }
+  }
+
   function submitTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number(transactionForm.amount.replace(",", "."));
 
-    if (!transactionForm.description.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setFeedback("Preencha descricao e valor valido para salvar a transacao.");
+    if (!transactionForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !transactionForm.date) {
+      setFeedback("Preencha descricao, valor e data para salvar a transacao.");
       return;
     }
 
-                  const review = reviewTransactionEntry({
-                    candidate: {
-                      type: transactionForm.type,
-                      description: transactionForm.description.trim(),
-                      amount,
-                      category: transactionForm.category,
-                      person: transactionForm.person,
-                      date: transactionForm.date
-                    },
-                    state
-                  });
-    setMayaReview(review);
+    const transaction = {
+      type: transactionForm.type,
+      description: transactionForm.description.trim(),
+      amount,
+      category: transactionForm.category,
+      person: transactionForm.person,
+      date: transactionForm.date,
+      recurring: transactionForm.recurring,
+      source: transactionDraft ? "receipt" : "manual",
+      receiptImageName: transactionDraft?.attachmentImageName,
+      attachmentImageName: transactionDraft?.attachmentImageName,
+      attachmentDataUrl: transactionDraft?.attachmentDataUrl
+    } satisfies Omit<Transaction, "id" | "createdAt">;
 
-const result = actions.addTransaction({
-  type: transactionForm.type,
-  description: transactionForm.description.trim(),
-  amount,
-  category: transactionForm.category,
-  person: transactionForm.person,
-  date: transactionForm.date,
-  recurring: transactionForm.recurring
-});
+    const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
 
-    if (!result.saved) {
-      setFeedback("A MAYA identificou esse lancamento como duplicado e nao salvou novamente.");
+    if (duplicates.length > 0) {
+      setDuplicateReview({ transaction, matches: duplicates });
+      setFeedback("Possivel duplicidade encontrada. Confirme antes de salvar este lancamento.");
       return;
     }
 
-    const transferIssue = review.issues.find((issue) => issue.code === "possible_internal_transfer");
-    const reviewNote = transferIssue ? ` ${transferIssue.message}` : "";
+    saveTransaction(transaction);
+  }
 
+  function saveTransaction(transaction: Omit<Transaction, "id" | "createdAt">) {
+    actions.addTransaction(transaction);
+    setTransactionDraft(null);
+    setDuplicateReview(null);
     setTransactionForm((current) => ({
       ...current,
       description: "",
       amount: ""
     }));
-    setFeedback(
-(      result.duplicate
-      ? "Transacao salva. A MAYA encontrou um lancamento parecido, confira para evitar duplicidade."
-      : "Transacao salva e indicadores recalculados." )+ reviewNote
-      );
+    setFeedback("Transacao salva e indicadores recalculados.");
   }
 
   function submitGoal(event: React.FormEvent<HTMLFormElement>) {
@@ -180,7 +228,7 @@ const result = actions.addTransaction({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado em JSON.");
@@ -195,12 +243,17 @@ const result = actions.addTransaction({
       return;
     }
 
-const result = actions.importTransactions(transactions);
-    setFeedback(
-      result.skippedCount > 0
-      ? `${result.addedCount} transacao(oes) importada(s) do CSV. A MAYA ignorou ${result.skippedCount} por parecer duplicada(s).`
-      : `${result.addedCount} transacao(oes) importada(s) do CSV.`
-      );
+    const duplicateCandidates = transactions.map(({ id: _id, createdAt: _createdAt, ...transaction }) => transaction);
+    const duplicates = findTransactionDuplicateMatches(state.transactions, duplicateCandidates);
+
+    if (duplicates.length > 0) {
+      setImportDuplicateReview({ transactions, matches: duplicates });
+      setFeedback("Possivel duplicidade encontrada no extrato importado. Confirme antes de importar.");
+      return;
+    }
+
+    actions.importTransactions(transactions);
+    setFeedback(`${transactions.length} transacao(oes) importada(s) do CSV.`);
   }
 
   return (
@@ -213,14 +266,14 @@ const result = actions.importTransactions(transactions);
                 <Sparkles className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-serif text-4xl font-bold leading-none text-bronze">Maya</p>
+                <p className="font-serif text-4xl font-bold leading-none text-bronze">Juntos</p>
                 <p className="text-xs font-bold text-muted">Organizar hoje. Construir o amanha.</p>
               </div>
             </div>
             <Badge tone="info">Sem dados ficticios</Badge>
           </div>
 
-          <nav className="grid gap-2" aria-label="Modulos do Maya">
+          <nav className="grid gap-2" aria-label="Modulos do Juntos">
             {[
               ["Dashboard", Wallet],
               ["Transacoes", LineChart],
@@ -256,7 +309,7 @@ const result = actions.importTransactions(transactions);
                   Uma visao clara para decidir com calma.
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted md:text-base">
-                  Cadastre receitas, despesas e metas. O Maya recalcula os indicadores e transforma informacao
+                  Cadastre receitas, despesas e metas. O Juntos recalcula os indicadores e transforma informacao
                   financeira em proximos passos praticos.
                 </p>
               </div>
@@ -287,13 +340,30 @@ const result = actions.importTransactions(transactions);
             <p className="mt-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
               {isHydrated ? feedback : "Carregando dados..."}
             </p>
-            {mayaReview && mayaReview.issues.length > 0 ? (
-      <div className="mt-3 grid gap-2 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
-      <strong className="text-xs font-black uppercase tracking-[0.08em]">Analise da MAYA</strong>
-        {mayaReview.issues.map((issue, index) => (
-        <p key={index}>{issue.message}</p>
-        ))}</div>
-      ) : null}
+            {duplicateReview ? (
+              <DuplicateTransactionReview
+                matches={duplicateReview.matches}
+                onCancel={() => {
+                  setDuplicateReview(null);
+                  setFeedback("Salvamento cancelado. Revise os dados antes de tentar novamente.");
+                }}
+                onConfirm={() => saveTransaction(duplicateReview.transaction)}
+              />
+            ) : null}
+            {importDuplicateReview ? (
+              <DuplicateTransactionReview
+                matches={importDuplicateReview.matches}
+                onCancel={() => {
+                  setImportDuplicateReview(null);
+                  setFeedback("Importacao cancelada. Revise o extrato antes de tentar novamente.");
+                }}
+                onConfirm={() => {
+                  actions.importTransactions(importDuplicateReview.transactions);
+                  setImportDuplicateReview(null);
+                  setFeedback(`${importDuplicateReview.transactions.length} transacao(oes) importada(s) do CSV.`);
+                }}
+              />
+            ) : null}
           </header>
 
           <LedPanel className="p-5" glow="cyan">
@@ -357,6 +427,29 @@ const result = actions.importTransactions(transactions);
                 action={<Badge tone="neutral">{state.transactions.length} registros</Badge>}
               />
               <form className="grid gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] p-4" onSubmit={submitTransaction}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm leading-6 text-muted">
+                    Cadastre manualmente ou anexe uma imagem para a MAYA preencher um rascunho revisavel.
+                  </p>
+                  <Button variant="secondary" onClick={() => transactionImageRef.current?.click()}>
+                    <FileImage className="size-4" aria-hidden="true" />
+                    Ler anexo
+                  </Button>
+                  <input
+                    ref={transactionImageRef}
+                    className="hidden"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void importTransactionImage(file);
+                      }
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
+                {transactionDraft?.items?.length ? <DraftItems items={transactionDraft.items} /> : null}
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <Label>
                     Tipo
@@ -750,4 +843,76 @@ function FlowBar({
       <strong className="text-right text-cream">{formatCurrency(value)}</strong>
     </div>
   );
+}
+
+function DuplicateTransactionReview({
+  matches,
+  onCancel,
+  onConfirm
+}: {
+  matches: TransactionDuplicateMatch[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4">
+      <h3 className="font-serif text-xl font-bold text-amber-100">Confirmar valor duplicado?</h3>
+      <p className="mt-2 text-sm leading-6 text-amber-50">
+        Ja existe lancamento com a mesma data, mesmo valor e mesmo tipo. Confira antes de salvar novamente.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {matches.slice(0, 4).map((match) => (
+          <div key={`${match.existing.id}_${match.incoming.date}_${match.incoming.amount}`} className="rounded-lg border border-amber-200/20 bg-moss-950/40 p-3 text-sm">
+            <strong className="text-cream">{match.existing.description}</strong>
+            <p className="mt-1 text-amber-50">
+              {match.existing.date} - {formatCurrency(match.existing.amount)} - novo: {match.incoming.description}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Revisar antes
+        </Button>
+        <Button onClick={onConfirm}>Salvar mesmo assim</Button>
+      </div>
+    </div>
+  );
+}
+
+function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["items"]> }) {
+  return (
+    <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+      <h3 className="font-serif text-xl font-bold text-cyan-50">Itens ou linhas lidas pela MAYA</h3>
+      <div className="mt-3 grid gap-2">
+        {items.slice(0, 8).map((item, index) => (
+          <div key={`${item.name}_${index}`} className="grid gap-1 rounded-lg border border-cyan-200/20 bg-moss-950/35 p-3 text-sm md:grid-cols-[1fr_auto]">
+            <span className="text-cyan-50">
+              {item.date ? `${item.date} - ` : ""}
+              {item.name}
+              {item.category ? ` - ${item.category}` : ""}
+            </span>
+            <strong className="text-bronze">{typeof item.amount === "number" ? formatCurrency(item.amount) : "valor nao lido"}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {
+  if (!draft || draft.missingFields.length === 0) {
+    return message ?? "Rascunho criado. Revise antes de salvar.";
+  }
+
+  return `${message ?? "Rascunho criado."} Complete manualmente: ${draft.missingFields.join(", ")}.`;
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }

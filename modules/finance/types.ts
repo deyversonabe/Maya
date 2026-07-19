@@ -1,6 +1,6 @@
 export type TransactionType = "income" | "expense" | "investment" | "transfer";
 
-export type Person = string;
+export type Person = "Pessoa 1" | "Pessoa 2" | "Casal";
 
 export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 
@@ -10,13 +10,15 @@ export type TransactionSource = "manual" | "receipt" | "import";
 
 export type BudgetStatus = "safe" | "attention" | "exceeded";
 
-export type DuplicateConfidence = "exact" | "likely";
+export type FinancialDocumentKind = "expense" | "income" | "bill";
 
-export interface HouseholdMember {
-  id: string;
-  name: string;
-  createdAt: string;
-}
+export type PaymentMethod = "boleto" | "pix" | "card" | "other";
+
+export type BillRecurrence = "none" | "monthly";
+
+export type BillStatus = "pending" | "paid" | "overdue";
+
+export type BillSource = "manual" | "attachment" | "import";
 
 export interface Transaction {
   id: string;
@@ -33,6 +35,8 @@ export interface Transaction {
   installmentTotal?: number;
   source?: TransactionSource;
   receiptImageName?: string;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
   notes?: string;
   createdAt: string;
 }
@@ -57,6 +61,30 @@ export interface Budget {
   createdAt: string;
 }
 
+export interface PayableBill {
+  id: string;
+  title: string;
+  description?: string;
+  amount: number;
+  category: string;
+  person: Person;
+  dueDate: string;
+  paymentMethod: PaymentMethod;
+  paymentCode?: string;
+  recurrence: BillRecurrence;
+  recurrenceGroupId?: string;
+  installmentGroupId?: string;
+  installmentNumber?: number;
+  installmentTotal?: number;
+  status: BillStatus;
+  source: BillSource;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  notes?: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
 export interface HouseholdProfile {
   name: string;
   slogan: string;
@@ -67,10 +95,10 @@ export interface HouseholdProfile {
 export interface FinanceState {
   schemaVersion: 3;
   profile: HouseholdProfile;
-  members: HouseholdMember[];
   transactions: Transaction[];
   goals: Goal[];
   budgets: Budget[];
+  bills: PayableBill[];
   updatedAt: string;
 }
 
@@ -131,36 +159,44 @@ export interface ExpenseDraft {
   confidence: number;
   source: TransactionSource;
   receiptImageName?: string;
-  items?: Array<{
+  items?: FinancialDocumentItem[];
+}
+
+export interface FinancialDocumentItem {
   name: string;
   amount?: number;
-  }>;
+  date?: string;
+  type?: TransactionType;
+  category?: string;
 }
 
-export interface DuplicateMatch {
-  transaction: Transaction;
-  confidence: DuplicateConfidence;
-  reason: string;
-}
-
-export interface TransactionReviewIssue {
-  level: "warning" | "info";
-  code: string;
-  message: string;
-}
-
-export interface TransactionReviewInput {
-  type: TransactionType;
+export interface FinancialDocumentDraft {
+  kind: FinancialDocumentKind;
+  title: string;
   description: string;
   amount: number;
   category: string;
+  documentDate?: string;
+  dueDate?: string;
+  entryDate?: string;
   person: Person;
-  date: string;
+  paymentMethod?: PaymentMethod;
+  paymentCode?: string;
+  confidence: number;
+  source: TransactionSource | BillSource;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  missingFields: string[];
+  items?: FinancialDocumentItem[];
+  notes?: string;
 }
 
-export interface TransactionReview {
-  ok: boolean;
-  issues: TransactionReviewIssue[];
-  duplicate: DuplicateMatch | null;
-  suggestedType: TransactionType | null;
+export interface BillAlert {
+  id: string;
+  bill: PayableBill;
+  type: "due_soon" | "due_today_noon" | "overdue";
+  title: string;
+  message: string;
+  priority: "info" | "warning" | "critical";
+  triggerAt: string;
 }
