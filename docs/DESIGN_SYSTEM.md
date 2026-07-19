@@ -59,6 +59,8 @@ Regras de uso:
 - Responsividade real em desktop, tablet e mobile.
 - Acessibilidade desde a criacao dos componentes.
 - Campos `select` devem manter contraste legivel tambem no menu nativo de opcoes.
+- Rascunhos criados por anexo devem exibir painel de revisao editavel com campos compactos, link de conferencia do anexo original e aviso de campos faltantes.
+- Painel de revisao de anexo deve usar superficie interna discreta, sem criar card aninhado, para manter clareza dentro dos formularios.
 
 ## Componentes
 

@@ -100,6 +100,7 @@ Escopo:
 - Assistente MAYA com analise financeira mensal, comparativos e comportamento seguro quando a analise avancada nao estiver disponivel.
 - Orcamentos mensais por categoria, com limite, gasto realizado, saldo restante e alertas.
 - Central de Dados e Confianca para visualizar cadastros, qualidade da analise, backup, privacidade e preparo para futuras conexoes financeiras.
+- Conta online com Supabase Auth para sincronizar dados entre celular e desktop quando o deploy estiver configurado.
 - Indicador de qualidade dos dados para mostrar se a analise da MAYA esta completa, parcial ou insuficiente.
 - Modelo de consentimento inspirado em Open Finance para futuras integracoes, sem conexao bancaria real nesta etapa.
 
@@ -178,6 +179,9 @@ Objetivo: dar ao usuario clareza sobre cadastros, qualidade da analise, privacid
 
 Escopo:
 
+- Criar conta ou entrar com e-mail e senha quando Supabase estiver configurado.
+- Migrar dados ja existentes no aparelho para a conta online.
+- Sincronizar alteracoes confirmadas para ver os mesmos dados em celular e desktop.
 - Exibir contagem de transacoes, metas e orcamentos cadastrados.
 - Exibir recursos disponiveis em linguagem de produto, sem nomes de infraestrutura.
 - Exibir qualidade da analise da MAYA com itens que faltam cadastrar.
@@ -190,7 +194,7 @@ Fora de escopo nesta etapa:
 - Conectar contas bancarias reais.
 - Iniciar pagamentos.
 - Armazenar consentimentos em servidor.
-- Sincronizar dados entre dispositivos.
+- Sincronizar anexos originais em storage privado.
 
 ### Contas a pagar e alertas
 
@@ -228,6 +232,8 @@ Escopo:
 - Enviar imagem para rota server-side da MAYA.
 - Nunca enviar chave OpenAI ao frontend.
 - Retornar rascunho com confianca e campos faltantes.
+- Exibir um painel de dados do anexo com nome/titulo, descricao, valor, data, categoria, pessoa e observacoes editaveis antes do salvamento.
+- Permitir abrir o anexo original para conferencia visual durante a revisao.
 - Ler descricoes e itens de notas, comprovantes e extratos bancarios quando estiverem legiveis.
 - Usar campos vazios quando a imagem nao sustentar uma informacao.
 - Bloquear salvamento quando titulo, valor ou data obrigatoria estiverem ausentes.

@@ -53,6 +53,7 @@ Saida:
 - `maya.available`: indica que a assistente esta disponivel.
 - `maya.level`: `advanced` ou `essential`, sem revelar provedor, modelo ou configuracao.
 - `backup.available`: indica que backup manual esta disponivel.
+- `sync.available`: indica que conta online e sincronizacao estao configuradas.
 - `whatsapp.available`: indica se o recebimento via WhatsApp esta configurado.
 - `connections.status`: `future`, pois nao ha integracao financeira real nesta etapa.
 - `connections.message`: mensagem segura em linguagem de produto.

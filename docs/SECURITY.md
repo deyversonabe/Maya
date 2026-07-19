@@ -40,16 +40,25 @@ Regras:
 - Definir politica de retencao antes de armazenar dados de alto risco.
 - Considerar LGPD para tratamento de dados pessoais.
 
-## Persistencia local temporaria
+## Persistencia local e sincronizacao
 
-O MVP funcional inicial salva dados financeiros no navegador do usuario. Essa decisao torna o app utilizavel sem backend, mas possui limites:
+Sem Supabase configurado, o MVP funcional salva dados financeiros no navegador do usuario. Essa decisao torna o app utilizavel sem backend, mas possui limites:
 
 - Dados ficam restritos ao dispositivo e navegador.
 - Limpar o armazenamento do navegador pode apagar dados.
 - Nao ha sincronizacao entre dispositivos.
 - Nao ha controle de acesso por usuario.
 
-Por isso, o app deve oferecer exportacao de backup e deixar claro que Supabase/PostgreSQL e autenticacao sao proximos passos obrigatorios para uso sensivel em producao.
+Com Supabase configurado, o app habilita conta por e-mail/senha e sincroniza o estado financeiro na tabela `finance_states`.
+
+Regras de seguranca:
+
+- A chave anonima do Supabase pode ficar no frontend, mas o acesso aos dados depende de RLS.
+- A tabela `finance_states` deve permitir acesso apenas ao proprio `user_id`.
+- Dados locais sao usados como cache e fallback.
+- Ao entrar, dados locais podem ser enviados para a nuvem do usuario autenticado.
+- Anexos em base64 nao devem ser enviados para JSONB nesta etapa; storage privado deve ser usado antes de sincronizar arquivos reais.
+- Backups continuam disponiveis como copia manual controlada pelo usuario.
 
 ## Aplicacao web
 
@@ -139,7 +148,7 @@ Ao identificar vulnerabilidade ou incidente:
 
 ## Pendencias
 
-- Definir mecanismo de autenticacao.
+- Validar configuracao real do Supabase Auth em producao.
 - Definir matriz inicial de papeis e permissoes.
 - Definir politica formal de retencao de dados.
 - Definir processo de gestao de segredos por ambiente.

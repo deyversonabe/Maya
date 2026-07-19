@@ -20,9 +20,9 @@ O projeto passa a usar a stack obrigatoria definida pelo Prompt Mestre:
 - Supabase preparado como backend gerenciado.
 - Vercel como plataforma de deploy.
 
-Como ainda nao existem credenciais reais de Supabase/PostgreSQL/OpenAI no workspace, a primeira entrega funcional usa uma camada de persistencia local versionada no navegador. Isso permite que o produto seja realmente utilizavel para cadastro de transacoes, metas e simulacoes financeiras, sem bloquear a evolucao por falta de segredos.
+Como ainda nao existem credenciais reais de Supabase/PostgreSQL/OpenAI no workspace, a primeira entrega funcional usa uma camada de persistencia local versionada no navegador. Quando Supabase estiver configurado no deploy, a mesma camada passa a sincronizar o estado financeiro online por usuario autenticado.
 
-Essa persistencia local e uma etapa intermediaria, nao a arquitetura final. A migracao para Supabase/PostgreSQL deve manter os mesmos conceitos de dominio.
+Essa persistencia em JSONB e uma etapa intermediaria, nao a arquitetura final. A migracao para tabelas relacionais Supabase/PostgreSQL deve manter os mesmos conceitos de dominio.
 
 Arquitetura atual:
 
@@ -51,6 +51,8 @@ lib/
   storage/
 prisma/
   schema.prisma
+supabase/
+  migrations/
 ```
 
 Regra: funcionalidades novas devem nascer em `modules/` por dominio, nao diretamente acopladas a componentes globais.
@@ -153,6 +155,26 @@ Diretrizes:
 - Validar escopo no backend.
 - Planejar limites por organizacao/plano.
 - Registrar auditoria com usuario e organizacao.
+
+## Sincronizacao online
+
+A sincronizacao online atual fica encapsulada em `modules/finance/lib/use-finance-store.ts` e usa `lib/supabase/client.ts`.
+
+Fluxo:
+
+1. O app carrega dados locais para preservar uso offline e dados ja existentes no aparelho.
+2. Se Supabase estiver configurado, o app verifica a sessao do usuario.
+3. Ao entrar na conta, o app busca `finance_states` do usuario.
+4. Quando houver dados locais e online, as listas sao combinadas por `id`.
+5. Depois da carga inicial, alteracoes confirmadas sao enviadas para a nuvem com debounce.
+6. Sem Supabase ou sem sessao, o app continua funcionando localmente.
+
+Limites conhecidos:
+
+- A sincronizacao atual e de estado completo, nao de eventos por entidade.
+- Edicoes simultaneas em dois aparelhos usam conciliacao simples por `id`.
+- Delecoes offline concorrentes podem exigir revisao futura com tombstones/auditoria.
+- Anexos originais devem migrar para storage privado antes de sincronizacao completa de arquivos.
 
 ## Processamento assincrono
 

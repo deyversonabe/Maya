@@ -22,6 +22,7 @@ package.json
 postcss.config.js
 prisma/
 public/
+supabase/
 tailwind.config.ts
 tsconfig.json
 ```
@@ -88,11 +89,32 @@ Para ativar WhatsApp no futuro:
 - `WHATSAPP_APP_SECRET`
 - `WHATSAPP_API_VERSION`
 
-Para ativar Supabase/PostgreSQL no futuro:
+Para ativar sincronizacao online com Supabase:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `DATABASE_URL`
+
+## Sincronizacao online com Supabase
+
+Para salvar dados online e acessar do celular e desktop:
+
+1. Crie um projeto no Supabase.
+2. Em Authentication, mantenha login por e-mail/senha ativo.
+3. Abra SQL Editor.
+4. Execute o conteudo de `supabase/migrations/20260719_finance_states.sql`.
+5. Na Vercel, configure:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_publica
+```
+
+6. Faca redeploy.
+7. No app, abra `Dados` e crie/entre na conta.
+8. Entre com o mesmo e-mail no celular e no desktop.
+
+Observacao: nesta etapa, os dados financeiros sincronizam online; anexos originais ainda devem migrar para storage privado em etapa futura.
 
 ## Build esperado
 

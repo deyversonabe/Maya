@@ -21,6 +21,7 @@ Leia primeiro:
 - `CODE_STYLE.md`: padroes de codigo e nomenclatura.
 - `CONTRIBUTING.md`: processo de contribuicao e Definition of Done.
 - `DEPLOYMENT.md`: como subir a estrutura correta no GitHub e Vercel.
+- `SUPABASE_SETUP.md`: como ativar conta online e sincronizacao entre aparelhos.
 - `WHATSAPP_SETUP.md`: como configurar WhatsApp Cloud API direto, sem n8n.
 - `WHATSAPP_CONFIGURATION_STATUS.md`: estado atual da configuracao do numero WhatsApp na Meta e Vercel.
 - `ROADMAP.md`: fases planejadas de evolucao.
@@ -36,7 +37,17 @@ Esta etapa estabelece a base documental e a primeira aplicacao funcional do proj
 
 A stack alvo definida pelo Prompt Mestre e Next.js, React, TypeScript, TailwindCSS, shadcn/ui, Framer Motion, Supabase, PostgreSQL, Prisma, Vercel, GitHub e OpenAI API.
 
-O MVP atual ja permite uso funcional com persistencia local no navegador. Supabase/PostgreSQL, autenticacao e OpenAI real permanecem como proximas etapas porque exigem credenciais e configuracao de ambiente.
+O MVP atual permite uso funcional com persistencia local no navegador. Quando Supabase estiver configurado, o app habilita conta por e-mail/senha e sincronizacao online entre celular e desktop. OpenAI real continua dependente de chave segura na Vercel.
+
+## Sincronizacao online
+
+Para ativar acesso aos mesmos dados em aparelhos diferentes:
+
+1. Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Vercel.
+2. Execute `supabase/migrations/20260719_finance_states.sql` no SQL Editor do Supabase.
+3. Faca redeploy.
+4. No app, abra `Dados` e entre ou crie conta.
+5. Use o mesmo e-mail no celular e no desktop.
 
 ## MAYA e OpenAI na Vercel
 

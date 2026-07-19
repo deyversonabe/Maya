@@ -40,9 +40,11 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 3. Sistema envia a imagem para `POST /api/maya/receipt`.
 4. Se OpenAI estiver configurada, MAYA extrai dados da imagem.
 5. Se OpenAI nao estiver configurada, sistema cria rascunho revisavel e solicita preenchimento manual.
-6. Usuario revisa descricao, valor, categoria, data e parcelas.
-7. Usuario confirma.
-8. Sistema salva a despesa.
+6. Sistema exibe os dados do anexo em painel editavel.
+7. Usuario pode abrir o anexo original para conferencia.
+8. Usuario revisa e edita nome, descricao, valor, categoria, pessoa, data e parcelas.
+9. Usuario confirma.
+10. Sistema salva a despesa.
 
 ### Envio de nota pelo WhatsApp
 
@@ -97,24 +99,37 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Usuario acessa Dados.
 2. Sistema mostra onde os dados estao armazenados no momento.
-3. Sistema mostra status de IA, Supabase e futura conexao financeira.
-4. Sistema calcula a qualidade da analise da MAYA.
-5. Usuario pode exportar backup JSON.
-6. Usuario pode limpar dados locais quando quiser reiniciar o uso.
-7. Sistema deixa claro que Open Finance ainda e preparo futuro, nao conexao ativa.
+3. Se sincronizacao online estiver configurada, usuario cria conta ou entra com e-mail e senha.
+4. Sistema migra dados locais existentes para a conta online quando necessario.
+5. Sistema mostra status de IA, conta online e futura conexao financeira.
+6. Sistema calcula a qualidade da analise da MAYA.
+7. Usuario pode exportar backup JSON.
+8. Usuario pode limpar dados locais quando quiser reiniciar o uso.
+9. Sistema deixa claro que Open Finance ainda e preparo futuro, nao conexao ativa.
+
+### Sincronizacao entre celular e desktop
+
+1. Usuario cadastra despesas, contas, metas ou orcamentos em um aparelho.
+2. Usuario abre Dados e entra na conta online.
+3. Sistema envia os dados locais para a conta protegida.
+4. Usuario entra com o mesmo e-mail em outro aparelho.
+5. Sistema carrega os dados salvos online.
+6. Alteracoes futuras sao sincronizadas automaticamente apos confirmacao.
+7. Se a nuvem estiver indisponivel, o app continua local e tenta novamente quando o usuario acionar sincronizacao.
 
 ### Contas a pagar
 
 1. Usuario acessa Contas.
 2. Usuario escolhe cadastrar manualmente ou anexar uma imagem.
 3. Quando houver imagem, MAYA le o documento e preenche um rascunho com titulo, descricao, valor, vencimento, categoria, tipo de pagamento e codigo quando existir.
-4. Sistema deixa vazios os campos que nao foram identificados com confianca.
-5. Usuario revisa e completa titulo, valor e vencimento antes de salvar.
-6. Sistema salva a conta no mes do vencimento.
-7. Usuario acompanha status pendente, pago ou atrasado.
-8. Usuario pode copiar codigo Pix/boleto.
-9. Usuario pode marcar como pago.
-10. Sistema mostra contas vencendo, alerta 48h antes, alerta do dia e resumo mensal.
+4. Sistema exibe os dados do anexo em painel editavel e deixa vazios os campos que nao foram identificados com confianca.
+5. Usuario pode abrir o anexo original para conferencia.
+6. Usuario revisa e completa titulo, valor e vencimento antes de salvar.
+7. Sistema salva a conta no mes do vencimento.
+8. Usuario acompanha status pendente, pago ou atrasado.
+9. Usuario pode copiar codigo Pix/boleto.
+10. Usuario pode marcar como pago.
+11. Sistema mostra contas vencendo, alerta 48h antes, alerta do dia e resumo mensal.
 
 ### Leitura de renda por imagem
 

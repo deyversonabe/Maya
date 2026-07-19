@@ -52,6 +52,9 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Preparacao de anexos no navegador adicionada para reduzir imagens grandes e converter comprovantes para JPEG antes da leitura da MAYA.
 - Logs seguros `maya_receipt_read_failed` adicionados para diagnosticar falhas de leitura de comprovantes sem expor segredos ou imagens.
 - Rota `/api/maya/receipt` configurada com `maxDuration = 10` e timeout interno de 7,5s para evitar 503/504 por encerramento da funcao na Vercel.
+- Painel editavel de dados do anexo adicionado para revisar nome/titulo, descricao, valor, data, categoria, pessoa e observacoes antes de salvar.
+- Sincronizacao online com Supabase Auth adicionada para acessar os mesmos dados no celular e no desktop.
+- Migracao SQL `supabase/migrations/20260719_finance_states.sql` adicionada com RLS por usuario.
 
 ### Fixed
 

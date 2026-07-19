@@ -6,12 +6,13 @@ Este documento define padroes de dados e deve ser atualizado sempre que tabelas,
 
 A recomendacao inicial e usar PostgreSQL via Supabase para dados transacionais, por oferecer integridade, consultas consistentes e boa evolucao para SaaS.
 
-Na entrega funcional inicial, enquanto as credenciais reais do Supabase nao existem, o aplicativo usa armazenamento local versionado no navegador. Essa decisao permite uso real imediato, mas nao substitui o banco definitivo.
+Na entrega funcional inicial, enquanto as credenciais reais do Supabase nao existem, o aplicativo usa armazenamento local versionado no navegador. Quando `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` estao configuradas, o app habilita conta por e-mail/senha e sincronizacao online do estado financeiro.
 
 Camadas de dados:
 
-- Atual: `localStorage` com schema versionado para transacoes, metas, preferencias e historico basico.
-- Proxima etapa: Prisma apontando para PostgreSQL/Supabase.
+- Atual sem conta online: `localStorage` com schema versionado para transacoes, metas, preferencias e historico basico.
+- Atual com conta online: Supabase Auth + tabela `finance_states` protegida por RLS.
+- Proxima etapa: separar entidades financeiras em tabelas relacionais normalizadas.
 - Futuro SaaS: Supabase Auth, Row Level Security, auditoria e backups.
 
 Outros armazenamentos podem ser adicionados por necessidade especifica:
@@ -46,6 +47,34 @@ Entidades provaveis:
 - AuditLog.
 - Subscription ou Plan.
 - UsageLimit.
+
+## Sincronizacao online atual
+
+A sincronizacao online atual usa uma tabela unica para preservar velocidade de entrega e reduzir risco de migracao neste MVP.
+
+Tabela: `public.finance_states`.
+
+Campos:
+
+- `id`: UUID primario.
+- `user_id`: usuario autenticado do Supabase, unico por conta.
+- `state`: JSONB com `FinanceState` versionado.
+- `created_at`: criacao do registro.
+- `updated_at`: ultima atualizacao no banco.
+
+Regras:
+
+- RLS deve estar ativo.
+- `select`, `insert`, `update` e `delete` sao permitidos somente quando `auth.uid() = user_id`.
+- Ao entrar na conta, o app compara dados locais e online.
+- Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
+- Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase.
+- Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
+- `attachmentDataUrl` nao e enviado para a nuvem nesta etapa para evitar payloads grandes em JSONB; o nome do anexo e os dados extraidos sao preservados.
+
+Arquivo SQL:
+
+- `supabase/migrations/20260719_finance_states.sql`.
 
 ## Modelo financeiro inicial
 
@@ -233,7 +262,7 @@ Acoes sensiveis devem registrar:
 ## Pendencias
 
 - Criar projeto Supabase.
-- Definir politicas RLS.
+- Executar `supabase/migrations/20260719_finance_states.sql` no SQL Editor do Supabase.
 - Configurar `DATABASE_URL`.
-- Executar migracoes Prisma em PostgreSQL.
-- Migrar dados locais para banco real quando autenticacao existir.
+- Normalizar transacoes, metas, orcamentos e contas em tabelas relacionais quando o produto passar da fase MVP.
+- Migrar anexos para Supabase Storage privado.
