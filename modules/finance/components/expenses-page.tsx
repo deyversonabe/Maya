@@ -17,10 +17,12 @@ import type { ExpenseDraft, Person, Transaction, TransactionType } from "../type
 
 type ExpensePlan = "single" | "recurring" | "installment";
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
-
 export function ExpensesPage() {
   const { state, actions } = useFinanceStore();
+  const personOptions = useMemo(() => {
+    const names = state.members.map((member) => member.name);
+    return names.includes("Casal") ? names : [...names, "Casal"];
+  }, [state.members]);
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
@@ -112,14 +114,20 @@ export function ExpensesPage() {
       source: receiptDraft ? "receipt" : "manual"
     });
 
-    actions.addTransactions(transactions);
+const result = actions.addTransactions(transactions);
+    const skippedNote =
+      result.skippedCount > 0
+    ? ` A MAYA identificou e ignorou ${result.skippedCount} lancamento(s) que pareciam duplicados.`
+      : "";
     setFeedback(
-      form.plan === "installment"
-        ? `${transactions.length} parcelas foram criadas nos meses futuros.`
-        : form.plan === "recurring"
-          ? `${transactions.length} despesas recorrentes foram criadas.`
-          : "Despesa salva com sucesso."
-    );
+      (form.plan === "installment"
+       ? `${result.addedCount} parcelas foram criadas nos meses futuros.`
+       : form.plan === "recurring"
+       ? `${result.addedCount} despesas recorrentes foram criadas.`
+       : result.addedCount > 0
+       ? "Despesa salva com sucesso."
+       : "Essa despesa parece duplicada e nao foi salva novamente.") + skippedNote
+      );
     setSelectedMonth(form.date.slice(0, 7));
     setReceiptDraft(null);
     setForm((current) => ({
