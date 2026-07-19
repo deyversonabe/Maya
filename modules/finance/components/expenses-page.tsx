@@ -13,8 +13,8 @@ import { formatCurrency, toInputDate } from "@/lib/utils";
 import { transactionCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { ExpenseDraft, Person, Transaction, TransactionType } from "../types";
-
+import type { ExpenseDraft, Person, Transaction, TransactionReview, TransactionType } from "../types";
+import { reviewTransactionEntry } from "../../ai/validation";
 type ExpensePlan = "single" | "recurring" | "installment";
 
 export function ExpensesPage() {
@@ -30,6 +30,7 @@ export function ExpensesPage() {
   const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA revisar.");
   const [receiptDraft, setReceiptDraft] = useState<ExpenseDraft | null>(null);
   const [isReadingReceipt, setIsReadingReceipt] = useState(false);
+  const [mayaReview, setMayaReview] = useState<TransactionReview | null>(null);
   const [form, setForm] = useState({
     description: "",
     amount: "",
@@ -100,6 +101,19 @@ export function ExpensesPage() {
       return;
     }
 
+    const review = reviewTransactionEntry({
+      candidate: {
+        type: "expense",
+        description: form.description.trim(),
+        amount,
+        category: form.category,
+        person: form.person,
+        date: form.date
+      },
+      state
+    });
+    setMayaReview(review);
+
     const transactions = createPlannedExpenses({
       description: form.description.trim(),
       amount,
@@ -119,6 +133,8 @@ const result = actions.addTransactions(transactions);
       result.skippedCount > 0
     ? ` A MAYA identificou e ignorou ${result.skippedCount} lancamento(s) que pareciam duplicados.`
       : "";
+    const transferIssue = review.issues.find((issue) => issue.code === "possible_internal_transfer");
+    const reviewNote = transferIssue ? ` ${transferIssue.message}` : "";
     setFeedback(
       (form.plan === "installment"
        ? `${result.addedCount} parcelas foram criadas nos meses futuros.`
@@ -126,7 +142,7 @@ const result = actions.addTransactions(transactions);
        ? `${result.addedCount} despesas recorrentes foram criadas.`
        : result.addedCount > 0
        ? "Despesa salva com sucesso."
-       : "Essa despesa parece duplicada e nao foi salva novamente.") + skippedNote
+       : "Essa despesa parece duplicada e nao foi salva novamente.") + skippedNote + reviewNote
       );
     setSelectedMonth(form.date.slice(0, 7));
     setReceiptDraft(null);
@@ -209,6 +225,14 @@ const result = actions.addTransactions(transactions);
           <p className="mb-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
             {feedback}
           </p>
+
+          {mayaReview && mayaReview.issues.length > 0 ? (
+      <div className="mb-4 grid gap-2 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+      <strong className="text-xs font-black uppercase tracking-[0.08em]">Analise da MAYA</strong>
+        {mayaReview.issues.map((issue, index) => (
+        <p key={index}>{issue.message}</p>
+        ))}</div>
+      ) : null}
 
           <form className="grid gap-4" onSubmit={submitExpense}>
             <div className="grid gap-3 lg:grid-cols-[1fr_160px]">
