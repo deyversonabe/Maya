@@ -7,8 +7,14 @@ import { migrateFinanceState } from "./migrations";
 import type { Budget, FinanceState, Goal, PayableBill, Transaction } from "../types";
 
 const STORAGE_KEY = "juntos.finance.v1";
-const CLOUD_TABLE = "finance_states";
+const CLOUD_TABLE = "finance_workspace_states";
+const CLOUD_WORKSPACE_ID =
+  process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
 const CLOUD_SYNC_DELAY_MS = 900;
+const SESSION_LOCK_KEY = "maya.finance.session_locked.v1";
+const SESSION_LAST_ACTIVITY_KEY = "maya.finance.last_activity.v1";
+const DEFAULT_SESSION_IDLE_MINUTES = 15;
+const SESSION_IDLE_MS = getSessionIdleMilliseconds();
 
 type CloudSyncStatus = "unconfigured" | "signed_out" | "loading" | "online" | "syncing" | "error";
 
@@ -43,6 +49,7 @@ export function useFinanceStore() {
   const userIdRef = useRef<string | null>(null);
   const skipNextCloudSaveRef = useRef(false);
   const lastCloudPayloadRef = useRef("");
+  const cloudChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -86,11 +93,12 @@ export function useFinanceStore() {
 
       const { error } = await supabase.from(CLOUD_TABLE).upsert(
         {
-          user_id: userIdRef.current,
+          workspace_id: CLOUD_WORKSPACE_ID,
           state: cloudState,
+          updated_by: userIdRef.current,
           updated_at: cloudState.updatedAt
         },
-        { onConflict: "user_id" }
+        { onConflict: "workspace_id" }
       );
 
       if (error) {
@@ -106,6 +114,87 @@ export function useFinanceStore() {
       }));
     },
     [supabase]
+  );
+
+  const applyRemoteState = useCallback((remoteValue: unknown) => {
+    const remoteState = migrateFinanceState(remoteValue);
+    const remotePayload = JSON.stringify(prepareFinanceStateForCloud(remoteState));
+
+    if (remotePayload === lastCloudPayloadRef.current) {
+      return;
+    }
+
+    const localState = stateRef.current;
+    const localTime = getTime(localState.updatedAt);
+    const remoteTime = getTime(remoteState.updatedAt);
+    const nextState = localTime > remoteTime ? mergeFinanceStates(remoteState, localState) : remoteState;
+
+    skipNextCloudSaveRef.current = true;
+    lastCloudPayloadRef.current = remotePayload;
+    setState(nextState);
+    persistFinanceStateLocally(nextState);
+    setCloud((current) => ({
+      ...current,
+      status: "online",
+      message: "Dados atualizados pela conta compartilhada.",
+      lastSyncedAt: new Date().toISOString()
+    }));
+  }, []);
+
+  const closeCloudChannel = useCallback(() => {
+    if (!supabase || !cloudChannelRef.current) {
+      return;
+    }
+
+    void supabase.removeChannel(cloudChannelRef.current);
+    cloudChannelRef.current = null;
+  }, [supabase]);
+
+  const subscribeToWorkspaceChanges = useCallback(() => {
+    if (!supabase || cloudChannelRef.current) {
+      return;
+    }
+
+    cloudChannelRef.current = supabase
+      .channel(`finance-workspace-${CLOUD_WORKSPACE_ID}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: CLOUD_TABLE,
+          filter: `workspace_id=eq.${CLOUD_WORKSPACE_ID}`
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE" || !("state" in payload.new)) {
+            return;
+          }
+
+          applyRemoteState(payload.new.state);
+        }
+      )
+      .subscribe();
+  }, [applyRemoteState, supabase]);
+
+  const lockSession = useCallback(
+    async (message = "Sessao bloqueada por seguranca. Digite a senha para continuar.") => {
+      if (!supabase) {
+        return;
+      }
+
+      markSessionLocked();
+      closeCloudChannel();
+      await supabase.auth.signOut();
+      userIdRef.current = null;
+      setCloudReady(false);
+      setCloud((current) => ({
+        ...current,
+        status: "signed_out",
+        email: null,
+        message
+      }));
+    },
+    [closeCloudChannel, supabase]
   );
 
   const loadCloudForUser = useCallback(
@@ -127,7 +216,7 @@ export function useFinanceStore() {
         const { data, error } = await supabase
           .from(CLOUD_TABLE)
           .select("state, updated_at")
-          .eq("user_id", userId)
+          .eq("workspace_id", CLOUD_WORKSPACE_ID)
           .maybeSingle();
 
         if (error) {
@@ -159,10 +248,12 @@ export function useFinanceStore() {
           status: shouldSaveCloud ? "syncing" : "online",
           email,
           message: shouldSaveCloud
-            ? "Enviando seus dados deste aparelho para a nuvem."
-            : "Dados carregados da sua conta.",
+            ? "Enviando dados deste aparelho para a conta compartilhada."
+            : "Dados carregados da conta compartilhada.",
           lastSyncedAt: shouldSaveCloud ? current.lastSyncedAt : new Date().toISOString()
         }));
+
+        subscribeToWorkspaceChanges();
 
         if (shouldSaveCloud) {
           await saveStateToCloud(nextState);
@@ -177,7 +268,7 @@ export function useFinanceStore() {
         }));
       }
     },
-    [saveStateToCloud, supabase]
+    [saveStateToCloud, subscribeToWorkspaceChanges, supabase]
   );
 
   useEffect(() => {
@@ -197,6 +288,21 @@ export function useFinanceStore() {
       }
 
       if (user) {
+        if (shouldAskPasswordAgain()) {
+          await client.auth.signOut();
+          markSessionLocked();
+          userIdRef.current = null;
+          setCloudReady(false);
+          setCloud((current) => ({
+            ...current,
+            status: "signed_out",
+            email: null,
+            message: "Sessao bloqueada por seguranca. Digite a senha para continuar."
+          }));
+          return;
+        }
+
+        recordSessionActivity();
         await loadCloudForUser(user.id, user.email ?? null);
         return;
       }
@@ -235,9 +341,51 @@ export function useFinanceStore() {
 
     return () => {
       isMounted = false;
+      closeCloudChannel();
       subscription.unsubscribe();
     };
-  }, [isHydrated, loadCloudForUser, supabase]);
+  }, [closeCloudChannel, isHydrated, loadCloudForUser, supabase]);
+
+  useEffect(() => {
+    if (!supabase || !isHydrated) {
+      return;
+    }
+
+    const activityEvents: Array<keyof WindowEventMap> = ["keydown", "pointerdown", "scroll", "touchstart"];
+
+    function handleActivity() {
+      if (userIdRef.current) {
+        recordSessionActivity();
+      }
+    }
+
+    function handlePageHide() {
+      if (userIdRef.current) {
+        markSessionLocked();
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const lastActivity = getLastSessionActivity();
+
+      if (Date.now() - lastActivity >= SESSION_IDLE_MS) {
+        void lockSession();
+      }
+    }, 30_000);
+
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      window.clearInterval(interval);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [isHydrated, lockSession, supabase]);
 
   useEffect(() => {
     if (!supabase || !isHydrated || !cloudReady || !userIdRef.current) {
@@ -292,6 +440,8 @@ export function useFinanceStore() {
       }
 
       if (data.user) {
+        clearSessionLocked();
+        recordSessionActivity();
         await loadCloudForUser(data.user.id, data.user.email ?? null);
       }
     },
@@ -322,6 +472,8 @@ export function useFinanceStore() {
       }
 
       if (data.session?.user) {
+        clearSessionLocked();
+        recordSessionActivity();
         await loadCloudForUser(data.session.user.id, data.session.user.email ?? null);
         return;
       }
@@ -342,6 +494,8 @@ export function useFinanceStore() {
     }
 
     await supabase.auth.signOut();
+    markSessionLocked();
+    closeCloudChannel();
     userIdRef.current = null;
     setCloudReady(false);
     setCloud((current) => ({
@@ -350,7 +504,7 @@ export function useFinanceStore() {
       email: null,
       message: "Voce saiu da conta. Os dados deste aparelho continuam disponiveis."
     }));
-  }, [supabase]);
+  }, [closeCloudChannel, supabase]);
 
   const syncNow = useCallback(async () => {
     if (!supabase || !userIdRef.current) {
@@ -532,8 +686,10 @@ export function useFinanceStore() {
     []
   );
 
+  const visibleState = supabase && !userIdRef.current ? createEmptyFinanceState() : state;
+
   return {
-    state,
+    state: visibleState,
     isHydrated,
     actions,
     cloud: {
@@ -623,10 +779,50 @@ function getTime(value: string) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function getSessionIdleMilliseconds() {
+  const configuredMinutes = Number(process.env.NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES);
+  const minutes =
+    Number.isFinite(configuredMinutes) && configuredMinutes > 0
+      ? configuredMinutes
+      : DEFAULT_SESSION_IDLE_MINUTES;
+
+  return minutes * 60 * 1000;
+}
+
+function recordSessionActivity() {
+  window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
+}
+
+function getLastSessionActivity() {
+  const stored = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_KEY));
+  return Number.isFinite(stored) && stored > 0 ? stored : Date.now();
+}
+
+function markSessionLocked() {
+  window.localStorage.setItem(SESSION_LOCK_KEY, "true");
+}
+
+function clearSessionLocked() {
+  window.localStorage.removeItem(SESSION_LOCK_KEY);
+}
+
+function shouldAskPasswordAgain() {
+  if (window.localStorage.getItem(SESSION_LOCK_KEY) === "true") {
+    return true;
+  }
+
+  return Date.now() - getLastSessionActivity() >= SESSION_IDLE_MS;
+}
+
 function formatCloudError(error: { message?: string; code?: string }) {
   const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
 
-  if (text.includes("finance_states") || text.includes("relation") || text.includes("schema cache")) {
+  if (
+    text.includes("finance_states") ||
+    text.includes("finance_workspace") ||
+    text.includes("relation") ||
+    text.includes("schema cache")
+  ) {
     return "Sincronizacao online precisa ser ativada no banco antes de usar.";
   }
 

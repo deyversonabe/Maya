@@ -78,7 +78,8 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
           </div>
         </div>
         <p className="rounded-lg border border-cyan-200/20 bg-moss-950/35 px-3 py-2 text-sm leading-6 text-cyan-50">
-          Use este mesmo e-mail no celular e no computador para ver os mesmos cadastros.
+          Os usuarios autorizados acessam a mesma base financeira. Ao fechar a aba ou ficar sem uso, a senha sera
+          solicitada novamente.
         </p>
       </div>
     );
@@ -90,6 +91,9 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
         <div>
           <h3 className="font-serif text-2xl font-bold text-cyan-50">Conta e sincronizacao</h3>
           <p className="mt-2 text-sm leading-6 text-muted">{cloud.message}</p>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Os dados ficam compartilhados entre os usuarios autorizados e sao salvos online automaticamente.
+          </p>
         </div>
         <Badge tone={cloud.status === "error" ? "warning" : "info"}>{getStatusLabel(cloud.status)}</Badge>
       </div>
