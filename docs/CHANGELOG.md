@@ -48,6 +48,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Headers HTTP de seguranca adicionados globalmente em `next.config.mjs`.
 - Webhook WhatsApp passa a ignorar eventos POST quando `WHATSAPP_ENABLED` nao estiver ativo.
 - Manifesto PWA mantido para instalacao como app pelo navegador com `display: standalone`.
+- Rota `POST /api/maya/validate` corrigida e integrada aos tipos atuais para revisar duplicidade e transferencia interna sem quebrar o build.
 
 ### Fixed
 

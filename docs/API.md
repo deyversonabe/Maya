@@ -258,6 +258,31 @@ Efeitos colaterais:
 - Nenhum dado financeiro e salvo pela API.
 - O salvamento acontece somente no cliente apos confirmacao do usuario.
 
+### POST `/api/maya/validate`
+
+Objetivo: revisar um lancamento candidato antes de salvar, identificando dados incompletos, possivel duplicidade e possivel transferencia interna.
+
+Permissoes: sem autenticacao nesta etapa local.
+
+Entrada:
+
+- `state`: estado financeiro atual.
+- `candidate`: lancamento candidato com tipo, descricao, valor, categoria, pessoa e data.
+
+Saida:
+
+- `ok`: indica se nao existem avisos bloqueantes.
+- `issues`: lista de avisos de revisao.
+- `duplicate`: lancamento parecido ou repetido quando encontrado.
+- `suggestedType`: tipo sugerido, usado principalmente para Pix/transferencia interna.
+
+Regras:
+
+- A rota normaliza o estado financeiro recebido antes da revisao.
+- A rota nao salva dados.
+- Duplicidade exata considera mesmo tipo, mesma data e mesmo valor.
+- Duplicidade similar considera mesmo tipo, mesmo valor e data proxima.
+
 ## Pendencias
 
 - Definir abordagem de API apos escolha da stack.
