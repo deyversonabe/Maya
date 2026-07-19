@@ -59,6 +59,25 @@ Para ativar a MAYA com OpenAI:
 - `OPENAI_MODEL` opcional
 - `OPENAI_VISION_MODEL` opcional
 
+Para colocar o produto no ar sem WhatsApp:
+
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL=gpt-5-mini`
+- `OPENAI_VISION_MODEL=gpt-5-mini`
+- `NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app`
+- `WHATSAPP_ENABLED=false`
+
+Nesse modo, o cadastro por foto continua funcionando dentro do app em `Despesas > Anexar nota` ou `Abrir camera`. A entrada por WhatsApp fica pausada ate a Meta liberar o numero.
+
+Para ativar WhatsApp no futuro:
+
+- `WHATSAPP_ENABLED=true`
+- `WHATSAPP_VERIFY_TOKEN`
+- `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_APP_SECRET`
+- `WHATSAPP_API_VERSION`
+
 Para ativar Supabase/PostgreSQL no futuro:
 
 - `NEXT_PUBLIC_SUPABASE_URL`

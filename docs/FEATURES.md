@@ -111,6 +111,7 @@ Fora de escopo nesta etapa:
 - Integracao real com Open Finance ou bancos.
 - Pagamentos, assinaturas e multi-tenant.
 - Salvamento automatico de despesas vindas do WhatsApp sem revisao humana.
+- WhatsApp ativo em producao enquanto a Meta mantiver o numero em revisao.
 
 ### WhatsApp para comprovantes
 
@@ -131,6 +132,7 @@ Fora de escopo nesta etapa:
 - Associar telefone a casal sem autenticacao.
 - Enviar campanhas, mensagens promocionais ou alertas em massa.
 - Usar n8n como intermediario.
+- Bloquear o lancamento do produto por dependencia de aprovacao da Meta.
 
 ### Orcamentos mensais
 

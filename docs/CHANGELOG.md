@@ -37,6 +37,8 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Estrutura inicial de WhatsApp Cloud API direto adicionada para receber comprovantes sem n8n.
 - Guia `WHATSAPP_SETUP.md` adicionado com variaveis, configuracao na Meta e passo a passo de deploy.
 - Paginas publicas `/privacy`, `/terms` e `/data-deletion` adicionadas para configuracao do app na Meta.
+- Estado atual da configuracao do numero WhatsApp salvo em `docs/WHATSAPP_CONFIGURATION_STATUS.md`.
+- Flag `WHATSAPP_ENABLED` adicionada para publicar o produto sem depender da aprovacao da Meta.
 
 ### Fixed
 

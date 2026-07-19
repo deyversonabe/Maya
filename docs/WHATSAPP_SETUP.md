@@ -22,6 +22,7 @@ Para reduzir custo:
 Configure na Vercel e em `.env.local` para desenvolvimento:
 
 ```env
+WHATSAPP_ENABLED=false
 WHATSAPP_VERIFY_TOKEN=
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
@@ -32,6 +33,7 @@ NEXT_PUBLIC_APP_URL=
 
 Regras:
 
+- `WHATSAPP_ENABLED`: use `false` enquanto o numero estiver em revisao ou bloqueado na Meta; troque para `true` somente quando o numero estiver registrado e testado.
 - `WHATSAPP_VERIFY_TOKEN`: texto secreto criado por voce para validar o webhook na Meta.
 - `WHATSAPP_ACCESS_TOKEN`: token permanente ou token de sistema da Meta.
 - `WHATSAPP_PHONE_NUMBER_ID`: ID do numero conectado ao WhatsApp Cloud API.
@@ -81,6 +83,7 @@ Nunca coloque valores reais no GitHub.
 - Sem login e banco em nuvem, o WhatsApp nao consegue associar a nota a um casal de forma definitiva.
 - A resposta no WhatsApp orienta revisao no app.
 - Para uso em producao com varios casais, implementar autenticacao, Supabase/PostgreSQL e tabela de rascunhos.
+- Se a conta ou numero estiver em `Pending review`, publique o app com `WHATSAPP_ENABLED=false` e use upload/camera dentro do app ate a liberacao.
 
 ## Proxima etapa recomendada
 

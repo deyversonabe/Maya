@@ -22,6 +22,7 @@ Leia primeiro:
 - `CONTRIBUTING.md`: processo de contribuicao e Definition of Done.
 - `DEPLOYMENT.md`: como subir a estrutura correta no GitHub e Vercel.
 - `WHATSAPP_SETUP.md`: como configurar WhatsApp Cloud API direto, sem n8n.
+- `WHATSAPP_CONFIGURATION_STATUS.md`: estado atual da configuracao do numero WhatsApp na Meta e Vercel.
 - `ROADMAP.md`: fases planejadas de evolucao.
 - `CHANGELOG.md`: historico de alteracoes.
 
