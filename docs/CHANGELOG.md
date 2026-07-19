@@ -49,6 +49,9 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Webhook WhatsApp passa a ignorar eventos POST quando `WHATSAPP_ENABLED` nao estiver ativo.
 - Manifesto PWA mantido para instalacao como app pelo navegador com `display: standalone`.
 - Rota `POST /api/maya/validate` corrigida e integrada aos tipos atuais para revisar duplicidade e transferencia interna sem quebrar o build.
+- Preparacao de anexos no navegador adicionada para reduzir imagens grandes e converter comprovantes para JPEG antes da leitura da MAYA.
+- Logs seguros `maya_receipt_read_failed` adicionados para diagnosticar falhas de leitura de comprovantes sem expor segredos ou imagens.
+- Rota `/api/maya/receipt` configurada com `maxDuration = 10` e timeout interno de 7,5s para evitar 503/504 por encerramento da funcao na Vercel.
 
 ### Fixed
 
@@ -64,6 +67,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Fundo global ajustado para iluminacao linear/LED, sem gradientes circulares decorativos.
 - Rotas da MAYA normalizam estado financeiro recebido e limitam tamanho de imagem enviada para leitura de comprovante.
 - Botao em modo link passa a aplicar area clicavel completa no elemento de navegacao.
+- Leitura de comprovantes reforcada com timeout, modo JSON, detalhe alto para OCR, modelo de visao recomendado e mensagens de falha mais especificas sem termos tecnicos de infraestrutura.
 
 ## [0.0.1] - 2026-07-09
 

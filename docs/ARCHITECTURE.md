@@ -125,6 +125,8 @@ Regras arquiteturais:
 - Toda resposta da IA deve ter fallback local.
 - A leitura de nota deve retornar dados revisaveis pelo usuario antes de virar despesa.
 - A leitura de documentos financeiros deve retornar rascunhos revisaveis para despesa, renda ou conta a pagar.
+- Anexos enviados pelo usuario devem ser preparados no cliente para reduzir tamanho e normalizar formato antes da rota server-side.
+- A chamada server-side de leitura deve ter timeout, resposta JSON estruturada e logs tecnicos seguros para diagnostico.
 - Campos nao confirmados pela imagem devem ser tratados como ausentes, nao como inferencias.
 - A MAYA nao deve julgar o casal; deve orientar com linguagem clara, acolhedora e objetiva.
 

@@ -103,6 +103,8 @@ Ao enviar foto de nota ou comprovante:
 - Imagens confirmadas pelo usuario podem ser mantidas no armazenamento local nesta etapa para compor anexos de contas/despesas.
 - Quando houver backend real, imagens devem migrar para storage privado com controle de acesso.
 - Leituras da MAYA devem verificar possivel duplicidade por data e valor antes de salvar renda ou despesa.
+- Imagens enviadas pelo navegador devem ser otimizadas para reduzir tamanho, ficar abaixo do limite de payload da funcao e remover metadados carregados no arquivo original quando possivel.
+- Falhas do provedor de IA devem ser registradas apenas com metadados seguros, como categoria, status, codigo e request id; nunca com chave, imagem ou dados completos do comprovante.
 
 ## WhatsApp
 

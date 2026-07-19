@@ -63,11 +63,21 @@ Para colocar o produto no ar sem WhatsApp:
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL=gpt-5-mini`
-- `OPENAI_VISION_MODEL=gpt-5-mini`
+- `OPENAI_VISION_MODEL=gpt-4o-mini`
 - `NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app`
 - `WHATSAPP_ENABLED=false`
 
 Nesse modo, o cadastro por foto continua funcionando dentro do app em `Despesas > Anexar nota` ou `Abrir camera`. A entrada por WhatsApp fica pausada ate a Meta liberar o numero.
+
+Se a leitura de nota cair no rascunho manual mesmo com chave configurada, conferir primeiro:
+
+1. `OPENAI_API_KEY` existe em Production e Preview na Vercel.
+2. `OPENAI_VISION_MODEL` esta preenchida com modelo que aceita imagem, recomendado `gpt-4o-mini`.
+3. A chave tem credito/limite disponivel no projeto OpenAI.
+4. O deploy foi refeito depois de alterar variaveis.
+5. Os logs da Vercel mostram `maya_receipt_read_failed` com categoria segura da falha.
+
+Se a requisicao `/api/maya/receipt` retornar 503/504, o codigo deve garantir que a chamada externa seja abortada antes do limite da funcao. A rota atual declara `maxDuration = 10` e usa timeout interno de 7,5 segundos para devolver rascunho manual controlado.
 
 Para ativar WhatsApp no futuro:
 

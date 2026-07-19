@@ -99,6 +99,10 @@ Regras obrigatorias:
 - Evitar armazenar prompts e respostas com dados sensiveis sem necessidade clara.
 - Validar saidas estruturadas com schema quando a funcionalidade depender de formato.
 - O modelo padrao configuravel por ambiente e `gpt-5-mini`, mantendo suporte para troca via `OPENAI_MODEL` e `OPENAI_VISION_MODEL`.
+- Para leitura de comprovantes por imagem, `OPENAI_VISION_MODEL` deve apontar para um modelo com entrada de imagem. A configuracao recomendada de baixo custo e `gpt-4o-mini`.
+- Imagens enviadas pelo navegador devem ser normalizadas/comprimidas antes do envio para reduzir falhas por tamanho, formato, payload ou resolucao excessiva.
+- A leitura de comprovantes deve ter timeout server-side menor que o limite da funcao hospedada e retornar rascunho manual seguro se o provedor demorar, recusar a imagem, atingir limite ou devolver saida invalida.
+- Falhas de leitura devem gerar logs seguros com categoria, status, codigo e request id quando houver, sem registrar imagem, chave, prompt sensivel ou dados financeiros desnecessarios.
 
 ## Prompts
 
