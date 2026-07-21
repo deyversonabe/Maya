@@ -120,6 +120,9 @@ Diretrizes:
 - Formularios devem ter validacao visivel, mensagens claras e preservacao de dados quando possivel.
 - Acessibilidade deve ser considerada desde o inicio: contraste, foco, navegacao por teclado, labels e semantica.
 - Layouts devem ser responsivos e nao devem quebrar em telas pequenas.
+- A identidade visual da Maya pode usar efeitos neon/LED, mas sempre com movimento sutil, contraste alto e respeito a `prefers-reduced-motion`.
+- Valores financeiros negativos, saldos estourados ou correcoes abaixo de zero devem usar vermelho de alerta em qualquer tela.
+- Efeitos visuais nao podem esconder estados importantes, dificultar leitura de formularios ou competir com os dados financeiros.
 - Telas de usuario nao devem expor nomes de infraestrutura, chaves, variaveis de ambiente, provedores internos, modo tecnico ou detalhes de arquitetura.
 - Quando uma capacidade tecnica precisar ser comunicada, usar linguagem de produto, como "MAYA ativa", "backup disponivel" ou "conexoes futuras".
 - Nao criar componentes visuais novos se um componente existente atende ao caso.

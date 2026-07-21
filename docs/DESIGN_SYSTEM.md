@@ -10,9 +10,9 @@ O produto deve transmitir confianca, clareza e eficiencia. Como a plataforma pod
 
 Asset exploratorio:
 
-- `docs/assets/juntos-initial-visual-concept.png`
-- `docs/assets/juntos-initial-visual-concept-moss-bronze.png`
-- `public/brand/juntos-maya-logo.png`
+- `docs/assets/maya-initial-visual-concept.png`
+- `docs/assets/maya-initial-visual-concept-moss-bronze.png`
+- `public/brand/maya-logo.png`
 
 Estas imagens sao referencias iniciais para direcao visual, nao especificacoes finais. Elas sugerem uma interface SaaS operacional com navegacao lateral, dashboard modular, areas para documentacao, arquitetura, roadmap, seguranca, banco de dados, API e assistente de IA.
 
@@ -22,14 +22,19 @@ Direcao visual preferencial atual:
 - Titulos e marca em bronze ou terracota.
 - Superficies internas em verdes escuros dessaturados, com contraste suficiente para leitura.
 - Textos secundarios em tons claros e quentes.
-- Acentos controlados em bronze, terracota, dourado suave e teal discreto.
+- Acentos controlados em bronze, terracota, dourado suave, cyan neon, verde neon e rosa neon.
+- A camada LED/neon deve ser usada para profundidade, foco e estados ativos, sem prejudicar leitura ou parecer decoracao excessiva.
+- Valores financeiros negativos devem aparecer em vermelho com leitura de alerta.
+- Saldos, restos de orcamento e correcoes negativas devem usar `financial-negative`; valores saudaveis ou neutros podem usar `financial-positive`.
 
 Decisoes visuais sugeridas pela referencia:
 
 - Interface profissional e orientada a produtividade.
 - Base escura em verde-musgo com acentos quentes.
-- Organizacao em paineis escaneaveis para uso recorrente.
+- Organizacao em paineis escaneaveis para uso recorrente, com linhas de LED discretas.
 - Presenca de IA como apoio contextual, sem dominar a experiencia.
+- Movimento visual deve ser sutil: scanlines, micro elevacao de cards e halo leve na personagem MAYA.
+- Respeitar `prefers-reduced-motion` para usuarios que reduzem animacoes no sistema.
 
 Antes de transformar essa referencia em implementacao, validar identidade visual, tokens, componentes e acessibilidade.
 
@@ -37,7 +42,7 @@ Antes de transformar essa referencia em implementacao, validar identidade visual
 
 A logo oficial inicial do sistema esta em:
 
-- `public/brand/juntos-maya-logo.png`
+- `public/brand/maya-logo.png`
 
 Regras de uso:
 
@@ -79,6 +84,9 @@ Componentes basicos previstos:
 - Input.
 - Textarea.
 - Select.
+- Badge com tons de sucesso, atencao, informacao e neutro.
+- VisualMetric com destaque neon e alerta automatico para valor negativo.
+- LedPanel com grade e linha luminosa animada.
 - Checkbox.
 - Toggle.
 - Modal/Dialog.
@@ -139,7 +147,7 @@ Tokens cromaticos iniciais sugeridos:
 
 ## Primeira tela estatica
 
-A primeira tela web deve seguir a referencia `juntos-initial-visual-concept-moss-bronze.png`.
+A primeira tela web deve seguir a referencia `maya-initial-visual-concept-moss-bronze.png`.
 
 Regras:
 
@@ -164,7 +172,7 @@ Diretrizes da UI v2:
 - Motion design elegante: entrada suave, hover discreto e linhas de LED controladas.
 - MAYA deve parecer assistente presente, com avatar/logo, status de analise e respostas em blocos claros.
 - Estados vazios devem orientar o usuario para a proxima acao.
-- Logo oficial deve usar o asset com transparencia em `public/brand/juntos-maya-logo.png`.
+- Logo oficial deve usar o asset com transparencia em `public/brand/maya-logo.png`.
 
 Componentes visuais preferenciais:
 

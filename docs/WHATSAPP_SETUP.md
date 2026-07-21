@@ -1,10 +1,10 @@
 # WhatsApp Setup
 
-Este guia descreve a integracao direta do WhatsApp Cloud API com o Juntos Maya, sem n8n.
+Este guia descreve a integracao direta do WhatsApp Cloud API com o Maya, sem n8n.
 
 ## Objetivo
 
-Permitir que o casal envie uma foto de nota ou comprovante pelo WhatsApp. O Juntos Maya recebe a imagem, pede leitura para a MAYA e devolve um rascunho revisavel. Nenhuma despesa deve ser salva automaticamente.
+Permitir que o casal envie uma foto de nota ou comprovante pelo WhatsApp. O Maya recebe a imagem, pede leitura para a MAYA e devolve um rascunho revisavel. Nenhuma despesa deve ser salva automaticamente.
 
 ## Custo menor
 
@@ -39,7 +39,7 @@ Regras:
 - `WHATSAPP_PHONE_NUMBER_ID`: ID do numero conectado ao WhatsApp Cloud API.
 - `WHATSAPP_APP_SECRET`: segredo do app da Meta usado para validar assinatura dos webhooks.
 - `WHATSAPP_API_VERSION`: versao da Graph API. Manter atualizada conforme Meta.
-- `NEXT_PUBLIC_APP_URL`: URL publica do app, por exemplo `https://juntosmaya.vercel.app`.
+- `NEXT_PUBLIC_APP_URL`: URL publica do app, por exemplo `https://maya-seu-dominio.vercel.app`.
 
 Nunca coloque valores reais no GitHub.
 

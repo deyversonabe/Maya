@@ -32,9 +32,14 @@ Quando o backend for ativado, as primeiras APIs deverao cobrir:
 - `POST /api/ai/insights`.
 - `POST /api/maya/analyze`.
 - `POST /api/maya/receipt`.
+- `POST /api/maya/statement`.
 - `GET /api/whatsapp/webhook`.
 - `POST /api/whatsapp/webhook`.
 - `GET /api/system/status`.
+- `GET /api/admin/overview`.
+- `POST /api/admin/member-status`.
+- `POST /api/notifications/subscribe`.
+- `GET|POST /api/notifications/send-due-alerts`.
 
 Esses endpoints devem validar usuario, organizacao e permissao antes de acessar dados.
 
@@ -53,12 +58,77 @@ Saida:
 - `maya.available`: indica que a assistente esta disponivel.
 - `maya.level`: `advanced` ou `essential`, sem revelar provedor, modelo ou configuracao.
 - `backup.available`: indica que backup manual esta disponivel.
+- `reports.pdf` e `reports.excel`: indicam exportacoes profissionais disponiveis no navegador.
 - `sync.available`: indica que conta online e sincronizacao estao configuradas.
+- `admin.available`: indica se a service role foi configurada no servidor para painel admin.
+- `push.available`: indica se chaves VAPID e segredo de cron estao configurados.
+- `storage.available`: indica se o deploy tem Supabase configurado para usar bucket privado de anexos.
+- `storage.bucket`: nome publico nao sensivel do bucket esperado para comprovantes.
+- `pwa.available`: indica que instalacao pelo navegador esta habilitada.
+- `pwa.cache`: descreve a politica de cache do service worker.
 - `whatsapp.available`: indica se o recebimento via WhatsApp esta configurado.
 - `connections.status`: `future`, pois nao ha integracao financeira real nesta etapa.
 - `connections.message`: mensagem segura em linguagem de produto.
 
 Regra: nunca retornar chaves, tokens, URLs sensiveis privadas, valores de segredo, modelos, variaveis de ambiente ou nomes de infraestrutura.
+
+### `GET /api/admin/overview`
+
+Objetivo: retornar dados administrativos do workspace para usuario com papel `admin`.
+
+Entrada:
+
+- Header `Authorization: Bearer <access_token>` da sessao Supabase.
+
+Saida:
+
+- Usuarios autorizados, papel, status, ultimo acesso e quantidade de inscricoes push.
+- Saude da sincronizacao do workspace.
+- Estado da configuracao de push sem expor chaves.
+- Contadores de transacoes, contas, metas, orcamentos e logs.
+
+Seguranca:
+
+- Usa `SUPABASE_SERVICE_ROLE_KEY` somente no servidor.
+- Verifica se o usuario autenticado e membro ativo com papel `admin`.
+- Nunca retorna tokens ou segredos.
+
+### `POST /api/admin/member-status`
+
+Objetivo: permitir que administrador bloqueie ou reative usuario do workspace.
+
+Entrada:
+
+- Header `Authorization: Bearer <access_token>`.
+- Body JSON com `userId` e `status` (`active` ou `blocked`).
+
+Regra:
+
+- Administrador nao pode bloquear a propria conta.
+- Usuario bloqueado deixa de passar pela funcao `is_finance_workspace_member`.
+
+### `POST /api/notifications/subscribe`
+
+Objetivo: salvar a inscricao push do navegador/aparelho do usuario autenticado.
+
+Entrada:
+
+- Header `Authorization: Bearer <access_token>`.
+- Body JSON da `PushSubscription` do navegador.
+
+Saida:
+
+- `{ ok: true }` quando a inscricao foi salva.
+
+### `GET|POST /api/notifications/send-due-alerts`
+
+Objetivo: rotina agendada para enviar push real de contas vencendo, contas atrasadas e alertas de saude financeira.
+
+Seguranca:
+
+- Exige `Authorization: Bearer <CRON_SECRET>` ou `?secret=<CRON_SECRET>`.
+- Usa VAPID (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`).
+- Registra entregas em `finance_push_deliveries` para reduzir repeticao de alertas.
 
 ### `POST /api/maya/analyze`
 
@@ -82,23 +152,33 @@ Saida:
 Fallback: se a analise avancada nao estiver disponivel, retornar analise segura baseada nos dados cadastrados.
 Quando nao houver dados reais suficientes, a resposta deve informar insuficiencia de dados em vez de gerar diagnostico financeiro.
 
+Camada local obrigatoria:
+
+- Antes de chamar OpenAI, a rota deve verificar se a pergunta pede calculo de juros, avaliacao de emprestimo/financiamento ou negociacao de conta atrasada.
+- Quando a pergunta estiver nesse escopo, a resposta deve ser gerada por ferramenta local deterministica, sem depender de provedor externo.
+- A ferramenta local deve preservar `healthScore` e `trend` calculados pelo estado financeiro atual.
+- As respostas devem declarar estimativas e pedir CET, taxas, IOF, tarifas, valor liberado, parcelas e demonstrativo de divida quando faltarem dados.
+- A orientacao deve usar conceitos brasileiros de forma educativa e nao deve inventar leis, artigos ou taxas oficiais.
+
 ### `POST /api/maya/receipt`
 
-Objetivo: ler imagem de nota, cupom ou comprovante e sugerir uma despesa.
+Objetivo: ler imagem de nota, cupom, comprovante, boleto, Pix ou conta e sugerir um rascunho financeiro revisavel.
 
 Entrada:
 
 - Imagem em base64/data URL.
 - Nome do arquivo.
+- `documentKind`: `expense`, `income` ou `bill` quando a tela ja souber o destino.
 
 Validacao: a imagem deve ser `data:image/*` e respeitar limite maximo de tamanho antes de qualquer leitura por IA.
 
 Saida:
 
-- `expenseDraft` com descricao, valor, categoria, data, confianca e itens quando disponiveis.
+- `financialDraft` com tipo, titulo, descricao, valor, categoria, datas, pagamento, itens e campos pendentes.
+- `expenseDraft` mantido por compatibilidade com fluxo de despesa.
 - `needsReview`: sempre `true`.
 
-Regra: a despesa so deve ser salva depois da confirmacao do usuario.
+Regra: nenhuma transacao ou conta deve ser salva depois da leitura sem confirmacao do usuario.
 Fallback: se a leitura nao ocorrer, retornar rascunho pendente com valor zero, categoria neutra e `needsReview: true`, sem inferir dados da nota.
 
 ## Endpoints WhatsApp
@@ -247,8 +327,9 @@ Regras:
 - A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
 - A IA pode retornar itens de nota ou linhas de extrato em `items`, mas esses itens sao informativos ate que o usuario confirme o lancamento.
 - O frontend deve exigir preenchimento manual dos campos obrigatorios antes de salvar.
-- O frontend deve verificar duplicidade por data, valor e tipo antes de persistir renda ou despesa.
-- Quando houver possivel duplicidade, o frontend deve pedir confirmacao explicita do usuario.
+- O frontend deve verificar suspeita de duplicidade por data, valor e tipo antes de persistir renda ou despesa.
+- O frontend tambem deve alertar quando houver mesmo valor no mesmo dia, mesmo que o tipo tenha sido classificado diferente.
+- Quando houver possivel duplicidade, o frontend deve pedir decisao explicita para computar ou excluir o novo registro.
 - O frontend deve otimizar imagens de anexo para JPEG antes do envio quando o navegador conseguir decodificar o arquivo.
 - Logs tecnicos devem categorizar falhas de leitura sem expor chave, imagem ou conteudo sensivel.
 
@@ -262,6 +343,42 @@ Efeitos colaterais:
 
 - Nenhum dado financeiro e salvo pela API.
 - O salvamento acontece somente no cliente apos confirmacao do usuario.
+
+### POST `/api/maya/statement`
+
+Objetivo: ler uma imagem de extrato bancario e devolver linhas revisaveis separadas entre renda e despesa.
+
+Permissoes: mesma regra da rota de comprovante; a chave de IA permanece somente no servidor.
+
+Entrada:
+
+- `imageDataUrl`: imagem em data URL.
+- `fileName`: nome do arquivo, opcional.
+
+Saida:
+
+- `statementDraft`: rascunho com titulo, periodo, confianca, anexo e `lines`.
+- `lines`: tipo (`income` ou `expense`), descricao, valor, data, categoria, pessoa, forma de pagamento, destinatario Pix e observacoes.
+- `needsReview`: sempre `true`.
+- `message`: orientacao curta para revisao.
+
+Regras:
+
+- A rota aceita somente `data:image/*` e limita payload antes da chamada de IA.
+- A MAYA deve ignorar saldo, total, cabecalho, limite, subtotal e qualquer linha que nao seja transacao real.
+- Valores retornam positivos; o campo `type` indica entrada ou saida.
+- Quando a linha for Pix e o destinatario/remetente estiver legivel, preencher `paymentRecipient`.
+- Quando nao houver categoria confiavel, usar `Outros`.
+- O frontend deve permitir editar as linhas antes de salvar.
+- O frontend deve verificar duplicidade por tipo, data e valor antes de importar.
+- O frontend tambem deve notificar valor repetido no mesmo dia dentro do proprio extrato ou contra dados ja salvos.
+- Nenhum dado financeiro e salvo pela API; salvamento acontece somente apos confirmacao humana.
+
+Erros esperados:
+
+- `400`: imagem ausente ou invalida.
+- `413`: imagem maior que o limite permitido.
+- `500`: falha inesperada de leitura.
 
 ### POST `/api/maya/validate`
 
@@ -286,7 +403,7 @@ Regras:
 - A rota normaliza o estado financeiro recebido antes da revisao.
 - A rota nao salva dados.
 - Duplicidade exata considera mesmo tipo, mesma data e mesmo valor.
-- Duplicidade similar considera mesmo tipo, mesmo valor e data proxima.
+- Duplicidade similar considera mesmo valor no mesmo dia entre renda/despesa, ou mesmo tipo e mesmo valor em data proxima.
 
 ## Pendencias
 

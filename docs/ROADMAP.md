@@ -33,6 +33,8 @@ Objetivo: criar os blocos essenciais de uma plataforma multiusuario.
 - Auditoria basica.
 - Configuracoes por organizacao.
 - Central de dados, consentimentos e revogacao de conexoes.
+- Painel admin com usuarios autorizados, bloqueio, ultimo acesso e saude de sincronizacao.
+- Base relacional preparada para migracao gradual de entidades financeiras.
 
 ## Fase 3: Produto principal
 
@@ -54,6 +56,7 @@ Objetivo: adicionar recursos de IA com seguranca, custo controlado e observabili
 - Avaliacao de qualidade das respostas.
 - Auditoria de uso.
 - Evolucao do indicador de qualidade dos dados usado pela MAYA.
+- Memoria financeira por periodo para perguntas sobre gastos, renda e metas.
 - Entrada de comprovantes por WhatsApp com baixo custo e sem n8n.
 - Integracoes financeiras somente apos consentimento, autenticacao e requisitos regulatorios claros.
 
@@ -64,6 +67,8 @@ Objetivo: preparar evolucao para SaaS comercial.
 - Billing e planos.
 - Metricas de produto.
 - Observabilidade avancada.
+- Exportacao profissional em PDF e Excel.
+- Push real via service worker, VAPID e rotina agendada.
 - Suporte e administracao.
 - Hardening de seguranca.
 - Performance e escalabilidade.

@@ -127,6 +127,8 @@ Regras arquiteturais:
 - Toda resposta da IA deve ter fallback local.
 - A leitura de nota deve retornar dados revisaveis pelo usuario antes de virar despesa.
 - A leitura de documentos financeiros deve retornar rascunhos revisaveis para despesa, renda ou conta a pagar.
+- A leitura de extrato bancario deve retornar `BankStatementDraft`, com linhas separadas entre renda e despesa antes de virar transacoes.
+- Linhas de extrato devem passar pela mesma verificacao de duplicidade aplicada a lancamentos manuais.
 - Anexos enviados pelo usuario devem ser preparados no cliente para reduzir tamanho e normalizar formato antes da rota server-side.
 - A chamada server-side de leitura deve ter timeout, resposta JSON estruturada e logs tecnicos seguros para diagnostico.
 - Campos nao confirmados pela imagem devem ser tratados como ausentes, nao como inferencias.
@@ -143,6 +145,19 @@ Diretrizes:
 - O status atrasado pode ser derivado em tempo de exibicao para evitar dados obsoletos.
 - O app pode preparar texto de resumo, mas envio externo depende de canal configurado e autorizado.
 - Pagamento, agendamento bancario e iniciacao Pix ficam fora do escopo ate existir parceiro regulado, consentimento, auditoria e seguranca adequados.
+
+## Analiticos financeiros
+
+Analiticos por periodo ficam no modulo `finance` e devem ser calculados a partir do estado confirmado pelo usuario.
+
+Diretrizes:
+
+- Grafico mensal deve comparar renda e despesa com dados reais, sem preencher lacunas com valores inventados.
+- Filtros de renda usam categorias especificas de entrada: Salario, Sobrancelha, Henna, Cabelo, Jogos e Outros.
+- Filtros de despesa usam categorias de saida e agrupam Pix por destinatario quando disponivel.
+- Pagamentos recorrentes, boletos, contas e parcelas podem ser agrupados por periodo entre dias ou meses.
+- Alertas de saude financeira devem comparar o mes atual com rotina recente e usar linguagem de aviso, nao conclusao definitiva.
+- Pagamentos reais e agendamentos continuam fora do escopo da arquitetura atual.
 
 ## Multi-tenancy
 
@@ -176,7 +191,8 @@ Limites conhecidos:
 - A sincronizacao atual e de estado completo, nao de eventos por entidade.
 - Edicoes simultaneas em dois aparelhos usam conciliacao simples por `id`.
 - Delecoes offline concorrentes podem exigir revisao futura com tombstones/auditoria.
-- Anexos originais devem migrar para storage privado antes de sincronizacao completa de arquivos.
+- Anexos otimizados sincronizam no estado compartilhado nesta etapa.
+- Anexos originais em alto volume devem migrar para storage privado.
 - O modelo compartilhado atual atende um workspace familiar; para SaaS, criar workspaces dinamicos por organizacao/assinatura.
 
 ## Processamento assincrono

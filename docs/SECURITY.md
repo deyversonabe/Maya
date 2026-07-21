@@ -60,12 +60,22 @@ Regras de seguranca:
 - Senhas curtas de 4 digitos so sao aceitaveis como bootstrap temporario em ambiente controlado; para dados financeiros reais, usar senhas fortes.
 - As tabelas `finance_workspaces`, `finance_workspace_members` e `finance_workspace_states` devem permitir acesso apenas a usuarios membros do workspace.
 - Criar usuario no Supabase Auth nao deve liberar dados automaticamente; o usuario precisa ser membro do workspace compartilhado.
+- Cadastro publico pelo frontend deve permanecer desativado; criacao de usuario e autorizacao de workspace sao tarefas administrativas.
 - Com Supabase ativo, dados financeiros nao devem ficar visiveis quando a sessao estiver bloqueada ou encerrada.
 - Fechamento de aba e inatividade devem marcar a sessao como bloqueada e exigir senha no retorno.
 - Dados locais sao usados como cache e fallback.
 - Ao entrar, dados locais podem ser enviados para a nuvem compartilhada do workspace autenticado.
-- Anexos em base64 nao devem ser enviados para JSONB nesta etapa; storage privado deve ser usado antes de sincronizar arquivos reais.
+- Anexos otimizados devem usar Supabase Storage privado quando `maya-finance-attachments` estiver configurado.
+- URLs de anexo devem ser assinadas e temporarias; o bucket nao deve ser publico.
+- `attachmentDataUrl` deve ser tratado apenas como fallback temporario para ambientes sem bucket.
+- Historico de atividades deve registrar acoes operacionais sem gravar segredos ou conteudo bruto de comprovantes.
 - Backups continuam disponiveis como copia manual controlada pelo usuario.
+- Painel admin deve exigir usuario com papel `admin` no backend, usando access token Supabase e service role apenas no servidor.
+- Usuario bloqueado em `finance_workspace_members.status` nao deve acessar dados do workspace nem passar pela funcao `is_finance_workspace_member`.
+- `last_seen_at` deve ser atualizado por funcao segura no banco, nunca por permissao ampla de update em membros.
+- Push real deve usar chaves VAPID em variaveis de ambiente; somente a chave publica pode usar `NEXT_PUBLIC_`.
+- Rotina de envio push deve exigir `CRON_SECRET` e registrar entregas para reduzir repeticao.
+- Inscricoes push expiradas ou rejeitadas devem ser desativadas.
 
 ## Aplicacao web
 
@@ -117,10 +127,16 @@ Ao enviar foto de nota ou comprovante:
 - A resposta deve gerar rascunho, nao lancamento automatico.
 - O usuario deve confirmar antes de salvar qualquer despesa.
 - Imagens confirmadas pelo usuario podem ser mantidas no armazenamento local nesta etapa para compor anexos de contas/despesas.
-- Quando houver backend real, imagens devem migrar para storage privado com controle de acesso.
+- Quando Supabase Storage estiver configurado, imagens confirmadas devem ser salvas no bucket privado `maya-finance-attachments`.
 - Leituras da MAYA devem verificar possivel duplicidade por data e valor antes de salvar renda ou despesa.
 - Imagens enviadas pelo navegador devem ser otimizadas para reduzir tamanho, ficar abaixo do limite de payload da funcao e remover metadados carregados no arquivo original quando possivel.
 - Falhas do provedor de IA devem ser registradas apenas com metadados seguros, como categoria, status, codigo e request id; nunca com chave, imagem ou dados completos do comprovante.
+
+## PWA e notificacoes
+
+- Service worker deve cachear apenas assets estaticos, nunca rotas `/api`, estados financeiros ou respostas Supabase.
+- Notificacoes locais dependem da permissao do navegador e devem conter apenas resumo minimo de vencimento ou alerta.
+- Push server-side futuro deve exigir opt-in explicito, revogacao e politica de retencao.
 
 ## WhatsApp
 

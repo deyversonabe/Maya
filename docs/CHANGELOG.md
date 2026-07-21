@@ -11,8 +11,8 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Estrutura inicial de documentacao viva em `docs/`.
 - Documento principal `PROJECT_RULES.md` definido como fonte de verdade do projeto.
 - Diretrizes iniciais para arquitetura, banco de dados, API, design system, IA, seguranca, contribuicao e roadmap.
-- Imagem conceitual inicial em `docs/assets/juntos-initial-visual-concept.png`.
-- Variacao visual com fundo verde-musgo escuro e titulos em bronze/terracota em `docs/assets/juntos-initial-visual-concept-moss-bronze.png`.
+- Imagem conceitual inicial em `docs/assets/maya-initial-visual-concept.png`.
+- Variacao visual com fundo verde-musgo escuro e titulos em bronze/terracota em `docs/assets/maya-initial-visual-concept-moss-bronze.png`.
 - Primeira tela web estatica implementada para resolver acesso inicial em deploy Vercel.
 - MVP financeiro funcional implementado com Next.js, TypeScript, TailwindCSS, Framer Motion, Prisma preparado e persistencia local versionada.
 - Funcionalidades de transacoes, metas, indicadores, insights locais, importacao CSV, exportacao JSON e limpeza de dados locais.
@@ -21,7 +21,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Telas separadas implementadas para Inicio, Dashboard, Despesas, Metas e MAYA.
 - Rotas server-side implementadas para `OPENAI_API_KEY`, `OPENAI_MODEL` e `OPENAI_VISION_MODEL`.
 - Despesas manuais, por foto/camera, recorrentes e parceladas implementadas com divisao por meses.
-- Logo Juntos Maya adicionada em `public/brand/juntos-maya-logo.png` e configurada como botao/link de retorno ao inicio.
+- Logo Maya adicionada em `public/brand/maya-logo.png` e configurada como botao/link de retorno ao inicio.
 - Guia de deploy adicionado em `docs/DEPLOYMENT.md` para evitar upload em pastas incorretas no GitHub.
 - Ferramenta de orcamentos mensais por categoria implementada para controle preventivo da saude financeira.
 - Migracao local para `schemaVersion = 2`, preservando dados antigos e adicionando `budgets`.
@@ -59,6 +59,35 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Workspace financeiro compartilhado adicionado para usuarios autorizados verem a mesma base em todos os aparelhos.
 - Supabase Realtime adicionado ao estado financeiro compartilhado para propagar alteracoes entre aparelhos.
 - Bloqueio de sessao por inatividade e fechamento de aba adicionado para exigir senha novamente.
+- Autenticacao obrigatoria aplicada no layout raiz com excecao apenas para paginas legais publicas.
+- Comprovantes otimizados passam a ser preservados na sincronizacao em nuvem.
+- Rota `POST /api/maya/statement` adicionada para leitura de imagem de extrato bancario com separacao entre renda e despesa.
+- Revisao editavel de extratos adicionada na tela de Despesas antes da importacao.
+- Despesas Pix agora exigem destinatario antes do salvamento.
+- Categorias de renda separadas em Salario, Sobrancelha, Henna, Cabelo, Jogos e Outros.
+- Campo opcional de descricao ativado quando renda, despesa ou conta usa categoria Outros.
+- Itens de nota e linhas de extrato passam a ser salvos no lancamento/conta e consultados dentro do app.
+- Aba Meses ganhou grafico de linha com renda e despesa, filtros entre dias/meses e somas por periodo.
+- Somatorio de Pix nominal, boleto, conta, recorrencia e parcela adicionado por periodo filtrado.
+- Alertas locais de saude financeira adicionados para avisar renda ou despesa fora da rotina recente.
+- Ferramentas locais da MAYA adicionadas para calculo de juros, avaliacao de proposta de emprestimo/financiamento e roteiro de negociacao de contas atrasadas.
+- Sugestoes de chat adicionadas para juros, emprestimos e contas em atraso.
+- Notificacao de duplicidade reforcada para exigir decisao entre excluir o novo registro ou computar mesmo assim.
+- Metas agora permitem registrar saldo guardado com data, adicionar novos aportes por meta e consultar historico de saldos.
+- Marca textual do produto consolidada como Maya em metadados, manifesto, interface e documentacao.
+- Supabase Storage privado adicionado para comprovantes, notas, boletos, Pix e extratos anexados, com fallback local quando o bucket ainda nao estiver configurado.
+- Links assinados de anexo adicionados para visualizar comprovantes em celular e desktop sem tornar arquivos publicos.
+- Historico de atividades adicionado para registrar usuario, acao, entidade e horario de lancamentos, importacoes, metas, orcamentos e contas.
+- Service worker conservador adicionado para instalacao PWA e cache apenas de assets estaticos, sem cachear APIs financeiras.
+- Painel de notificacoes locais adicionado para alertas de contas vencendo, vencendo hoje, atrasadas e saude financeira quando o navegador permitir.
+- Tema visual neon/LED adicionado com scanlines, brilho controlado, cards mais vivos, botoes com destaque e movimento sutil.
+- Valores financeiros negativos agora usam vermelho de alerta em metricas, saldos, resumos, metas, despesas, orcamentos e itens lidos de anexos.
+- Painel Admin adicionado em `/admin` para usuarios, bloqueio/reativacao, ultimo acesso, saude da sincronizacao e volume de dados.
+- Exportacao profissional adicionada com PDF, Excel e JSON por mes ou intervalo de datas.
+- Push real estruturado com inscricao do aparelho, service worker, tabela de inscricoes, rotina agendada e deduplicacao diaria de alertas.
+- Base relacional Supabase preparada para transacoes, contas, metas e anexos, mantendo JSONB compartilhado como fonte operacional do MVP.
+- MAYA ganhou memoria financeira por periodo e plano automatico de economia para metas cadastradas.
+- Atalho mobile "Nova despesa" adicionado acima da navegacao inferior.
 
 ### Fixed
 
@@ -72,9 +101,15 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Migracao local remove dados demonstrativos antigos armazenados no navegador para `schemaVersion` 1 e 2.
 - Separadores visuais Unicode removidos de componentes para evitar caracteres corrompidos em ambientes Windows/GitHub.
 - Fundo global ajustado para iluminacao linear/LED, sem gradientes circulares decorativos.
+- Design system atualizado com paleta musgo, bronze, terracota, cyan/verde/rosa neon e criterio visual obrigatorio para numeros negativos.
+- `AuthGate` passa a reconhecer usuario bloqueado e registrar ultimo acesso por funcao segura no Supabase.
 - Rotas da MAYA normalizam estado financeiro recebido e limitam tamanho de imagem enviada para leitura de comprovante.
 - Botao em modo link passa a aplicar area clicavel completa no elemento de navegacao.
 - Leitura de comprovantes reforcada com timeout, modo JSON, detalhe alto para OCR, modelo de visao recomendado e mensagens de falha mais especificas sem termos tecnicos de infraestrutura.
+- Corrigido `AuthGate` que existia no projeto, mas nao estava aplicado ao layout, deixando o app abrir sem login.
+- Cadastro publico removido da interface de conta e bloqueado na funcao interna de sincronizacao.
+- Caixa rapida da MAYA na pagina inicial agora usa fallback local quando a rota de IA falha ou retorna resposta invalida.
+- Documentacao duplicada removida de `components/`; a documentacao viva permanece em `docs/`.
 
 ## [0.0.1] - 2026-07-09
 

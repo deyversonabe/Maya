@@ -48,7 +48,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 ### Envio de nota pelo WhatsApp
 
-1. Usuario envia uma foto de nota para o numero do Juntos Maya.
+1. Usuario envia uma foto de nota para o numero do Maya.
 2. WhatsApp chama o webhook do sistema.
 3. Sistema valida a origem do evento.
 4. Sistema baixa a imagem no servidor.
@@ -89,11 +89,13 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 ### Cadastro de metas
 
 1. Usuario acessa Metas.
-2. Usuario informa nome, tipo, prioridade, valor alvo, valor atual e prazo.
-3. Sistema salva a meta no banco local.
+2. Usuario informa nome, tipo, prioridade, valor alvo, saldo ja guardado, data do saldo e prazo.
+3. Sistema salva a meta na base compartilhada quando a nuvem esta configurada, mantendo cache local.
 4. Usuario acompanha progresso individual e progresso geral.
-5. Usuario pode atualizar valor atual ou remover metas.
-6. MAYA usa metas como contexto, mas nao cria previsoes sem receitas e despesas reais.
+5. Usuario pode adicionar novo saldo pago/guardado com valor, data e observacao.
+6. Sistema atualiza o saldo total da meta e registra o historico do aporte.
+7. Usuario pode revisar o historico de saldos ou remover metas.
+8. MAYA usa metas como contexto, mas nao cria previsoes sem receitas e despesas reais.
 
 ### Central de Dados e Confianca
 
@@ -125,6 +127,26 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 5. Recuperacao de senha e iniciada pelo painel do Supabase.
 6. Conta administradora usa `deyversonsilvaf@gmail.com` como e-mail de recuperacao administrativa.
 
+### Painel admin
+
+1. Usuario admin acessa Admin.
+2. Sistema valida sessao e papel administrativo no backend.
+3. Admin visualiza usuarios autorizados, papel, status, ultimo acesso e aparelhos com push.
+4. Admin pode bloquear ou reativar um usuario.
+5. Admin visualiza saude da sincronizacao e volume de dados.
+6. Admin escolhe periodo e exporta PDF, Excel ou JSON.
+7. Admin pode salvar o aparelho atual para receber push real.
+
+### Push real
+
+1. Usuario autorizado acessa Admin.
+2. Usuario clica em salvar este aparelho para push.
+3. Navegador pede permissao de notificacao.
+4. Sistema salva a inscricao push privada no Supabase.
+5. Rotina agendada da Vercel executa diariamente.
+6. Sistema envia alertas de contas vencendo, vencendo hoje, atrasadas e saude financeira.
+7. Ao clicar no alerta, app abre a tela de Contas.
+
 ### Contas a pagar
 
 1. Usuario acessa Contas.
@@ -145,8 +167,8 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Usuario seleciona tipo Receita e anexa imagem de comprovante ou documento de entrada.
 3. MAYA cria rascunho revisavel com descricao, valor, categoria e data de entrada quando legivel.
 4. Usuario completa campos faltantes.
-5. Sistema verifica se ja existe renda ou despesa com a mesma data, mesmo valor e mesmo tipo.
-6. Se houver possivel duplicidade, sistema pede confirmacao antes de salvar.
+5. Sistema verifica se ja existe renda ou despesa com valor igual em data igual ou proxima.
+6. Se houver suspeita de duplicidade, sistema pede decisao entre excluir o novo registro ou computar mesmo assim.
 7. Sistema salva a receita no mes da data de entrada.
 
 ### Confirmacao de duplicidade
@@ -154,8 +176,50 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 1. Usuario tenta salvar renda, despesa ou conta.
 2. Sistema compara data, valor e tipo com os registros existentes.
 3. Sistema exibe os registros possivelmente duplicados quando encontrar coincidencia.
-4. Usuario escolhe cancelar ou confirmar o salvamento mesmo assim.
-5. Sistema so salva duplicidade apos confirmacao explicita.
+4. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
+5. Sistema so salva e soma a duplicidade apos aprovacao explicita.
+
+### Importacao de extrato por imagem
+
+1. Usuario acessa Despesas.
+2. Usuario clica em Anexar extrato e envia uma imagem ou print do extrato.
+3. Sistema envia a imagem para `POST /api/maya/statement`.
+4. MAYA tenta separar apenas linhas reais em renda e despesa.
+5. Sistema exibe linhas editaveis com tipo, descricao, valor, data, categoria, pessoa, forma de pagamento e destinatario Pix.
+6. Usuario remove ou corrige linhas antes de importar.
+7. Se uma linha de despesa estiver marcada como Pix, sistema exige informar para quem foi feito.
+8. Sistema alerta quando houver valor repetido no mesmo dia dentro do extrato ou nos dados ja salvos.
+9. Usuario confirma importacao.
+10. Sistema salva as linhas como transacoes compartilhadas na nuvem e guarda os itens/linhas do anexo para consulta posterior.
+
+### Analise por periodo
+
+1. Usuario acessa Meses.
+2. Usuario visualiza grafico de linha com renda e despesa entre meses.
+3. Usuario escolhe filtro entre dias ou entre meses.
+4. Usuario filtra despesas por categoria e ve soma de Pix nominais, boletos, contas, recorrencias e parcelas.
+5. Usuario filtra rendas por Salario, Sobrancelha, Henna, Cabelo, Jogos ou Outros.
+6. Sistema mostra total e quantidade de transacoes do periodo filtrado.
+7. MAYA exibe alertas quando a renda ou despesa do mes fugir da rotina recente.
+
+### Chat financeiro da MAYA
+
+1. Usuario acessa MAYA.
+2. Usuario pergunta sobre juros, emprestimo, financiamento ou conta atrasada.
+3. Sistema identifica perguntas objetivas e executa calculo local quando houver valor, taxa, prazo ou parcela suficientes.
+4. MAYA responde com estimativa, custo total, impacto no orcamento e proximos passos.
+5. Quando faltarem dados, MAYA pede CET, taxa, IOF, tarifas, valor liberado, parcelas, vencimentos ou demonstrativo da divida.
+6. Para contas atrasadas, MAYA sugere roteiro de negociacao, pedido de desconto, acordo por escrito e parcela prudente.
+7. Em risco juridico, cobranca abusiva ou superendividamento, MAYA orienta buscar canais oficiais de defesa do consumidor ou profissional habilitado.
+
+### Aprovacao de duplicidade
+
+1. Usuario cadastra despesa, renda, conta ou importa extrato.
+2. Sistema compara valor, data, tipo e registros existentes.
+3. Se houver valor igual no mesmo dia, ou mesmo tipo e valor em data proxima, o salvamento fica parado.
+4. Interface mostra a suspeita de duplicidade e os registros relacionados.
+5. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
+6. Sistema so soma e sincroniza o valor quando houver aprovacao para computar.
 
 ### Consentimento financeiro futuro
 

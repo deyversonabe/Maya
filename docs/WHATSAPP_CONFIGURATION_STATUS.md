@@ -3,7 +3,7 @@
 Data do registro: 2026-07-15
 Atualizacao: 2026-07-18
 
-Este documento registra o estado atual da configuracao do WhatsApp Cloud API do Juntos Maya, para permitir retomada futura sem depender do historico do chat.
+Este documento registra o estado atual da configuracao do WhatsApp Cloud API do Maya, para permitir retomada futura sem depender do historico do chat.
 
 ## Estado atual na Meta
 
@@ -19,7 +19,7 @@ O webhook ja foi configurado corretamente e aparece com status concluido, indica
 
 Configuracao do perfil do WhatsApp Business criada:
 
-- Nome de exibicao: `Juntos Maya`.
+- Nome de exibicao: `Maya`.
 - Fuso horario: `(GMT-03:00) America/Sao Paulo`.
 - Categoria: `Financas e bancos`.
 - Motivo da categoria: foi a opcao mais proxima disponivel na lista da Meta, pois `Utilitarios e produtividade` e `Software` nao estavam disponiveis.
@@ -68,7 +68,7 @@ O redeploy ainda nao foi feito de proposito. A ideia e juntar esta alteracao com
 
 ## Pendencia atual
 
-A conta `Juntos Maya` na Meta esta com status:
+A conta `Maya` na Meta esta com status:
 
 ```text
 Pending review
@@ -95,7 +95,7 @@ Esse estado depende da propria Meta e pode levar de alguns minutos ate 24-48 hor
 
 ## Decisao de produto em 2026-07-18
 
-Como o status `Pending review` continuou bloqueando o registro do numero, a decisao atual e colocar o Juntos Maya no ar sem depender do WhatsApp.
+Como o status `Pending review` continuou bloqueando o registro do numero, a decisao atual e colocar o Maya no ar sem depender do WhatsApp.
 
 O WhatsApp fica como integracao opcional e pausada. A captura de comprovantes continua disponivel pelo proprio app:
 
@@ -138,7 +138,7 @@ WHATSAPP_ENABLED=true
 ```env
 WHATSAPP_PHONE_NUMBER_ID=1238924655973126
 WHATSAPP_ENABLED=true
-WHATSAPP_VERIFY_TOKEN=juntos_maya_webhook_seguro_2026
+WHATSAPP_VERIFY_TOKEN=maya_webhook_seguro_2026
 WHATSAPP_API_VERSION=v25.0
 NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app
 ```
@@ -147,7 +147,7 @@ NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app
 8. Validar o webhook no navegador:
 
 ```text
-https://maya-steel.vercel.app/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=juntos_maya_webhook_seguro_2026&hub.challenge=teste123
+https://maya-steel.vercel.app/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=maya_webhook_seguro_2026&hub.challenge=teste123
 ```
 
 Resultado esperado:
@@ -156,7 +156,7 @@ Resultado esperado:
 teste123
 ```
 
-9. Enviar uma mensagem e uma foto de nota do numero pessoal para o numero novo do Juntos Maya.
+9. Enviar uma mensagem e uma foto de nota do numero pessoal para o numero novo do Maya.
 10. Confirmar se a MAYA responde com rascunho revisavel.
 
 ## Lembretes importantes

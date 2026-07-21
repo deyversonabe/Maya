@@ -11,8 +11,8 @@ Na entrega funcional inicial, enquanto as credenciais reais do Supabase nao exis
 Camadas de dados:
 
 - Atual sem conta online: `localStorage` com schema versionado para transacoes, metas, preferencias e historico basico.
-- Atual com conta online: Supabase Auth + workspace financeiro compartilhado protegido por RLS e membros autorizados.
-- Proxima etapa: separar entidades financeiras em tabelas relacionais normalizadas.
+- Atual com conta online: Supabase Auth + workspace financeiro compartilhado protegido por RLS, membros autorizados e Storage privado para anexos.
+- Atual em preparacao SaaS: tabelas relacionais normalizadas criadas para transacoes, contas, metas, anexos e push, mantendo o JSONB compartilhado como fonte operacional do MVP ate a migracao de escrita/leitura por entidade.
 - Futuro SaaS: Supabase Auth, Row Level Security, auditoria e backups.
 
 Outros armazenamentos podem ser adicionados por necessidade especifica:
@@ -57,6 +57,10 @@ Tabelas:
 - `public.finance_workspaces`: identifica a base compartilhada.
 - `public.finance_workspace_members`: vincula usuarios autenticados ao workspace e define papel.
 - `public.finance_workspace_states`: guarda o `FinanceState` compartilhado em JSONB.
+- `public.finance_push_subscriptions`: salva inscricoes push por usuario/aparelho.
+- `public.finance_push_deliveries`: registra alertas enviados por dia para evitar repeticao.
+- `public.finance_transactions`, `public.finance_bills`, `public.finance_goals`, `public.finance_attachments`: base relacional preparada para migracao SaaS gradual.
+- `storage.buckets` / `storage.objects`: bucket privado `maya-finance-attachments` para comprovantes, notas, boletos, Pix e extratos.
 
 Campos principais de `finance_workspace_states`:
 
@@ -77,12 +81,21 @@ Regras:
 - A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
 - Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
 - Quando Supabase esta configurado e nao existe sessao autenticada, o app nao deve exibir dados financeiros locais.
-- `attachmentDataUrl` nao e enviado para a nuvem nesta etapa para evitar payloads grandes em JSONB; o nome do anexo e os dados extraidos sao preservados.
+- `attachmentStoragePath` deve ser usado quando o bucket privado estiver configurado.
+- `attachmentDataUrl` fica como fallback temporario quando o Storage ainda nao estiver pronto.
+- Imagens devem ser reduzidas antes do upload para evitar payloads grandes e custo desnecessario.
+- `activityLogs` guarda ate 200 eventos recentes de acoes relevantes feitas por usuarios autorizados.
+- `finance_workspace_members.status` controla bloqueio administrativo (`active` ou `blocked`).
+- `finance_workspace_members.last_seen_at` registra ultimo acesso por funcao segura `touch_finance_workspace_member`.
+- Tabelas de push devem usar RLS e aceitar escrita apenas do proprio usuario membro ativo.
+- Entregas push devem ser registradas antes do envio para reduzir alerta duplicado por rotina agendada.
 
 Arquivo SQL:
 
 - `supabase/migrations/20260719_finance_states.sql`.
 - `supabase/migrations/20260719_shared_finance_workspace.sql`.
+- `supabase/migrations/20260721_finance_attachments_storage.sql`.
+- `supabase/migrations/20260721_admin_push_relational_foundation.sql`.
 
 ## Modelo financeiro inicial
 
@@ -110,7 +123,16 @@ Campos essenciais de Transaction:
 - `installmentNumber`.
 - `installmentTotal`.
 - `source`.
+- `paymentMethod`.
+- `paymentRecipient`.
+- `otherCategoryDescription`.
 - `receiptImageName`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `attachmentStoragePath`.
+- `attachmentMimeType`.
+- `attachmentSize`.
+- `documentItems`.
 - `notes`.
 
 Campos essenciais de Goal:
@@ -120,8 +142,40 @@ Campos essenciais de Goal:
 - `type`.
 - `targetAmount`.
 - `currentAmount`.
+- `contributions`.
 - `dueDate`.
 - `priority`.
+
+Campos essenciais de GoalContribution:
+
+- `id`.
+- `amount`.
+- `date`.
+- `notes`.
+- `createdAt`.
+
+Campos essenciais de FinanceActivityLog:
+
+- `id`.
+- `actorEmail`.
+- `action`.
+- `entityType`.
+- `entityLabel`.
+- `details`.
+- `createdAt`.
+
+Regras de FinanceActivityLog:
+
+- Registrar lancamentos, importacoes, remocoes, metas, orcamentos e alteracoes de contas.
+- Manter no maximo 200 eventos recentes no estado compartilhado.
+- Nao registrar valores sensiveis completos, tokens, chaves ou conteudo bruto de comprovantes.
+
+Regras de GoalContribution:
+
+- Cada novo saldo guardado em meta deve registrar valor e data.
+- `currentAmount` permanece como saldo total atual para calculos rapidos de progresso.
+- O historico em `contributions` explica quando o saldo foi adicionado ou ajustado.
+- Dados antigos sem historico recebem uma entrada de saldo anterior quando `currentAmount` for maior que zero.
 
 Campos essenciais de Budget:
 
@@ -160,6 +214,8 @@ Campos essenciais de PayableBill:
 - `dueDate`.
 - `paymentMethod`: boleto, Pix, cartao ou outro.
 - `paymentCode`.
+- `paymentRecipient`.
+- `otherCategoryDescription`.
 - `recurrence`.
 - `recurrenceGroupId`.
 - `installmentGroupId`.
@@ -169,6 +225,7 @@ Campos essenciais de PayableBill:
 - `source`: manual, anexo ou importacao.
 - `attachmentImageName`.
 - `attachmentDataUrl`.
+- `documentItems`.
 - `notes`.
 - `paidAt`.
 - `createdAt`.
@@ -178,8 +235,8 @@ Regras:
 - Contas sao agrupadas pelo mes de `dueDate`.
 - Contas pagas mantem historico e nao devem ser removidas automaticamente.
 - Status atrasado pode ser calculado pela data atual mesmo quando o valor persistido ainda estiver como pendente.
-- Anexos confirmados pelo usuario podem ficar no armazenamento local enquanto nao existir storage seguro em nuvem.
-- Quando banco real existir, anexos devem migrar para storage privado com referencia no registro.
+- Anexos confirmados pelo usuario sao salvos como imagem otimizada no estado compartilhado nesta etapa.
+- Quando o volume crescer, anexos devem migrar para storage privado com referencia no registro.
 
 ## Rascunhos de documentos financeiros
 
@@ -197,6 +254,8 @@ Campos essenciais:
 - `entryDate`.
 - `paymentMethod`.
 - `paymentCode`.
+- `paymentRecipient`.
+- `otherCategoryDescription`.
 - `confidence`.
 - `missingFields`.
 - `items`.
@@ -205,23 +264,61 @@ Campos essenciais:
 
 Regra: nenhum rascunho vira `Transaction` ou `PayableBill` sem confirmacao humana.
 
+## Extratos bancarios
+
+A leitura de extrato retorna `BankStatementDraft`, que nao e persistido diretamente. O usuario revisa as linhas e, apos confirmar, cada linha vira uma `Transaction` com `source = statement`.
+
+Campos essenciais de `BankStatementDraft`:
+
+- `title`.
+- `periodStart`.
+- `periodEnd`.
+- `confidence`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `lines`.
+- `missingFields`.
+- `notes`.
+
+Campos essenciais de cada linha:
+
+- `type`: `income` ou `expense`.
+- `description`.
+- `amount`.
+- `category`.
+- `person`.
+- `date`.
+- `paymentMethod`.
+- `paymentRecipient`.
+- `otherCategoryDescription`.
+- `confidence`.
+- `notes`.
+
+Regras:
+
+- Linhas de extrato confirmadas devem manter uma copia resumida em `documentItems`, para consulta posterior dentro do app.
+- A imagem otimizada do anexo pode ser mantida em `attachmentDataUrl` enquanto a fase MVP usa JSONB compartilhado.
+- No futuro, anexos devem migrar para storage privado com URL assinada e referencia no registro.
+
 ## Duplicidade
 
-A deteccao de duplicidade nesta etapa e feita no cliente, antes de salvar no armazenamento local.
+A deteccao de duplicidade nesta etapa e feita no cliente, antes de salvar no estado compartilhado.
 
 Regras para `Transaction`:
 
 - Comparar somente renda e despesa.
 - Considerar possivel duplicidade quando `type`, `date` e `amount` forem equivalentes.
+- Considerar suspeita quando `date` e `amount` forem equivalentes, mesmo que o tipo tenha sido classificado diferente.
+- Considerar suspeita quando o mesmo tipo tiver mesmo valor em data proxima.
 - Comparar valores com tolerancia de centavos.
 - Nao apagar, mesclar ou bloquear definitivamente registros duplicados.
-- Exigir confirmacao explicita do usuario quando houver repeticao.
+- Exigir decisao explicita do usuario para excluir o novo registro ou computar mesmo assim quando houver repeticao.
 
 Regras para `PayableBill`:
 
 - Considerar possivel duplicidade quando `dueDate` e `amount` forem equivalentes.
 - Mostrar titulo e categoria das contas existentes antes de confirmar.
-- Permitir salvar duplicidade quando for intencional.
+- Permitir computar duplicidade quando for intencional.
 
 ## Migracao local
 

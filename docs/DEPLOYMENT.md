@@ -1,6 +1,6 @@
 # Deployment
 
-Este documento explica como publicar o Juntos no GitHub e Vercel sem quebrar a estrutura do projeto.
+Este documento explica como publicar o Maya no GitHub e Vercel sem quebrar a estrutura do projeto.
 
 ## Estrutura correta na raiz
 
@@ -50,7 +50,7 @@ Se isso acontecer, a Vercel nao encontra os arquivos nos caminhos esperados e o 
 7. Confirme que `package.json` aparece na raiz.
 8. Confirme que `components/app/app-shell.tsx` existe.
 9. Confirme que `components/ui/button.tsx` existe.
-10. Confirme que `public/brand/juntos-maya-logo.png` existe.
+10. Confirme que `public/brand/maya-logo.png` existe.
 
 ## Variaveis na Vercel
 

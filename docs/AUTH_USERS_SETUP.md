@@ -10,6 +10,8 @@ Os nomes `Deyveron` e `Tom` devem ser usados como nome de exibicao do usuario. O
 
 Todos os usuarios autorizados devem ser membros do workspace financeiro compartilhado. Sem esse vinculo, o Supabase RLS impede leitura e escrita dos dados.
 
+Cadastro publico fica desativado no app. Novos acessos devem ser criados pelo administrador no Supabase.
+
 ## Usuarios solicitados
 
 | Nome de exibicao | E-mail de acesso | Observacao |
@@ -39,9 +41,11 @@ Depois do primeiro acesso, altere para uma senha forte.
 
 1. Acesse `https://supabase.com/dashboard`.
 2. Abra o projeto da MAYA.
-3. Va em `Authentication > Users`.
-4. Clique em `Add user` ou `Create user`.
-5. Para Deyveron:
+3. Va em `Authentication > Providers`.
+4. Desative cadastro publico de novos usuarios, mantendo login por e-mail/senha ativo.
+5. Va em `Authentication > Users`.
+6. Clique em `Add user` ou `Create user`.
+7. Para Deyveron:
    - E-mail: `deyversonsilvaf@gmail.com`
    - Senha: defina uma senha inicial segura.
    - Confirme o e-mail se o painel oferecer essa opcao.
@@ -55,7 +59,7 @@ Depois do primeiro acesso, altere para uma senha forte.
 }
 ```
 
-6. Para Tom:
+8. Para Tom:
    - Use o e-mail real do Tom.
    - Defina uma senha inicial segura.
    - Em metadata, use:
@@ -68,7 +72,7 @@ Depois do primeiro acesso, altere para uma senha forte.
 }
 ```
 
-7. Depois de criar os usuarios manualmente, inclua cada um em `finance_workspace_members` pelo SQL Editor:
+9. Depois de criar os usuarios manualmente, inclua cada um em `finance_workspace_members` pelo SQL Editor:
 
 ```sql
 insert into public.finance_workspace_members (workspace_id, user_id, role)
