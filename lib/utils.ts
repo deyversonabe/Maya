@@ -20,3 +20,16 @@ export function formatPercent(value: number) {
 export function toInputDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
+
+export function isNegativeFinancialValue(value: number | string) {
+  if (typeof value === "number") {
+    return value < 0;
+  }
+
+  const normalized = value.replace(/\s/g, "").replace("−", "-");
+  return normalized.includes("-") && /\d/.test(normalized);
+}
+
+export function financialValueClass(value: number | string, positiveClassName = "financial-positive") {
+  return isNegativeFinancialValue(value) ? "financial-negative" : positiveClassName;
+}
