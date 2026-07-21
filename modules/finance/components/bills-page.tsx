@@ -19,16 +19,17 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { formatCurrency, toInputDate } from "@/lib/utils";
-import { transactionCategories } from "../data/defaults";
+import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import { expenseCategories } from "../data/defaults";
 import {
   addMonths,
   buildBillAlerts,
+  buildFinancialHealthAlerts,
   buildBillSummary,
   getBillEffectiveStatus
 } from "../lib/calculations";
 import { findBillDuplicateMatches, type BillDuplicateMatch } from "../lib/duplicates";
-import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
+import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BillStatus,
@@ -37,7 +38,10 @@ import type {
   PaymentMethod,
   Person
 } from "../types";
+import { DocumentItemsPanel } from "./document-items-panel";
 import { FinancialDocumentReview } from "./financial-document-review";
+import { AttachmentLink } from "./attachment-link";
+import { FinanceNotificationPanel } from "./finance-notification-panel";
 
 type BillPlan = "single" | "recurring" | "installment";
 
@@ -75,10 +79,12 @@ export function BillsPage() {
     description: "",
     amount: "",
     category: "Moradia",
+    otherCategoryDescription: "",
     person: "Casal" as Person,
     dueDate: toInputDate(new Date()),
     paymentMethod: "boleto" as PaymentMethod,
     paymentCode: "",
+    paymentRecipient: "",
     plan: "single" as BillPlan,
     months: "12",
     installments: "2",
@@ -89,6 +95,7 @@ export function BillsPage() {
   const availableMonths = useMemo(() => buildAvailableBillMonths(state.bills), [state.bills]);
   const monthSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
   const alerts = useMemo(() => buildBillAlerts(state.bills), [state.bills]);
+  const healthAlerts = useMemo(() => buildFinancialHealthAlerts(state), [state]);
   const monthBills = monthSummary.monthBills
     .slice()
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title));
@@ -101,10 +108,12 @@ export function BillsPage() {
       description: draft.description,
       amount: draft.amount > 0 ? String(draft.amount) : current.amount,
       category: draft.category || current.category,
+      otherCategoryDescription: draft.otherCategoryDescription ?? current.otherCategoryDescription,
       person: draft.person,
       dueDate: draft.dueDate || "",
       paymentMethod: draft.paymentMethod ?? current.paymentMethod,
       paymentCode: draft.paymentCode ?? "",
+      paymentRecipient: draft.paymentRecipient ?? "",
       notes: draft.attachmentImageName ? `Anexo: ${draft.attachmentImageName}` : current.notes
     }));
   }
@@ -123,6 +132,10 @@ export function BillsPage() {
         description: "description" in patch ? updated.description : formCurrent.description,
         amount: "amount" in patch ? (updated.amount > 0 ? String(updated.amount) : "") : formCurrent.amount,
         category: "category" in patch ? updated.category : formCurrent.category,
+        otherCategoryDescription:
+          "otherCategoryDescription" in patch
+            ? updated.otherCategoryDescription ?? ""
+            : formCurrent.otherCategoryDescription,
         person: "person" in patch ? updated.person : formCurrent.person,
         dueDate:
           "dueDate" in patch || "documentDate" in patch || "entryDate" in patch
@@ -130,6 +143,7 @@ export function BillsPage() {
             : formCurrent.dueDate,
         paymentMethod: "paymentMethod" in patch ? updated.paymentMethod ?? formCurrent.paymentMethod : formCurrent.paymentMethod,
         paymentCode: "paymentCode" in patch ? updated.paymentCode ?? "" : formCurrent.paymentCode,
+        paymentRecipient: "paymentRecipient" in patch ? updated.paymentRecipient ?? "" : formCurrent.paymentRecipient,
         notes: "notes" in patch ? updated.notes ?? "" : formCurrent.notes
       }));
 
@@ -142,12 +156,12 @@ export function BillsPage() {
     setFeedback("MAYA esta lendo a conta e preenchendo o rascunho...");
 
     try {
-      const imageDataUrl = await fileToOptimizedImageDataUrl(file);
+      const attachment = await fileToFinanceAttachment(file);
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl,
+          imageDataUrl: attachment.imageDataUrl,
           fileName: file.name,
           documentKind: "bill"
         })
@@ -158,7 +172,7 @@ export function BillsPage() {
       };
 
       if (result.financialDraft) {
-        applyDraft(result.financialDraft);
+        applyDraft(withStoredAttachment(result.financialDraft, attachment));
       }
 
       setFeedback(buildDraftFeedback(result.message, result.financialDraft));
@@ -182,15 +196,22 @@ export function BillsPage() {
       return;
     }
 
+    if (form.paymentMethod === "pix" && !form.paymentRecipient.trim()) {
+      setFeedback("Quando a conta for Pix, informe para quem o Pix sera feito.");
+      return;
+    }
+
     const bills = createPlannedBills({
       title: form.title.trim(),
       description: form.description.trim(),
       amount,
       category: form.category,
+      otherCategoryDescription: form.category === "Outros" ? form.otherCategoryDescription.trim() : undefined,
       person: form.person,
       dueDate: form.dueDate,
       paymentMethod: form.paymentMethod,
       paymentCode: form.paymentCode.trim(),
+      paymentRecipient: form.paymentRecipient.trim(),
       plan: form.plan,
       months: Number(form.months),
       installments: Number(form.installments),
@@ -198,6 +219,10 @@ export function BillsPage() {
       notes: form.notes,
       attachmentImageName: documentDraft?.attachmentImageName,
       attachmentDataUrl: documentDraft?.attachmentDataUrl,
+      attachmentStoragePath: documentDraft?.attachmentStoragePath,
+      attachmentMimeType: documentDraft?.attachmentMimeType,
+      attachmentSize: documentDraft?.attachmentSize,
+      documentItems: documentDraft?.items,
       source: documentDraft ? "attachment" : "manual"
     });
 
@@ -205,7 +230,7 @@ export function BillsPage() {
 
     if (duplicates.length > 0) {
       setDuplicateReview({ bills, matches: duplicates });
-      setFeedback("Possivel duplicidade encontrada. Confirme antes de salvar esta conta.");
+      setFeedback("Suspeita de duplicidade encontrada. Aprove para computar ou exclua a nova conta.");
       return;
     }
 
@@ -229,7 +254,9 @@ export function BillsPage() {
       title: "",
       description: "",
       amount: "",
+      otherCategoryDescription: "",
       paymentCode: "",
+      paymentRecipient: "",
       plan: "single",
       status: "pending",
       notes: ""
@@ -373,7 +400,7 @@ export function BillsPage() {
             {documentDraft ? (
               <FinancialDocumentReview
                 draft={documentDraft}
-                categories={transactionCategories}
+                categories={expenseCategories}
                 persons={personOptions}
                 dateField="dueDate"
                 dateLabel="Vencimento"
@@ -429,7 +456,7 @@ export function BillsPage() {
                   value={form.category}
                   onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
                 >
-                  {transactionCategories.map((category) => (
+                  {expenseCategories.map((category) => (
                     <option key={category} value={category}>
                       {category}
                     </option>
@@ -461,6 +488,19 @@ export function BillsPage() {
               </Label>
             </div>
 
+            {form.category === "Outros" ? (
+              <Label>
+                Descrever outros
+                <Input
+                  value={form.otherCategoryDescription}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, otherCategoryDescription: event.target.value }))
+                  }
+                  placeholder="Opcional: detalhe a categoria"
+                />
+              </Label>
+            ) : null}
+
             <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
               <Label>
                 Tipo de pagamento
@@ -486,6 +526,18 @@ export function BillsPage() {
                 />
               </Label>
             </div>
+
+            {form.paymentMethod === "pix" ? (
+              <Label>
+                Para quem sera feito
+                <Input
+                  value={form.paymentRecipient}
+                  onChange={(event) => setForm((current) => ({ ...current, paymentRecipient: event.target.value }))}
+                  placeholder="Nome da pessoa ou empresa"
+                  required
+                />
+              </Label>
+            ) : null}
 
             <div className="grid gap-3 md:grid-cols-3">
               <Label>
@@ -540,6 +592,7 @@ export function BillsPage() {
           <Card>
             <CardHeader eyebrow="Alertas automaticos" title="Vencimentos" action={<Badge tone="info">{alerts.length}</Badge>} />
             <div className="grid gap-3">
+              <FinanceNotificationPanel billAlerts={alerts} healthAlerts={healthAlerts} />
               {alerts.length === 0 ? (
                 <p className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4 text-sm leading-6 text-muted">
                   Nenhuma conta vencendo em 48h, vencendo hoje ou atrasada.
@@ -652,6 +705,8 @@ function BillItem({
           <h2 className="font-serif text-2xl font-bold text-bronze">{bill.title}</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             {bill.category} - {bill.person} - vencimento {bill.dueDate} - {paymentMethodLabels[bill.paymentMethod]}
+            {bill.paymentMethod === "pix" && bill.paymentRecipient ? ` - Pix para ${bill.paymentRecipient}` : ""}
+            {bill.otherCategoryDescription ? ` - ${bill.otherCategoryDescription}` : ""}
           </p>
           {bill.description ? <p className="mt-2 text-sm leading-6 text-muted">{bill.description}</p> : null}
           {bill.paymentCode ? (
@@ -659,19 +714,12 @@ function BillItem({
               {bill.paymentCode}
             </p>
           ) : null}
-          {bill.attachmentDataUrl ? (
-            <a
-              href={bill.attachmentDataUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-2 text-sm font-black text-bronze hover:text-terracotta"
-            >
-              <FileImage className="size-4" aria-hidden="true" />
-              Ver anexo
-            </a>
-          ) : bill.attachmentImageName ? (
-            <p className="mt-3 text-sm font-bold text-muted">Anexo: {bill.attachmentImageName}</p>
-          ) : null}
+          <AttachmentLink
+            dataUrl={bill.attachmentDataUrl}
+            storagePath={bill.attachmentStoragePath}
+            imageName={bill.attachmentImageName}
+          />
+          <DocumentItemsPanel items={bill.documentItems} title="Itens guardados da conta" />
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:min-w-80 lg:grid-cols-1">
@@ -708,9 +756,9 @@ function DuplicateBillReview({
 }) {
   return (
     <div className="mb-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4">
-      <h3 className="font-serif text-xl font-bold text-amber-100">Confirmar conta duplicada?</h3>
+      <h3 className="font-serif text-xl font-bold text-amber-100">Suspeita de conta duplicada</h3>
       <p className="mt-2 text-sm leading-6 text-amber-50">
-        Ja existe conta com o mesmo vencimento e mesmo valor. Confira antes de salvar novamente.
+        Ja existe conta com o mesmo vencimento e mesmo valor. Escolha se deseja computar mesmo assim ou excluir a nova conta.
       </p>
       <div className="mt-3 grid gap-2">
         {matches.slice(0, 4).map((match) => (
@@ -724,9 +772,9 @@ function DuplicateBillReview({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Revisar antes
+          Excluir novo
         </Button>
-        <Button onClick={onConfirm}>Salvar mesmo assim</Button>
+        <Button onClick={onConfirm}>Computar mesmo assim</Button>
       </div>
     </div>
   );
@@ -750,6 +798,20 @@ function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["item
       </div>
     </div>
   );
+}
+
+function withStoredAttachment(
+  draft: FinancialDocumentDraft,
+  attachment: FinanceAttachmentUpload
+): FinancialDocumentDraft {
+  return {
+    ...draft,
+    attachmentImageName: attachment.fileName,
+    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentStoragePath: attachment.storagePath,
+    attachmentMimeType: attachment.mimeType,
+    attachmentSize: attachment.size
+  };
 }
 
 function SummaryMetric({
@@ -779,10 +841,10 @@ function SummaryMetric({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-          <strong className={`mt-3 block font-serif text-3xl ${colorClass}`}>{value}</strong>
+          <strong className={cn("mt-3 block font-serif text-3xl", financialValueClass(value, colorClass))}>{value}</strong>
           <p className="mt-2 text-sm text-muted">{detail}</p>
         </div>
-        <div className="grid size-11 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze">
+        <div className="grid size-11 place-items-center rounded-xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan shadow-neon">
           {icon}
         </div>
       </div>
@@ -794,7 +856,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-      <strong className="mt-2 block text-xl text-bronze">{value}</strong>
+      <strong className={cn("mt-2 block text-xl", financialValueClass(value))}>{value}</strong>
     </div>
   );
 }
@@ -804,10 +866,12 @@ function createPlannedBills({
   description,
   amount,
   category,
+  otherCategoryDescription,
   person,
   dueDate,
   paymentMethod,
   paymentCode,
+  paymentRecipient,
   plan,
   months,
   installments,
@@ -815,16 +879,22 @@ function createPlannedBills({
   notes,
   attachmentImageName,
   attachmentDataUrl,
+  attachmentStoragePath,
+  attachmentMimeType,
+  attachmentSize,
+  documentItems,
   source
 }: {
   title: string;
   description?: string;
   amount: number;
   category: string;
+  otherCategoryDescription?: string;
   person: Person;
   dueDate: string;
   paymentMethod: PaymentMethod;
   paymentCode?: string;
+  paymentRecipient?: string;
   plan: BillPlan;
   months: number;
   installments: number;
@@ -832,6 +902,10 @@ function createPlannedBills({
   notes?: string;
   attachmentImageName?: string;
   attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  documentItems?: FinancialDocumentDraft["items"];
   source: "manual" | "attachment";
 }): Array<Omit<PayableBill, "id" | "createdAt">> {
   const count = plan === "recurring" ? clampCount(months, 1, 60) : plan === "installment" ? clampCount(installments, 1, 120) : 1;
@@ -843,10 +917,12 @@ function createPlannedBills({
     description,
     amount,
     category,
+    otherCategoryDescription,
     person,
     dueDate: addMonths(dueDate, index),
     paymentMethod,
     paymentCode,
+    paymentRecipient,
     recurrence: plan === "recurring" ? "monthly" : "none",
     recurrenceGroupId: plan === "recurring" ? groupId : undefined,
     installmentGroupId: plan === "installment" ? groupId : undefined,
@@ -856,6 +932,10 @@ function createPlannedBills({
     source,
     attachmentImageName,
     attachmentDataUrl,
+    attachmentStoragePath,
+    attachmentMimeType,
+    attachmentSize,
+    documentItems,
     notes,
     paidAt: status === "paid" ? now : undefined
   }));

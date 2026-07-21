@@ -1,8 +1,21 @@
 "use client";
 
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+
 const MAX_IMAGE_EDGE = 1600;
-const MAX_DATA_URL_LENGTH = 3_800_000;
-const JPEG_QUALITY = 0.86;
+const MAX_DATA_URL_LENGTH = 1_200_000;
+const JPEG_QUALITY = 0.82;
+const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
+const WORKSPACE_ID =
+  process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
+
+export interface FinanceAttachmentUpload {
+  imageDataUrl: string;
+  fileName: string;
+  storagePath?: string;
+  mimeType: string;
+  size: number;
+}
 
 export async function fileToOptimizedImageDataUrl(file: File) {
   if (!file.type.startsWith("image/")) {
@@ -66,6 +79,21 @@ export async function fileToOptimizedImageDataUrl(file: File) {
   }
 }
 
+export async function fileToFinanceAttachment(file: File): Promise<FinanceAttachmentUpload> {
+  const imageDataUrl = await fileToOptimizedImageDataUrl(file);
+  const mimeType = getMimeTypeFromDataUrl(imageDataUrl) || "image/jpeg";
+  const binary = dataUrlToBlob(imageDataUrl, mimeType);
+  const storagePath = await tryUploadAttachment(file.name, binary);
+
+  return {
+    imageDataUrl,
+    fileName: file.name,
+    storagePath,
+    mimeType,
+    size: binary.size
+  };
+}
+
 function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -97,4 +125,61 @@ function fitInside(width: number, height: number, maxEdge: number) {
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale))
   };
+}
+
+async function tryUploadAttachment(fileName: string, blob: Blob) {
+  const supabase = createBrowserSupabaseClient();
+
+  if (!supabase) {
+    return undefined;
+  }
+
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    return undefined;
+  }
+
+  const path = `${WORKSPACE_ID}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${sanitizeFileName(
+    fileName
+  )}.jpg`;
+
+  const { error } = await supabase.storage.from(ATTACHMENT_BUCKET).upload(path, blob, {
+    cacheControl: "31536000",
+    contentType: blob.type || "image/jpeg",
+    upsert: false
+  });
+
+  if (error) {
+    console.warn("maya_attachment_upload_failed", {
+      bucket: ATTACHMENT_BUCKET,
+      code: error.name,
+      message: error.message
+    });
+    return undefined;
+  }
+
+  return path;
+}
+
+function dataUrlToBlob(dataUrl: string, mimeType: string) {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const byteCharacters = atob(base64);
+  const byteNumbers = Array.from(byteCharacters, (character) => character.charCodeAt(0));
+  const byteArray = new Uint8Array(byteNumbers);
+
+  return new Blob([byteArray], { type: mimeType });
+}
+
+function getMimeTypeFromDataUrl(dataUrl: string) {
+  return dataUrl.match(/^data:([^;]+);base64,/)?.[1];
+}
+
+function sanitizeFileName(fileName: string) {
+  return fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70) || "anexo";
 }

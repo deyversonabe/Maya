@@ -27,10 +27,11 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
-import { formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
-import { transactionCategories } from "../data/defaults";
+import { cn, financialValueClass, formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
+import { getTransactionCategoriesByType } from "../data/defaults";
 import {
   buildBudgetSummary,
+  buildFinancialHealthAlerts,
   buildInsights,
   buildMayaLocalAnalysis,
   buildMonthlyFlow,
@@ -39,10 +40,21 @@ import {
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
-import { fileToOptimizedImageDataUrl } from "../lib/image-upload";
+import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { FinancialDocumentDraft, GoalPriority, GoalType, Person, Transaction, TransactionType } from "../types";
+import type {
+  FinancialDocumentDraft,
+  GoalPriority,
+  GoalType,
+  PaymentMethod,
+  Person,
+  Transaction,
+  TransactionType
+} from "../types";
+import { DocumentItemsPanel } from "./document-items-panel";
+import { FinancialHealthAlerts } from "./financial-health-alerts";
 import { FinancialDocumentReview } from "./financial-document-review";
+import { AttachmentLink } from "./attachment-link";
 
 const transactionTypeLabel: Record<TransactionType, string> = {
   income: "Receita",
@@ -87,8 +99,11 @@ export function FinanceDashboard() {
     description: "",
     amount: "",
     category: "Alimentacao",
+    otherCategoryDescription: "",
     person: "Casal" as Person,
     date: toInputDate(new Date()),
+    paymentMethod: "other" as PaymentMethod,
+    paymentRecipient: "",
     recurring: false
   });
   const [goalForm, setGoalForm] = useState({
@@ -106,19 +121,24 @@ export function FinanceDashboard() {
   const insights = useMemo(() => buildInsights(state), [state]);
   const maya = useMemo(() => buildMayaLocalAnalysis(state), [state]);
   const budgetSummary = useMemo(() => buildBudgetSummary(state, summary.currentMonth), [state, summary.currentMonth]);
+  const healthAlerts = useMemo(() => buildFinancialHealthAlerts(state), [state]);
+  const activeCategories = useMemo(
+    () => getTransactionCategoriesByType(transactionForm.type),
+    [transactionForm.type]
+  );
   const maxFlowValue = Math.max(...flow.flatMap((item) => [item.income, item.expenses, item.investments]), 1);
 
   async function importTransactionImage(file: File) {
     setFeedback("MAYA esta lendo o anexo e preparando um rascunho...");
 
     try {
-      const imageDataUrl = await fileToOptimizedImageDataUrl(file);
+      const attachment = await fileToFinanceAttachment(file);
       const documentKind = transactionForm.type === "income" ? "income" : "expense";
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl,
+          imageDataUrl: attachment.imageDataUrl,
           fileName: file.name,
           documentKind
         })
@@ -133,7 +153,7 @@ export function FinanceDashboard() {
         return;
       }
 
-      const draft = result.financialDraft;
+      const draft = withStoredAttachment(result.financialDraft, attachment);
       const date = draft.entryDate || draft.documentDate || draft.dueDate || "";
       setTransactionDraft(draft);
       setTransactionForm((current) => ({
@@ -142,8 +162,11 @@ export function FinanceDashboard() {
         description: draft.description || draft.title,
         amount: draft.amount > 0 ? String(draft.amount) : current.amount,
         category: draft.category || current.category,
+        otherCategoryDescription: draft.otherCategoryDescription ?? current.otherCategoryDescription,
         person: draft.person,
-        date
+        date,
+        paymentMethod: draft.paymentMethod ?? current.paymentMethod,
+        paymentRecipient: draft.paymentRecipient ?? current.paymentRecipient
       }));
       setFeedback(buildDraftFeedback(result.message, draft));
     } catch (error) {
@@ -171,7 +194,14 @@ export function FinanceDashboard() {
             : formCurrent.description,
         amount: "amount" in patch ? (updated.amount > 0 ? String(updated.amount) : "") : formCurrent.amount,
         category: "category" in patch ? updated.category : formCurrent.category,
+        otherCategoryDescription:
+          "otherCategoryDescription" in patch
+            ? updated.otherCategoryDescription ?? ""
+            : formCurrent.otherCategoryDescription,
         person: "person" in patch ? updated.person : formCurrent.person,
+        paymentMethod: "paymentMethod" in patch ? updated.paymentMethod ?? formCurrent.paymentMethod : formCurrent.paymentMethod,
+        paymentRecipient:
+          "paymentRecipient" in patch ? updated.paymentRecipient ?? "" : formCurrent.paymentRecipient,
         date:
           "entryDate" in patch || "documentDate" in patch || "dueDate" in patch
             ? updated.entryDate || updated.documentDate || updated.dueDate || formCurrent.date
@@ -191,18 +221,32 @@ export function FinanceDashboard() {
       return;
     }
 
+    if (transactionForm.type === "expense" && transactionForm.paymentMethod === "pix" && !transactionForm.paymentRecipient.trim()) {
+      setFeedback("Quando a despesa for Pix, informe para quem foi feito antes de salvar.");
+      return;
+    }
+
     const transaction = {
       type: transactionForm.type,
       description: transactionForm.description.trim(),
       amount,
       category: transactionForm.category,
+      otherCategoryDescription:
+        transactionForm.category === "Outros" ? transactionForm.otherCategoryDescription.trim() : undefined,
       person: transactionForm.person,
       date: transactionForm.date,
       recurring: transactionForm.recurring,
       source: transactionDraft ? "receipt" : "manual",
+      paymentMethod: transactionForm.type === "expense" ? transactionForm.paymentMethod : undefined,
+      paymentRecipient:
+        transactionForm.type === "expense" ? transactionForm.paymentRecipient.trim() || undefined : undefined,
       receiptImageName: transactionDraft?.attachmentImageName,
       attachmentImageName: transactionDraft?.attachmentImageName,
       attachmentDataUrl: transactionDraft?.attachmentDataUrl,
+      attachmentStoragePath: transactionDraft?.attachmentStoragePath,
+      attachmentMimeType: transactionDraft?.attachmentMimeType,
+      attachmentSize: transactionDraft?.attachmentSize,
+      documentItems: transactionDraft?.items,
       notes: transactionDraft?.notes
     } satisfies Omit<Transaction, "id" | "createdAt">;
 
@@ -210,7 +254,7 @@ export function FinanceDashboard() {
 
     if (duplicates.length > 0) {
       setDuplicateReview({ transaction, matches: duplicates });
-      setFeedback("Possivel duplicidade encontrada. Confirme antes de salvar este lancamento.");
+      setFeedback("Suspeita de duplicidade encontrada. Aprove para computar ou exclua o novo lancamento.");
       return;
     }
 
@@ -224,7 +268,10 @@ export function FinanceDashboard() {
     setTransactionForm((current) => ({
       ...current,
       description: "",
-      amount: ""
+      amount: "",
+      otherCategoryDescription: "",
+      paymentMethod: "other",
+      paymentRecipient: ""
     }));
     setFeedback("Transacao salva e indicadores recalculados.");
   }
@@ -262,7 +309,7 @@ export function FinanceDashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado em JSON.");
@@ -282,7 +329,7 @@ export function FinanceDashboard() {
 
     if (duplicates.length > 0) {
       setImportDuplicateReview({ transactions, matches: duplicates });
-      setFeedback("Possivel duplicidade encontrada no extrato importado. Confirme antes de importar.");
+      setFeedback("Suspeita de duplicidade no extrato importado. Aprove para computar ou exclua o lote novo.");
       return;
     }
 
@@ -300,14 +347,14 @@ export function FinanceDashboard() {
                 <Sparkles className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-serif text-4xl font-bold leading-none text-bronze">Juntos</p>
+                <p className="font-serif text-4xl font-bold leading-none text-bronze">Maya</p>
                 <p className="text-xs font-bold text-muted">Organizar hoje. Construir o amanha.</p>
               </div>
             </div>
             <Badge tone="info">Sem dados ficticios</Badge>
           </div>
 
-          <nav className="grid gap-2" aria-label="Modulos do Juntos">
+          <nav className="grid gap-2" aria-label="Modulos do Maya">
             {[
               ["Dashboard", Wallet],
               ["Transacoes", LineChart],
@@ -343,7 +390,7 @@ export function FinanceDashboard() {
                   Uma visao clara para decidir com calma.
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted md:text-base">
-                  Cadastre receitas, despesas e metas. O Juntos recalcula os indicadores e transforma informacao
+                  Cadastre receitas, despesas e metas. O Maya recalcula os indicadores e transforma informacao
                   financeira em proximos passos praticos.
                 </p>
               </div>
@@ -419,6 +466,8 @@ export function FinanceDashboard() {
             </div>
           </LedPanel>
 
+          <FinancialHealthAlerts alerts={healthAlerts} />
+
           <section id="dashboard" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <VisualMetric
               icon={<Wallet className="size-5" />}
@@ -486,7 +535,7 @@ export function FinanceDashboard() {
                 {transactionDraft ? (
                   <FinancialDocumentReview
                     draft={transactionDraft}
-                    categories={transactionCategories}
+                    categories={getTransactionCategoriesByType(transactionDraft.kind === "income" ? "income" : "expense")}
                     persons={personOptions}
                     dateField={transactionDraft.kind === "income" ? "entryDate" : "documentDate"}
                     dateLabel={transactionDraft.kind === "income" ? "Data de entrada" : "Data da nota"}
@@ -501,10 +550,16 @@ export function FinanceDashboard() {
                     <Select
                       value={transactionForm.type}
                       onChange={(event) =>
-                        setTransactionForm((current) => ({
-                          ...current,
-                          type: event.target.value as TransactionType
-                        }))
+                        setTransactionForm((current) => {
+                          const type = event.target.value as TransactionType;
+                          const categories = getTransactionCategoriesByType(type);
+
+                          return {
+                            ...current,
+                            type,
+                            category: categories.includes(current.category) ? current.category : categories[0]
+                          };
+                        })
                       }
                     >
                       {Object.entries(transactionTypeLabel).map(([value, label]) => (
@@ -545,7 +600,7 @@ export function FinanceDashboard() {
                         setTransactionForm((current) => ({ ...current, category: event.target.value }))
                       }
                     >
-                      {transactionCategories.map((category) => (
+                      {activeCategories.map((category) => (
                         <option key={category} value={category}>
                           {category}
                         </option>
@@ -592,6 +647,58 @@ export function FinanceDashboard() {
                     Salvar
                   </Button>
                 </div>
+                {transactionForm.category === "Outros" ? (
+                  <Label>
+                    Descrever outros
+                    <Input
+                      value={transactionForm.otherCategoryDescription}
+                      onChange={(event) =>
+                        setTransactionForm((current) => ({
+                          ...current,
+                          otherCategoryDescription: event.target.value
+                        }))
+                      }
+                      placeholder="Opcional: descreva a categoria"
+                    />
+                  </Label>
+                ) : null}
+                {transactionForm.type === "expense" ? (
+                  <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                    <Label>
+                      Forma
+                      <Select
+                        value={transactionForm.paymentMethod}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            paymentMethod: event.target.value as PaymentMethod
+                          }))
+                        }
+                      >
+                        <option value="other">Outro</option>
+                        <option value="pix">Pix</option>
+                        <option value="boleto">Boleto</option>
+                        <option value="card">Cartao</option>
+                      </Select>
+                    </Label>
+                    {transactionForm.paymentMethod === "pix" ? (
+                      <Label>
+                        Para quem foi feito
+                        <Input
+                          value={transactionForm.paymentRecipient}
+                          onChange={(event) =>
+                            setTransactionForm((current) => ({
+                              ...current,
+                              paymentRecipient: event.target.value
+                            }))
+                          }
+                          placeholder="Nome da pessoa ou empresa"
+                          required
+                        />
+                      </Label>
+                    ) : null}
+                  </div>
+                ) : null}
               </form>
 
               <div className="mt-5 grid gap-3">
@@ -614,10 +721,20 @@ export function FinanceDashboard() {
                         </div>
                         <p className="mt-1 text-sm text-muted">
                           {transaction.category} - {transaction.person} - {transaction.date}
+                          {transaction.paymentMethod === "pix" && transaction.paymentRecipient
+                            ? ` - Pix para ${transaction.paymentRecipient}`
+                            : ""}
+                          {transaction.otherCategoryDescription ? ` - ${transaction.otherCategoryDescription}` : ""}
                           {transaction.recurring ? " - recorrente" : ""}
                         </p>
+                        <AttachmentLink
+                          dataUrl={transaction.attachmentDataUrl}
+                          storagePath={transaction.attachmentStoragePath}
+                          imageName={transaction.attachmentImageName}
+                        />
+                        <DocumentItemsPanel items={transaction.documentItems} title="Itens guardados do anexo" />
                       </div>
-                      <strong className="self-center text-lg text-bronze">{formatCurrency(transaction.amount)}</strong>
+                      <strong className={cn("self-center text-lg", financialValueClass(transaction.amount))}>{formatCurrency(transaction.amount)}</strong>
                       <Button
                         variant="ghost"
                         className="self-center px-3"
@@ -769,7 +886,7 @@ export function FinanceDashboard() {
                   <div key={month.month} className="grid gap-2">
                     <div className="flex items-center justify-between text-sm">
                       <strong className="text-cream">{month.month}</strong>
-                      <span className="text-muted">
+                      <span className={cn("text-muted", financialValueClass(month.income - month.expenses - month.investments, "text-muted"))}>
                         {formatCurrency(month.income - month.expenses - month.investments)}
                       </span>
                     </div>
@@ -855,9 +972,9 @@ function MetricCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-muted">{label}</p>
-          <strong className="mt-3 block font-serif text-3xl text-bronze">{value}</strong>
+          <strong className={cn("mt-3 block font-serif text-3xl", financialValueClass(value))}>{value}</strong>
         </div>
-        <div className="grid size-11 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze">
+        <div className="grid size-11 place-items-center rounded-xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan shadow-neon">
           {icon}
         </div>
       </div>
@@ -885,7 +1002,7 @@ function FlowBar({
       <div className="h-2 overflow-hidden rounded-full bg-cream/10">
         <div className={`h-2 rounded-full ${className}`} style={{ width: `${Math.max(4, (value / max) * 100)}%` }} />
       </div>
-      <strong className="text-right text-cream">{formatCurrency(value)}</strong>
+      <strong className={cn("text-right", financialValueClass(value, "text-cream"))}>{formatCurrency(value)}</strong>
     </div>
   );
 }
@@ -901,9 +1018,9 @@ function DuplicateTransactionReview({
 }) {
   return (
     <div className="mt-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4">
-      <h3 className="font-serif text-xl font-bold text-amber-100">Confirmar valor duplicado?</h3>
+      <h3 className="font-serif text-xl font-bold text-amber-100">Suspeita de duplicidade</h3>
       <p className="mt-2 text-sm leading-6 text-amber-50">
-        Ja existe lancamento com a mesma data, mesmo valor e mesmo tipo. Confira antes de salvar novamente.
+        Ja existe lancamento com valor igual em data igual ou proxima. Escolha se deseja computar mesmo assim ou excluir o novo lancamento.
       </p>
       <div className="mt-3 grid gap-2">
         {matches.slice(0, 4).map((match) => (
@@ -917,9 +1034,9 @@ function DuplicateTransactionReview({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Revisar antes
+          Excluir novo
         </Button>
-        <Button onClick={onConfirm}>Salvar mesmo assim</Button>
+        <Button onClick={onConfirm}>Computar mesmo assim</Button>
       </div>
     </div>
   );
@@ -943,6 +1060,20 @@ function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["item
       </div>
     </div>
   );
+}
+
+function withStoredAttachment(
+  draft: FinancialDocumentDraft,
+  attachment: FinanceAttachmentUpload
+): FinancialDocumentDraft {
+  return {
+    ...draft,
+    attachmentImageName: attachment.fileName,
+    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentStoragePath: attachment.storagePath,
+    attachmentMimeType: attachment.mimeType,
+    attachmentSize: attachment.size
+  };
 }
 
 function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {

@@ -6,11 +6,11 @@ export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 
 export type GoalPriority = "low" | "medium" | "high";
 
-export type TransactionSource = "manual" | "receipt" | "import";
+export type TransactionSource = "manual" | "receipt" | "import" | "statement";
 
 export type BudgetStatus = "safe" | "attention" | "exceeded";
 
-export type FinancialDocumentKind = "expense" | "income" | "bill";
+export type FinancialDocumentKind = "expense" | "income" | "bill" | "statement";
 
 export type PaymentMethod = "boleto" | "pix" | "card" | "other";
 
@@ -34,9 +34,16 @@ export interface Transaction {
   installmentNumber?: number;
   installmentTotal?: number;
   source?: TransactionSource;
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
+  otherCategoryDescription?: string;
   receiptImageName?: string;
   attachmentImageName?: string;
   attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  documentItems?: FinancialDocumentItem[];
   notes?: string;
   createdAt: string;
 }
@@ -47,8 +54,17 @@ export interface Goal {
   type: GoalType;
   targetAmount: number;
   currentAmount: number;
+  contributions: GoalContribution[];
   dueDate: string;
   priority: GoalPriority;
+  createdAt: string;
+}
+
+export interface GoalContribution {
+  id: string;
+  amount: number;
+  date: string;
+  notes?: string;
   createdAt: string;
 }
 
@@ -71,6 +87,8 @@ export interface PayableBill {
   dueDate: string;
   paymentMethod: PaymentMethod;
   paymentCode?: string;
+  paymentRecipient?: string;
+  otherCategoryDescription?: string;
   recurrence: BillRecurrence;
   recurrenceGroupId?: string;
   installmentGroupId?: string;
@@ -80,6 +98,10 @@ export interface PayableBill {
   source: BillSource;
   attachmentImageName?: string;
   attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  documentItems?: FinancialDocumentItem[];
   notes?: string;
   paidAt?: string;
   createdAt: string;
@@ -99,7 +121,20 @@ export interface FinanceState {
   goals: Goal[];
   budgets: Budget[];
   bills: PayableBill[];
+  activityLogs: FinanceActivityLog[];
   updatedAt: string;
+}
+
+export type FinanceActivityEntity = "transaction" | "bill" | "goal" | "budget" | "sync" | "system";
+
+export interface FinanceActivityLog {
+  id: string;
+  actorEmail: string;
+  action: string;
+  entityType: FinanceActivityEntity;
+  entityLabel: string;
+  details?: string;
+  createdAt: string;
 }
 
 export interface FinanceSummary {
@@ -159,6 +194,12 @@ export interface ExpenseDraft {
   confidence: number;
   source: TransactionSource;
   receiptImageName?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
+  otherCategoryDescription?: string;
   items?: FinancialDocumentItem[];
 }
 
@@ -168,6 +209,37 @@ export interface FinancialDocumentItem {
   date?: string;
   type?: TransactionType;
   category?: string;
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
+}
+
+export interface StatementTransactionDraft {
+  type: Extract<TransactionType, "income" | "expense">;
+  description: string;
+  amount: number;
+  category: string;
+  person: Person;
+  date: string;
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
+  otherCategoryDescription?: string;
+  confidence: number;
+  notes?: string;
+}
+
+export interface BankStatementDraft {
+  title: string;
+  periodStart?: string;
+  periodEnd?: string;
+  confidence: number;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  lines: StatementTransactionDraft[];
+  missingFields: string[];
+  notes?: string;
 }
 
 export interface FinancialDocumentDraft {
@@ -182,10 +254,15 @@ export interface FinancialDocumentDraft {
   person: Person;
   paymentMethod?: PaymentMethod;
   paymentCode?: string;
+  paymentRecipient?: string;
+  otherCategoryDescription?: string;
   confidence: number;
   source: TransactionSource | BillSource;
   attachmentImageName?: string;
   attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
   missingFields: string[];
   items?: FinancialDocumentItem[];
   notes?: string;
@@ -199,6 +276,14 @@ export interface BillAlert {
   message: string;
   priority: "info" | "warning" | "critical";
   triggerAt: string;
+}
+
+export interface FinancialHealthAlert {
+  id: string;
+  title: string;
+  message: string;
+  priority: "info" | "warning" | "critical";
+  createdAt: string;
 }
 
 export interface TransactionReviewInput {

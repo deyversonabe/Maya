@@ -14,23 +14,32 @@ export function findTransactionDuplicateMatches(
   existingTransactions: Transaction[],
   incomingTransactions: Array<Omit<Transaction, "id" | "createdAt">>
 ): TransactionDuplicateMatch[] {
-  return incomingTransactions.flatMap((incoming) => {
+  const matches: TransactionDuplicateMatch[] = [];
+  const seen = new Set<string>();
+
+  incomingTransactions.forEach((incoming) => {
     if (incoming.type !== "income" && incoming.type !== "expense") {
-      return [];
+      return;
     }
 
-    return existingTransactions
-      .filter(
-        (existing) =>
-          existing.type === incoming.type &&
-          existing.date === incoming.date &&
-          areSameMoneyValue(existing.amount, incoming.amount)
-      )
-      .map((existing) => ({
-        incoming,
-        existing
-      }));
+    existingTransactions
+      .filter((existing) => isPossibleTransactionDuplicate(existing, incoming))
+      .forEach((existing) => {
+        const key = `${existing.id}_${incoming.type}_${incoming.date}_${Math.round(incoming.amount * 100)}_${incoming.description}`;
+
+        if (seen.has(key)) {
+          return;
+        }
+
+        seen.add(key);
+        matches.push({
+          incoming,
+          existing
+        });
+      });
   });
+
+  return matches;
 }
 
 export function findBillDuplicateMatches(
@@ -56,10 +65,7 @@ export function findDuplicateTransaction(
   }
 
   const exact = existingTransactions.find(
-    (transaction) =>
-      transaction.type === candidate.type &&
-      transaction.date === candidate.date &&
-      areSameMoneyValue(transaction.amount, candidate.amount)
+    (transaction) => transaction.type === candidate.type && isSameDaySameAmount(transaction, candidate)
   );
 
   if (exact) {
@@ -70,10 +76,7 @@ export function findDuplicateTransaction(
   }
 
   const similar = existingTransactions.find(
-    (transaction) =>
-      transaction.type === candidate.type &&
-      areSameMoneyValue(transaction.amount, candidate.amount) &&
-      areDatesNear(transaction.date, candidate.date)
+    (transaction) => isPossibleTransactionDuplicate(transaction, candidate)
   );
 
   return similar
@@ -82,6 +85,36 @@ export function findDuplicateTransaction(
         confidence: "similar"
       }
     : null;
+}
+
+function isPossibleTransactionDuplicate(
+  existing: Pick<Transaction, "type" | "amount" | "date">,
+  incoming: Pick<Transaction, "type" | "amount" | "date">
+) {
+  if (!isTrackedTransactionType(existing.type) || !isTrackedTransactionType(incoming.type)) {
+    return false;
+  }
+
+  if (!areSameMoneyValue(existing.amount, incoming.amount)) {
+    return false;
+  }
+
+  if (existing.date === incoming.date) {
+    return true;
+  }
+
+  return existing.type === incoming.type && areDatesNear(existing.date, incoming.date);
+}
+
+function isSameDaySameAmount(
+  existing: Pick<Transaction, "amount" | "date">,
+  incoming: Pick<Transaction, "amount" | "date">
+) {
+  return existing.date === incoming.date && areSameMoneyValue(existing.amount, incoming.amount);
+}
+
+function isTrackedTransactionType(type: Transaction["type"]) {
+  return type === "income" || type === "expense";
 }
 
 function areSameMoneyValue(left: number, right: number) {

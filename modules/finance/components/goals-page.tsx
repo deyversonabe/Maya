@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Plus, Target, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Plus, Target, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { formatCurrency, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
 import { getGoalProgress } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { GoalPriority, GoalType } from "../types";
@@ -36,9 +36,13 @@ export function GoalsPage() {
     type: "reserve" as GoalType,
     targetAmount: "",
     currentAmount: "",
+    currentAmountDate: toInputDate(new Date()),
     dueDate: toInputDate(new Date(Date.now() + 1000 * 60 * 60 * 24 * 120)),
     priority: "medium" as GoalPriority
   });
+  const [contributionForms, setContributionForms] = useState<
+    Record<string, { amount: string; date: string; notes: string }>
+  >({});
 
   const totals = useMemo(() => {
     const target = state.goals.reduce((total, goal) => total + goal.targetAmount, 0);
@@ -63,6 +67,18 @@ export function GoalsPage() {
       type: form.type,
       targetAmount,
       currentAmount: Number.isFinite(currentAmount) ? currentAmount : 0,
+      contributions:
+        Number.isFinite(currentAmount) && currentAmount > 0
+          ? [
+              {
+                id: `goal_entry_${crypto.randomUUID()}`,
+                amount: currentAmount,
+                date: form.currentAmountDate,
+                notes: "Saldo inicial.",
+                createdAt: new Date().toISOString()
+              }
+            ]
+          : [],
       dueDate: form.dueDate,
       priority: form.priority
     });
@@ -71,9 +87,57 @@ export function GoalsPage() {
       ...current,
       name: "",
       targetAmount: "",
-      currentAmount: ""
+      currentAmount: "",
+      currentAmountDate: toInputDate(new Date())
     }));
     setFeedback("Meta salva. A MAYA ja pode considerar esse objetivo nas proximas leituras.");
+  }
+
+  function updateContributionForm(goalId: string, patch: Partial<{ amount: string; date: string; notes: string }>) {
+    setContributionForms((current) => {
+      const existing = current[goalId] ?? {
+        amount: "",
+        date: toInputDate(new Date()),
+        notes: ""
+      };
+
+      return {
+        ...current,
+        [goalId]: {
+          ...existing,
+          ...patch
+        }
+      };
+    });
+  }
+
+  function submitContribution(goalId: string, goalName: string) {
+    const contributionForm = contributionForms[goalId] ?? {
+      amount: "",
+      date: toInputDate(new Date()),
+      notes: ""
+    };
+    const amount = Number(contributionForm.amount.replace(",", "."));
+
+    if (!Number.isFinite(amount) || amount <= 0 || !contributionForm.date) {
+      setFeedback("Informe valor guardado e data do saldo antes de adicionar na meta.");
+      return;
+    }
+
+    actions.addGoalContribution(goalId, {
+      amount,
+      date: contributionForm.date,
+      notes: contributionForm.notes.trim() || undefined
+    });
+    setContributionForms((current) => ({
+      ...current,
+      [goalId]: {
+        amount: "",
+        date: toInputDate(new Date()),
+        notes: ""
+      }
+    }));
+    setFeedback(`Saldo de ${formatCurrency(amount)} adicionado em ${goalName}.`);
   }
 
   return (
@@ -147,7 +211,7 @@ export function GoalsPage() {
               </Label>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Label>
                 Valor alvo
                 <Input
@@ -158,12 +222,20 @@ export function GoalsPage() {
                 />
               </Label>
               <Label>
-                Valor atual
+                Saldo ja guardado
                 <Input
                   inputMode="decimal"
                   value={form.currentAmount}
                   onChange={(event) => setForm((current) => ({ ...current, currentAmount: event.target.value }))}
                   placeholder="0,00"
+                />
+              </Label>
+              <Label>
+                Data do saldo
+                <Input
+                  type="date"
+                  value={form.currentAmountDate}
+                  onChange={(event) => setForm((current) => ({ ...current, currentAmountDate: event.target.value }))}
                 />
               </Label>
               <Label>
@@ -204,6 +276,11 @@ export function GoalsPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {state.goals.map((goal) => {
               const progress = getGoalProgress(goal);
+              const contributionForm = contributionForms[goal.id] ?? {
+                amount: "",
+                date: toInputDate(new Date()),
+                notes: ""
+              };
 
               return (
                 <Card key={goal.id}>
@@ -241,6 +318,68 @@ export function GoalsPage() {
                     <Badge tone={progress >= 70 ? "success" : "warning"}>{Math.round(progress)}%</Badge>
                   </div>
 
+                  <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-[0.12em] text-cyan-50">
+                      <CalendarDays className="size-4" aria-hidden="true" />
+                      Adicionar saldo guardado
+                    </h3>
+                    <div className="grid gap-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Label>
+                          Valor pago/guardado
+                          <Input
+                            inputMode="decimal"
+                            value={contributionForm.amount}
+                            onChange={(event) => updateContributionForm(goal.id, { amount: event.target.value })}
+                            placeholder="0,00"
+                          />
+                        </Label>
+                        <Label>
+                          Data do novo saldo
+                          <Input
+                            type="date"
+                            value={contributionForm.date}
+                            onChange={(event) => updateContributionForm(goal.id, { date: event.target.value })}
+                          />
+                        </Label>
+                      </div>
+                      <Label>
+                        Observacao
+                        <Input
+                          value={contributionForm.notes}
+                          onChange={(event) => updateContributionForm(goal.id, { notes: event.target.value })}
+                          placeholder="Ex: aporte, pagamento da parcela, dinheiro guardado..."
+                        />
+                      </Label>
+                      <Button type="button" variant="secondary" onClick={() => submitContribution(goal.id, goal.name)}>
+                        <Plus className="size-4" aria-hidden="true" />
+                        Adicionar saldo
+                      </Button>
+                    </div>
+                  </div>
+
+                  {goal.contributions.length > 0 ? (
+                    <div className="mt-4 rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+                      <h3 className="text-sm font-black uppercase tracking-[0.12em] text-muted">Historico de saldo</h3>
+                      <div className="mt-3 grid gap-2">
+                        {goal.contributions.slice(0, 5).map((contribution) => (
+                          <div
+                            key={contribution.id}
+                            className="grid gap-1 rounded-lg border border-cream/10 bg-moss-950/35 p-3 text-sm sm:grid-cols-[1fr_auto]"
+                          >
+                            <span className="text-muted">
+                              {contribution.date}
+                              {contribution.notes ? ` - ${contribution.notes}` : ""}
+                            </span>
+                            <strong className={financialValueClass(contribution.amount)}>
+                              {formatCurrency(contribution.amount)}
+                            </strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 flex items-center gap-2 text-sm text-muted">
                     <CheckCircle2 className="size-4 text-bronze" aria-hidden="true" />
                     Prazo: {goal.dueDate}
@@ -257,9 +396,9 @@ export function GoalsPage() {
 
 function GoalMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+    <div className="rounded-xl border border-neon-cyan/10 bg-cream/[0.04] p-4">
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-      <strong className="mt-2 block text-xl text-bronze">{value}</strong>
+      <strong className={cn("mt-2 block text-xl", financialValueClass(value))}>{value}</strong>
     </div>
   );
 }

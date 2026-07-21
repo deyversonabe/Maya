@@ -73,18 +73,18 @@ export function MayaPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <Image
-              src="/brand/juntos-maya-logo.png"
-              alt="MAYA"
+              src="/brand/maya-logo.png"
+              alt="Maya"
               width={180}
               height={180}
-              className="h-20 w-20 object-contain drop-shadow-[0_0_22px_rgba(196,106,67,0.35)]"
+              className="h-20 w-20 rounded-full object-cover drop-shadow-[0_0_22px_rgba(196,106,67,0.35)]"
               priority
             />
             <div>
               <p className="eyebrow">Assistente financeira do casal</p>
               <h1 className="mt-1 font-serif text-5xl font-bold text-bronze">MAYA</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                Leitura minuciosa, comparacao mensal, saude financeira e proximos passos sem julgamento.
+                Leitura minuciosa, comparacao mensal, calculos de juros, emprestimos, negociacao de atrasos e proximos passos sem julgamento.
               </p>
             </div>
           </div>
@@ -145,7 +145,7 @@ export function MayaPage() {
               <Input
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Pergunte para a MAYA: como esta nossa saude financeira?"
+                placeholder="Pergunte para a MAYA: calcule juros, avalie emprestimo ou negocie uma conta atrasada."
               />
               <Button type="submit" disabled={isLoading}>
                 <Send className="size-4" aria-hidden="true" />
@@ -157,6 +157,11 @@ export function MayaPage() {
               {[
                 "Compare esse mes com o anterior.",
                 "Onde estamos perdendo desempenho?",
+                "Calcular juros de R$ 5.000 a 3% ao mes por 12 meses.",
+                "Avaliar proposta de emprestimo de R$ 8.000 em 24 parcelas de R$ 560.",
+                "Como negociar contas em atraso com juros?",
+                "Quanto gastei com alimentacao nos ultimos 3 meses?",
+                "Montar plano de economia para minha meta.",
                 "Qual acao mais importante para melhorar a saude financeira?"
               ].map((item) => (
                 <Button key={item} variant="ghost" className="min-h-9 px-3 text-xs" onClick={() => void askMaya(item)}>

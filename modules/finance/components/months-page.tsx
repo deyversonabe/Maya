@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Label, Select } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { formatCurrency } from "@/lib/utils";
-import { buildBillSummary, getBillEffectiveStatus, getTransactionsByMonth } from "../lib/calculations";
+import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import { expenseCategories, incomeCategories } from "../data/defaults";
+import { buildBillSummary, buildMonthSummaries, getBillEffectiveStatus, getTransactionsByMonth } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { PayableBill, Transaction, TransactionType } from "../types";
+import type { MonthSummary, PayableBill, Transaction, TransactionType } from "../types";
+import { AttachmentLink } from "./attachment-link";
+import { DocumentItemsPanel } from "./document-items-panel";
 
 const transactionTypeConfig: Record<
   TransactionType,
@@ -55,6 +58,13 @@ export function MonthsPage() {
   const { state, actions } = useFinanceStore();
   const availableMonths = useMemo(() => buildAvailableMonths(state.transactions, state.bills), [state.transactions, state.bills]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [periodMode, setPeriodMode] = useState<"day" | "month">("month");
+  const [periodStart, setPeriodStart] = useState(() => `${new Date().toISOString().slice(0, 7)}-01`);
+  const [periodEnd, setPeriodEnd] = useState(() => toInputDate(new Date()));
+  const [periodStartMonth, setPeriodStartMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [periodEndMonth, setPeriodEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [incomeFilter, setIncomeFilter] = useState("Todos");
+  const [expenseFilter, setExpenseFilter] = useState("Todos");
   const monthTransactions = useMemo(
     () => getTransactionsByMonth(state.transactions, selectedMonth).sort((a, b) => b.date.localeCompare(a.date)),
     [state.transactions, selectedMonth]
@@ -62,6 +72,19 @@ export function MonthsPage() {
   const billSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
   const totals = useMemo(() => calculateMonthTotals(monthTransactions), [monthTransactions]);
   const grouped = useMemo(() => groupByType(monthTransactions), [monthTransactions]);
+  const monthlySeries = useMemo(() => buildMonthSummaries(state.transactions, 12), [state.transactions]);
+  const selectedPeriod = useMemo(
+    () => getSelectedPeriod(periodMode, periodStart, periodEnd, periodStartMonth, periodEndMonth),
+    [periodEnd, periodEndMonth, periodMode, periodStart, periodStartMonth]
+  );
+  const recurringGroups = useMemo(
+    () => buildRecurringPaymentGroups(state.transactions, state.bills, selectedPeriod.start, selectedPeriod.end, expenseFilter),
+    [expenseFilter, selectedPeriod.end, selectedPeriod.start, state.bills, state.transactions]
+  );
+  const incomeSummary = useMemo(
+    () => buildIncomePeriodSummary(state.transactions, selectedPeriod.start, selectedPeriod.end, incomeFilter),
+    [incomeFilter, selectedPeriod.end, selectedPeriod.start, state.transactions]
+  );
 
   return (
     <AppShell>
@@ -101,6 +124,8 @@ export function MonthsPage() {
         <MonthMetric label="Contas pendentes" value={formatCurrency(billSummary.pendingTotal)} tone="warning" icon={<BellRing className="size-5" />} />
         <MonthMetric label="Saldo do mes" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
       </section>
+
+      <MonthlyLineChart summaries={monthlySeries} />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid gap-4">
@@ -143,6 +168,92 @@ export function MonthsPage() {
           </div>
         </Card>
       </section>
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader
+            eyebrow="Filtro por periodo"
+            title="Pagamentos recorrentes"
+            action={<Badge tone="warning">{formatCurrency(recurringGroups.reduce((total, group) => total + group.total, 0))}</Badge>}
+          />
+          <PeriodControls
+            mode={periodMode}
+            start={periodStart}
+            end={periodEnd}
+            startMonth={periodStartMonth}
+            endMonth={periodEndMonth}
+            onModeChange={setPeriodMode}
+            onStartChange={setPeriodStart}
+            onEndChange={setPeriodEnd}
+            onStartMonthChange={setPeriodStartMonth}
+            onEndMonthChange={setPeriodEndMonth}
+          />
+          <Label className="mt-3">
+            Filtro de despesa
+            <Select value={expenseFilter} onChange={(event) => setExpenseFilter(event.target.value)}>
+              {["Todos", ...expenseCategories].map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </Select>
+          </Label>
+          <div className="mt-4 grid gap-3">
+            {recurringGroups.length === 0 ? (
+              <p className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4 text-sm leading-6 text-muted">
+                Nenhum Pix, boleto, conta ou despesa encontrada no periodo.
+              </p>
+            ) : (
+              recurringGroups.slice(0, 10).map((group) => (
+                <div key={group.key} className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <strong className="text-cream">{group.label}</strong>
+                      <p className="mt-1 text-sm text-muted">
+                        {group.count} lancamento(s) - {group.firstDate} a {group.lastDate}
+                      </p>
+                    </div>
+                    <strong className="text-lg text-bronze">{formatCurrency(group.total)}</strong>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            eyebrow="Renda"
+            title="Quanto rendeu"
+            action={<Badge tone="success">{formatCurrency(incomeSummary.total)}</Badge>}
+          />
+          <Label>
+            Filtro de renda
+            <Select value={incomeFilter} onChange={(event) => setIncomeFilter(event.target.value)}>
+              {["Todos", ...incomeCategories].map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </Select>
+          </Label>
+          <div className="mt-4 grid gap-3">
+            <SummaryRow label="Transacoes" value={String(incomeSummary.count)} />
+            <SummaryRow label="Valor total" value={formatCurrency(incomeSummary.total)} highlight />
+            {incomeSummary.groups.map((group) => (
+              <div key={group.label} className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <strong className="text-emerald-100">{group.label}</strong>
+                    <p className="mt-1 text-sm text-muted">{group.count} entrada(s)</p>
+                  </div>
+                  <strong className="text-lg text-bronze">{formatCurrency(group.total)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </section>
     </AppShell>
   );
 }
@@ -176,7 +287,15 @@ function BillsMonthGroup({ bills, total }: { bills: PayableBill[]; total: number
                       </div>
                       <p className="text-sm leading-6 text-muted">
                         {bill.category} - {bill.person} - vencimento {bill.dueDate}
+                        {bill.paymentMethod === "pix" && bill.paymentRecipient ? ` - Pix para ${bill.paymentRecipient}` : ""}
+                        {bill.otherCategoryDescription ? ` - ${bill.otherCategoryDescription}` : ""}
                       </p>
+                      <AttachmentLink
+                        dataUrl={bill.attachmentDataUrl}
+                        storagePath={bill.attachmentStoragePath}
+                        imageName={bill.attachmentImageName}
+                      />
+                      <DocumentItemsPanel items={bill.documentItems} title="Itens guardados da conta" />
                     </div>
                     <strong className="text-lg text-bronze">{formatCurrency(bill.amount)}</strong>
                   </div>
@@ -214,13 +333,114 @@ function MonthMetric({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-          <strong className={`mt-3 block font-serif text-3xl ${colorClass}`}>{value}</strong>
+          <strong className={cn("mt-3 block font-serif text-3xl", financialValueClass(value, colorClass))}>{value}</strong>
         </div>
-        <div className="grid size-11 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze">
+        <div className="grid size-11 place-items-center rounded-xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan shadow-neon">
           {icon}
         </div>
       </div>
     </Card>
+  );
+}
+
+function MonthlyLineChart({ summaries }: { summaries: MonthSummary[] }) {
+  const width = 720;
+  const height = 240;
+  const padding = 34;
+  const maxValue = Math.max(...summaries.flatMap((summary) => [summary.income, summary.expenses]), 1);
+  const incomePoints = buildChartPoints(summaries.map((summary) => summary.income), maxValue, width, height, padding);
+  const expensePoints = buildChartPoints(summaries.map((summary) => summary.expenses), maxValue, width, height, padding);
+
+  return (
+    <Card className="mb-4">
+      <CardHeader
+        eyebrow="Dashboard mensal"
+        title="Altas e baixas entre meses"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="success">Renda</Badge>
+            <Badge tone="warning">Despesa</Badge>
+          </div>
+        }
+      />
+      <div className="overflow-hidden rounded-xl border border-cream/10 bg-moss-950/35 p-3">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de linha com renda e despesa por mes" className="h-auto w-full">
+          {[0, 1, 2, 3].map((line) => {
+            const y = padding + ((height - padding * 2) / 3) * line;
+            return <line key={line} x1={padding} x2={width - padding} y1={y} y2={y} stroke="rgba(245,239,223,0.12)" />;
+          })}
+          <polyline points={incomePoints} fill="none" stroke="#74f0bf" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
+          <polyline points={expensePoints} fill="none" stroke="#c46b43" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
+          {summaries.map((summary, index) => {
+            const x = padding + ((width - padding * 2) / Math.max(1, summaries.length - 1)) * index;
+            return (
+              <text key={summary.month} x={x} y={height - 8} textAnchor="middle" fill="rgba(245,239,223,0.7)" fontSize="12">
+                {summary.month.slice(5)}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+    </Card>
+  );
+}
+
+function PeriodControls({
+  mode,
+  start,
+  end,
+  startMonth,
+  endMonth,
+  onModeChange,
+  onStartChange,
+  onEndChange,
+  onStartMonthChange,
+  onEndMonthChange
+}: {
+  mode: "day" | "month";
+  start: string;
+  end: string;
+  startMonth: string;
+  endMonth: string;
+  onModeChange: (mode: "day" | "month") => void;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  onStartMonthChange: (value: string) => void;
+  onEndMonthChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <Label>
+        Tipo
+        <Select value={mode} onChange={(event) => onModeChange(event.target.value as "day" | "month")}>
+          <option value="month">Entre meses</option>
+          <option value="day">Entre dias</option>
+        </Select>
+      </Label>
+      {mode === "month" ? (
+        <>
+          <Label>
+            Mes inicial
+            <Input type="month" value={startMonth} onChange={(event) => onStartMonthChange(event.target.value)} />
+          </Label>
+          <Label>
+            Mes final
+            <Input type="month" value={endMonth} onChange={(event) => onEndMonthChange(event.target.value)} />
+          </Label>
+        </>
+      ) : (
+        <>
+          <Label>
+            Data inicial
+            <Input type="date" value={start} onChange={(event) => onStartChange(event.target.value)} />
+          </Label>
+          <Label>
+            Data final
+            <Input type="date" value={end} onChange={(event) => onEndChange(event.target.value)} />
+          </Label>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -267,13 +487,24 @@ function TransactionGroup({
                   </div>
                   <p className="text-sm leading-6 text-muted">
                     {transaction.category} - {transaction.person} - {transaction.date}
+                    {transaction.paymentMethod === "pix" && transaction.paymentRecipient
+                      ? ` - Pix para ${transaction.paymentRecipient}`
+                      : ""}
+                    {transaction.otherCategoryDescription ? ` - ${transaction.otherCategoryDescription}` : ""}
                     {transaction.source === "receipt" ? " - nota/anexo" : ""}
+                    {transaction.source === "statement" ? " - extrato" : ""}
                   </p>
                   {transaction.notes ? <p className="mt-2 text-sm leading-6 text-muted">{transaction.notes}</p> : null}
+                  <AttachmentLink
+                    dataUrl={transaction.attachmentDataUrl}
+                    storagePath={transaction.attachmentStoragePath}
+                    imageName={transaction.attachmentImageName}
+                  />
+                  <DocumentItemsPanel items={transaction.documentItems} title="Itens guardados do anexo" />
                 </div>
 
                 <div className="flex items-center justify-between gap-3 md:min-w-44 md:justify-end">
-                  <strong className="text-lg text-bronze">{formatCurrency(transaction.amount)}</strong>
+                  <strong className={cn("text-lg", financialValueClass(transaction.amount))}>{formatCurrency(transaction.amount)}</strong>
                   <Button variant="ghost" className="min-h-9 px-3" onClick={() => onRemove(transaction.id)} aria-label={`Remover ${transaction.description}`}>
                     <Trash2 className="size-4" aria-hidden="true" />
                   </Button>
@@ -291,7 +522,7 @@ function SummaryRow({ label, value, highlight = false }: { label: string; value:
   return (
     <div className={highlight ? "rounded-xl border border-bronze/30 bg-bronze/10 p-4" : "rounded-xl border border-cream/10 bg-cream/[0.04] p-4"}>
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-      <strong className={highlight ? "mt-2 block text-2xl text-bronze" : "mt-2 block text-lg text-cream"}>{value}</strong>
+      <strong className={cn(highlight ? "mt-2 block text-2xl" : "mt-2 block text-lg", financialValueClass(value, highlight ? "financial-positive" : "text-cream"))}>{value}</strong>
     </div>
   );
 }
@@ -329,6 +560,172 @@ function sumByType(transactions: Transaction[], type: TransactionType) {
   return transactions
     .filter((transaction) => transaction.type === type)
     .reduce((total, transaction) => total + transaction.amount, 0);
+}
+
+function buildChartPoints(values: number[], maxValue: number, width: number, height: number, padding: number) {
+  return values
+    .map((value, index) => {
+      const x = padding + ((width - padding * 2) / Math.max(1, values.length - 1)) * index;
+      const y = height - padding - (value / maxValue) * (height - padding * 2);
+      return `${x},${y}`;
+    })
+    .join(" ");
+}
+
+function getSelectedPeriod(
+  mode: "day" | "month",
+  start: string,
+  end: string,
+  startMonth: string,
+  endMonth: string
+) {
+  if (mode === "month") {
+    return {
+      start: `${startMonth}-01`,
+      end: getMonthEndDate(endMonth)
+    };
+  }
+
+  return {
+    start,
+    end
+  };
+}
+
+function buildRecurringPaymentGroups(
+  transactions: Transaction[],
+  bills: PayableBill[],
+  start: string,
+  end: string,
+  categoryFilter: string
+) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      total: number;
+      count: number;
+      firstDate: string;
+      lastDate: string;
+    }
+  >();
+
+  transactions
+    .filter((transaction) => transaction.type === "expense")
+    .filter((transaction) => isDateInRange(transaction.date, start, end))
+    .filter((transaction) => categoryFilter === "Todos" || transaction.category === categoryFilter)
+    .forEach((transaction) => {
+      const label = getPaymentGroupLabel(transaction);
+      addPeriodGroup(groups, label, transaction.amount, transaction.date);
+    });
+
+  bills
+    .filter((bill) => isDateInRange(bill.dueDate, start, end))
+    .filter((bill) => categoryFilter === "Todos" || bill.category === categoryFilter)
+    .forEach((bill) => {
+      const label =
+        bill.paymentMethod === "pix" && bill.paymentRecipient
+          ? `Pix para ${bill.paymentRecipient}`
+          : bill.paymentMethod === "boleto"
+            ? `Boleto - ${bill.title}`
+            : `Conta - ${bill.title}`;
+      addPeriodGroup(groups, label, bill.amount, bill.dueDate);
+    });
+
+  return Array.from(groups.values()).sort((a, b) => b.total - a.total || b.count - a.count);
+}
+
+function buildIncomePeriodSummary(transactions: Transaction[], start: string, end: string, categoryFilter: string) {
+  const filtered = transactions
+    .filter((transaction) => transaction.type === "income")
+    .filter((transaction) => isDateInRange(transaction.date, start, end))
+    .filter((transaction) => categoryFilter === "Todos" || transaction.category === categoryFilter);
+  const groups = new Map<string, { label: string; total: number; count: number }>();
+
+  filtered.forEach((transaction) => {
+    const label =
+      transaction.category === "Outros" && transaction.otherCategoryDescription
+        ? `Outros - ${transaction.otherCategoryDescription}`
+        : transaction.category;
+    const current = groups.get(label) ?? { label, total: 0, count: 0 };
+    groups.set(label, {
+      ...current,
+      total: current.total + transaction.amount,
+      count: current.count + 1
+    });
+  });
+
+  return {
+    total: filtered.reduce((total, transaction) => total + transaction.amount, 0),
+    count: filtered.length,
+    groups: Array.from(groups.values()).sort((a, b) => b.total - a.total)
+  };
+}
+
+function getPaymentGroupLabel(transaction: Transaction) {
+  if (transaction.paymentMethod === "pix" && transaction.paymentRecipient) {
+    return `Pix para ${transaction.paymentRecipient}`;
+  }
+
+  if (transaction.paymentMethod === "boleto") {
+    return `Boleto - ${transaction.description.replace(/\s+\(\d+\/\d+\)$/u, "")}`;
+  }
+
+  if (transaction.recurring) {
+    return `Recorrente - ${transaction.description}`;
+  }
+
+  if (transaction.installmentGroupId) {
+    return `Parcelado - ${transaction.description.replace(/\s+\(\d+\/\d+\)$/u, "")}`;
+  }
+
+  return `${transaction.category} - ${transaction.description}`;
+}
+
+function addPeriodGroup(
+  groups: Map<string, { key: string; label: string; total: number; count: number; firstDate: string; lastDate: string }>,
+  label: string,
+  amount: number,
+  date: string
+) {
+  const key = normalizeGroupKey(label);
+  const current = groups.get(key);
+
+  if (!current) {
+    groups.set(key, {
+      key,
+      label,
+      total: amount,
+      count: 1,
+      firstDate: date,
+      lastDate: date
+    });
+    return;
+  }
+
+  groups.set(key, {
+    ...current,
+    total: current.total + amount,
+    count: current.count + 1,
+    firstDate: current.firstDate < date ? current.firstDate : date,
+    lastDate: current.lastDate > date ? current.lastDate : date
+  });
+}
+
+function normalizeGroupKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isDateInRange(date: string, start: string, end: string) {
+  return date >= start && date <= end;
+}
+
+function getMonthEndDate(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(year, monthNumber, 0);
+
+  return date.toISOString().slice(0, 10);
 }
 
 function buildAvailableMonths(transactions: Transaction[], bills: PayableBill[]) {

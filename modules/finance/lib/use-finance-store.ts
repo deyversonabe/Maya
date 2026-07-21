@@ -4,9 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { createEmptyFinanceState } from "../data/defaults";
 import { migrateFinanceState } from "./migrations";
-import type { Budget, FinanceState, Goal, PayableBill, Transaction } from "../types";
+import type {
+  Budget,
+  FinanceActivityEntity,
+  FinanceActivityLog,
+  FinanceState,
+  Goal,
+  GoalContribution,
+  PayableBill,
+  Transaction
+} from "../types";
 
-const STORAGE_KEY = "juntos.finance.v1";
+const STORAGE_KEY = "maya.finance.v1";
+const LEGACY_STORAGE_KEY = ["jun", "tos.finance.v1"].join("");
 const CLOUD_TABLE = "finance_workspace_states";
 const CLOUD_WORKSPACE_ID =
   process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
@@ -47,6 +57,7 @@ export function useFinanceStore() {
   }));
   const stateRef = useRef(state);
   const userIdRef = useRef<string | null>(null);
+  const userEmailRef = useRef<string | null>(null);
   const skipNextCloudSaveRef = useRef(false);
   const lastCloudPayloadRef = useRef("");
   const cloudChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
@@ -56,12 +67,15 @@ export function useFinanceStore() {
   }, [state]);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
 
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as unknown;
-        setState(migrateFinanceState(parsed));
+        const migrated = migrateFinanceState(parsed);
+        setState(migrated);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
       } catch {
         setState(createEmptyFinanceState());
       }
@@ -186,6 +200,7 @@ export function useFinanceStore() {
       closeCloudChannel();
       await supabase.auth.signOut();
       userIdRef.current = null;
+      userEmailRef.current = null;
       setCloudReady(false);
       setCloud((current) => ({
         ...current,
@@ -204,6 +219,7 @@ export function useFinanceStore() {
       }
 
       userIdRef.current = userId;
+      userEmailRef.current = email;
       setCloudReady(false);
       setCloud((current) => ({
         ...current,
@@ -292,6 +308,7 @@ export function useFinanceStore() {
           await client.auth.signOut();
           markSessionLocked();
           userIdRef.current = null;
+          userEmailRef.current = null;
           setCloudReady(false);
           setCloud((current) => ({
             ...current,
@@ -308,6 +325,7 @@ export function useFinanceStore() {
       }
 
       userIdRef.current = null;
+      userEmailRef.current = null;
       setCloudReady(false);
       setCloud((current) => ({
         ...current,
@@ -330,6 +348,7 @@ export function useFinanceStore() {
       }
 
       userIdRef.current = null;
+      userEmailRef.current = null;
       setCloudReady(false);
       setCloud((current) => ({
         ...current,
@@ -449,43 +468,16 @@ export function useFinanceStore() {
   );
 
   const signUp = useCallback(
-    async (email: string, password: string) => {
-      if (!supabase) {
-        throw new Error("Sincronizacao online ainda nao esta ativa neste deploy.");
-      }
-
-      setCloud((current) => ({
-        ...current,
-        status: "loading",
-        message: "Criando sua conta."
-      }));
-
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password
-      });
-
-      if (error) {
-        const message = formatAuthError(error);
-        setCloud((current) => ({ ...current, status: "error", message }));
-        throw new Error(message);
-      }
-
-      if (data.session?.user) {
-        clearSessionLocked();
-        recordSessionActivity();
-        await loadCloudForUser(data.session.user.id, data.session.user.email ?? null);
-        return;
-      }
-
+    async () => {
+      const message = "Cadastro publico desativado. O administrador precisa criar e autorizar este usuario.";
       setCloud((current) => ({
         ...current,
         status: "signed_out",
-        email: null,
-        message: "Conta criada. Confirme o e-mail e depois entre para sincronizar."
+        message
       }));
+      throw new Error(message);
     },
-    [loadCloudForUser, supabase]
+    []
   );
 
   const signOut = useCallback(async () => {
@@ -497,6 +489,7 @@ export function useFinanceStore() {
     markSessionLocked();
     closeCloudChannel();
     userIdRef.current = null;
+    userEmailRef.current = null;
     setCloudReady(false);
     setCloud((current) => ({
       ...current,
@@ -536,6 +529,12 @@ export function useFinanceStore() {
             },
             ...current.transactions
           ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Lancou transacao",
+            entityType: "transaction",
+            entityLabel: transaction.description,
+            details: `${transaction.date} - ${transaction.type}`
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -551,6 +550,12 @@ export function useFinanceStore() {
             })),
             ...current.transactions
           ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Importou transacoes",
+            entityType: "transaction",
+            entityLabel: `${transactions.length} lancamento(s)`,
+            details: transactions[0]?.source ?? "lote"
+          }),
           updatedAt: now
         }));
       },
@@ -558,34 +563,126 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           transactions: current.transactions.filter((transaction) => transaction.id !== id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu transacao",
+            entityType: "transaction",
+            entityLabel: current.transactions.find((transaction) => transaction.id === id)?.description ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
-      addGoal(goal: Omit<Goal, "id" | "createdAt">) {
+      addGoal(goal: Omit<Goal, "id" | "createdAt" | "contributions"> & { contributions?: GoalContribution[] }) {
+        const now = new Date().toISOString();
+        const initialContribution =
+          goal.currentAmount > 0
+            ? [
+                {
+                  id: `goal_entry_${crypto.randomUUID()}`,
+                  amount: goal.currentAmount,
+                  date: now.slice(0, 10),
+                  notes: "Saldo inicial.",
+                  createdAt: now
+                }
+              ]
+            : [];
+
         setState((current) => ({
           ...current,
           goals: [
             {
               ...goal,
+              contributions: goal.contributions ?? initialContribution,
               id: `goal_${crypto.randomUUID()}`,
-              createdAt: new Date().toISOString()
+              createdAt: now
             },
             ...current.goals
           ],
-          updatedAt: new Date().toISOString()
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou meta",
+            entityType: "goal",
+            entityLabel: goal.name
+          }),
+          updatedAt: now
         }));
       },
       updateGoalAmount(id: string, currentAmount: number) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const goalLabel = current.goals.find((goal) => goal.id === id)?.name ?? id;
+
+          return {
+            ...current,
+            goals: current.goals.map((goal) => {
+            if (goal.id !== id) {
+              return goal;
+            }
+
+            const delta = currentAmount - goal.currentAmount;
+
+            return {
+              ...goal,
+              currentAmount,
+              contributions:
+                delta !== 0
+                  ? [
+                      {
+                        id: `goal_entry_${crypto.randomUUID()}`,
+                        amount: delta,
+                        date: now.slice(0, 10),
+                        notes: "Ajuste manual de saldo.",
+                        createdAt: now
+                      },
+                      ...goal.contributions
+                    ]
+                  : goal.contributions
+            };
+          }),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Atualizou saldo da meta",
+              entityType: "goal",
+              entityLabel: goalLabel
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      addGoalContribution(id: string, contribution: Omit<GoalContribution, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        const entry: GoalContribution = {
+          ...contribution,
+          id: `goal_entry_${crypto.randomUUID()}`,
+          createdAt: now
+        };
+
         setState((current) => ({
           ...current,
-          goals: current.goals.map((goal) => (goal.id === id ? { ...goal, currentAmount } : goal)),
-          updatedAt: new Date().toISOString()
+          goals: current.goals.map((goal) =>
+            goal.id === id
+              ? {
+                  ...goal,
+                  currentAmount: Math.max(0, goal.currentAmount + entry.amount),
+                  contributions: [entry, ...goal.contributions]
+                }
+              : goal
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Adicionou saldo na meta",
+            entityType: "goal",
+            entityLabel: current.goals.find((goal) => goal.id === id)?.name ?? id,
+            details: contribution.date
+          }),
+          updatedAt: now
         }));
       },
       removeGoal(id: string) {
         setState((current) => ({
           ...current,
           goals: current.goals.filter((goal) => goal.id !== id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu meta",
+            entityType: "goal",
+            entityLabel: current.goals.find((goal) => goal.id === id)?.name ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -602,6 +699,11 @@ export function useFinanceStore() {
               (item) => !(item.month === budget.month && item.category === budget.category)
             )
           ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Salvou orcamento",
+            entityType: "budget",
+            entityLabel: `${budget.category} - ${budget.month}`
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -609,6 +711,11 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           budgets: current.budgets.filter((budget) => budget.id !== id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu orcamento",
+            entityType: "budget",
+            entityLabel: current.budgets.find((budget) => budget.id === id)?.category ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -623,6 +730,12 @@ export function useFinanceStore() {
             },
             ...current.bills
           ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou conta",
+            entityType: "bill",
+            entityLabel: bill.title,
+            details: bill.dueDate
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -638,6 +751,12 @@ export function useFinanceStore() {
             })),
             ...current.bills
           ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou contas",
+            entityType: "bill",
+            entityLabel: `${bills.length} conta(s)`,
+            details: bills[0]?.title
+          }),
           updatedAt: now
         }));
       },
@@ -645,6 +764,11 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           bills: current.bills.map((item) => (item.id === id ? { ...item, ...bill } : item)),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou conta",
+            entityType: "bill",
+            entityLabel: current.bills.find((item) => item.id === id)?.title ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -660,6 +784,11 @@ export function useFinanceStore() {
                 }
               : bill
           ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Marcou conta como paga",
+            entityType: "bill",
+            entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -667,6 +796,11 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           bills: current.bills.filter((bill) => bill.id !== id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu conta",
+            entityType: "bill",
+            entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -674,6 +808,11 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           transactions: [...transactions, ...current.transactions],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Importou CSV",
+            entityType: "transaction",
+            entityLabel: `${transactions.length} transacao(oes)`
+          }),
           updatedAt: new Date().toISOString()
         }));
       },
@@ -704,22 +843,36 @@ export function useFinanceStore() {
 
 export type FinanceCloudSync = ReturnType<typeof useFinanceStore>["cloud"];
 
+function addFinanceActivity(
+  logs: FinanceActivityLog[],
+  actorEmail: string | null,
+  entry: {
+    action: string;
+    entityType: FinanceActivityEntity;
+    entityLabel: string;
+    details?: string;
+  }
+) {
+  return [
+    {
+      id: `activity_${crypto.randomUUID()}`,
+      actorEmail: actorEmail || "usuario autorizado",
+      action: entry.action,
+      entityType: entry.entityType,
+      entityLabel: entry.entityLabel,
+      details: entry.details,
+      createdAt: new Date().toISOString()
+    },
+    ...logs
+  ].slice(0, 200);
+}
+
 function persistFinanceStateLocally(state: FinanceState) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function prepareFinanceStateForCloud(state: FinanceState): FinanceState {
-  return {
-    ...state,
-    transactions: state.transactions.map((transaction) => ({
-      ...transaction,
-      attachmentDataUrl: undefined
-    })),
-    bills: state.bills.map((bill) => ({
-      ...bill,
-      attachmentDataUrl: undefined
-    }))
-  };
+  return state;
 }
 
 function hasFinanceContent(state: FinanceState) {
@@ -746,11 +899,22 @@ function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState):
     goals: mergeById(cloudState.goals, localState.goals).sort(sortByCreatedAtDesc),
     budgets: mergeById(cloudState.budgets, localState.budgets).sort(sortByCreatedAtDesc),
     bills: mergeById(cloudState.bills, localState.bills).sort(sortByCreatedAtDesc),
+    activityLogs: mergeById(cloudState.activityLogs, localState.activityLogs)
+      .sort(sortByCreatedAtDesc)
+      .slice(0, 200),
     updatedAt: new Date(Math.max(cloudTime, localTime, Date.now())).toISOString()
   };
 }
 
-function mergeById<T extends { id: string; attachmentDataUrl?: string }>(base: T[], incoming: T[]) {
+function mergeById<
+  T extends {
+    id: string;
+    attachmentDataUrl?: string;
+    attachmentStoragePath?: string;
+    attachmentMimeType?: string;
+    attachmentSize?: number;
+  }
+>(base: T[], incoming: T[]) {
   const merged = new Map<string, T>();
 
   base.forEach((item) => merged.set(item.id, item));
@@ -762,11 +926,21 @@ function mergeById<T extends { id: string; attachmentDataUrl?: string }>(base: T
   return Array.from(merged.values());
 }
 
-function preserveAttachmentDataUrl<T extends { attachmentDataUrl?: string }>(base: T, incoming: T): T {
+function preserveAttachmentDataUrl<
+  T extends {
+    attachmentDataUrl?: string;
+    attachmentStoragePath?: string;
+    attachmentMimeType?: string;
+    attachmentSize?: number;
+  }
+>(base: T, incoming: T): T {
   return {
     ...base,
     ...incoming,
-    attachmentDataUrl: incoming.attachmentDataUrl || base.attachmentDataUrl
+    attachmentDataUrl: incoming.attachmentDataUrl || base.attachmentDataUrl,
+    attachmentStoragePath: incoming.attachmentStoragePath || base.attachmentStoragePath,
+    attachmentMimeType: incoming.attachmentMimeType || base.attachmentMimeType,
+    attachmentSize: incoming.attachmentSize || base.attachmentSize
   };
 }
 

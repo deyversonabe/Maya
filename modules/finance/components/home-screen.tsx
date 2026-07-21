@@ -19,10 +19,17 @@ import { Input } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
 import { AppShell } from "@/components/app/app-shell";
-import { formatCurrency, formatPercent } from "@/lib/utils";
-import { buildBudgetSummary, buildDataQualityReport, buildMayaLocalAnalysis, calculateSummary } from "../lib/calculations";
+import { cn, financialValueClass, formatCurrency, formatPercent } from "@/lib/utils";
+import {
+  buildBudgetSummary,
+  buildDataQualityReport,
+  buildFinancialHealthAlerts,
+  buildMayaLocalAnalysis,
+  calculateSummary
+} from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { MayaAnalysis } from "../types";
+import { FinancialHealthAlerts } from "./financial-health-alerts";
 
 export function HomeScreen() {
   const { state } = useFinanceStore();
@@ -30,6 +37,7 @@ export function HomeScreen() {
   const maya = buildMayaLocalAnalysis(state);
   const quality = buildDataQualityReport(state);
   const budgetSummary = buildBudgetSummary(state, summary.currentMonth);
+  const healthAlerts = buildFinancialHealthAlerts(state);
 
   const [question, setQuestion] = useState("");
   const [reply, setReply] = useState(maya.message);
@@ -50,7 +58,17 @@ export function HomeScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state, question: trimmed })
       });
+
+      if (!response.ok) {
+        throw new Error("maya_unavailable");
+      }
+
       const nextAnalysis = (await response.json()) as MayaAnalysis;
+
+      if (!nextAnalysis?.message) {
+        throw new Error("maya_empty_response");
+      }
+
       setReply(nextAnalysis.message);
     } catch {
       const fallback = buildMayaLocalAnalysis(state, trimmed);
@@ -77,16 +95,16 @@ export function HomeScreen() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.7 }}
-                className="relative shrink-0"
+                className="relative shrink-0 animate-maya-float"
               >
-                <div className="absolute inset-0 -z-10 rounded-full bg-bronze/30 blur-2xl" />
+                <div className="absolute inset-[-10px] -z-10 rounded-full border border-neon-cyan/25 bg-gradient-to-br from-neon-cyan/10 via-transparent to-bronze/15 shadow-neon" />
                 <Image
                   src="/brand/maya-avatar-welcome.png"
                   alt="MAYA"
                   width={260}
                   height={260}
                   priority
-                  className="h-48 w-48 rounded-full border border-bronze/30 object-cover object-top shadow-soft drop-shadow-[0_0_28px_rgba(196,106,67,0.45)] sm:h-64 sm:w-64"
+                  className="h-48 w-48 rounded-full border border-neon-cyan/35 object-cover object-top shadow-neon drop-shadow-[0_0_28px_rgba(85,247,255,0.18)] sm:h-64 sm:w-64"
                 />
               </motion.div>
 
@@ -190,6 +208,10 @@ export function HomeScreen() {
         </div>
       </LedPanel>
 
+      <section className="mt-4">
+        <FinancialHealthAlerts alerts={healthAlerts} />
+      </section>
+
       <section className="mt-4 grid gap-4 md:grid-cols-3">
         <Feature icon={<ReceiptText />} title="Despesas por mes" text="Filtros mensais, recorrencias e parcelas aparecem exatamente no mes correto." />
         <Feature icon={<WalletCards />} title="Orcamentos" text="Limites por categoria mostram o quanto ainda pode ser gasto com tranquilidade." />
@@ -202,9 +224,9 @@ export function HomeScreen() {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+    <div className="rounded-xl border border-neon-cyan/10 bg-cream/[0.04] p-4">
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-      <strong className="mt-2 block text-lg text-cream">{value}</strong>
+      <strong className={cn("mt-2 block text-lg", financialValueClass(value, "text-cream"))}>{value}</strong>
     </div>
   );
 }

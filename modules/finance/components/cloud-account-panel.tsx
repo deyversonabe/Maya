@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Cloud, LogIn, LogOut, RefreshCcw, UserPlus } from "lucide-react";
+import { Cloud, LogIn, LogOut, RefreshCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import type { FinanceCloudSync } from "../lib/use-finance-store";
 
 export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
-  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -22,13 +21,8 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
     setFeedback("");
 
     try {
-      if (mode === "signIn") {
-        await cloud.signIn(email, password);
-        setFeedback("Conta conectada. Seus dados serao sincronizados.");
-      } else {
-        await cloud.signUp(email, password);
-        setFeedback("Conta criada. Entre com o mesmo e-mail nos outros aparelhos.");
-      }
+      await cloud.signIn(email, password);
+      setFeedback("Conta conectada. Dados compartilhados serao sincronizados.");
 
       setPassword("");
     } catch (error) {
@@ -116,10 +110,10 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
             <Input
               type="password"
               value={password}
-              autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+              autoComplete="current-password"
               onChange={(event) => setPassword(event.target.value)}
-              placeholder={mode === "signIn" ? "sua senha" : "minimo 6 caracteres"}
-              minLength={mode === "signIn" ? 1 : 6}
+              placeholder="sua senha"
+              minLength={1}
               required
             />
           </Label>
@@ -133,18 +127,8 @@ export function CloudAccountPanel({ cloud }: { cloud: FinanceCloudSync }) {
 
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={isBusy}>
-            {mode === "signIn" ? <LogIn className="size-4" aria-hidden="true" /> : <UserPlus className="size-4" aria-hidden="true" />}
-            {mode === "signIn" ? "Entrar" : "Criar conta"}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setMode((current) => (current === "signIn" ? "signUp" : "signIn"));
-              setFeedback("");
-            }}
-            disabled={isBusy}
-          >
-            {mode === "signIn" ? "Criar nova conta" : "Ja tenho conta"}
+            <LogIn className="size-4" aria-hidden="true" />
+            Entrar
           </Button>
         </div>
       </form>

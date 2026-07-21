@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
-import { formatCurrency, formatPercent } from "@/lib/utils";
-import { transactionCategories } from "../data/defaults";
+import { cn, financialValueClass, formatCurrency, formatPercent } from "@/lib/utils";
+import { expenseCategories } from "../data/defaults";
 import { buildBudgetSummary } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { BudgetUsage } from "../types";
@@ -73,7 +73,7 @@ export function BudgetsPage() {
               <Label>
                 Categoria
                 <Select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>
-                  {transactionCategories
+                  {expenseCategories
                     .filter((category) => !category.toLowerCase().includes("receita"))
                     .map((category) => (
                       <option key={category} value={category}>
@@ -172,9 +172,9 @@ export function BudgetsPage() {
 
 function BudgetMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "good" | "bad" }) {
   return (
-    <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+    <div className="rounded-xl border border-neon-cyan/10 bg-cream/[0.04] p-4">
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
-      <strong className={tone === "bad" ? "mt-2 block text-xl text-terracotta" : tone === "good" ? "mt-2 block text-xl text-emerald-200" : "mt-2 block text-xl text-bronze"}>
+      <strong className={cn("mt-2 block text-xl", financialValueClass(value, tone === "bad" ? "text-red-200" : tone === "good" ? "text-emerald-200" : "financial-positive"))}>
         {value}
       </strong>
     </div>
@@ -208,7 +208,7 @@ function BudgetUsageCard({ usage, onRemove }: { usage: BudgetUsage; onRemove: ()
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-muted">{formatPercent(usage.usedPercent)} consumido</span>
-        <strong className={usage.remaining >= 0 ? "text-emerald-200" : "text-terracotta"}>
+        <strong className={usage.remaining >= 0 ? "text-emerald-200" : "financial-negative"}>
           {usage.remaining >= 0 ? `${formatCurrency(usage.remaining)} restante` : `${formatCurrency(Math.abs(usage.remaining))} acima`}
         </strong>
       </div>

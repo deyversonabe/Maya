@@ -4,6 +4,7 @@ import type {
   BillStatus,
   BudgetUsage,
   DataQualityReport,
+  FinancialHealthAlert,
   FinanceState,
   FinanceSummary,
   Goal,
@@ -173,6 +174,70 @@ export function buildInsights(state: FinanceState) {
   }
 
   return insights.slice(0, 4);
+}
+
+export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()): FinancialHealthAlert[] {
+  const currentMonth = now.toISOString().slice(0, 7);
+  const currentTransactions = getTransactionsByMonth(state.transactions, currentMonth);
+  const previousMonths = buildMonthSummaries(state.transactions, 4).filter((month) => month.month !== currentMonth);
+  const currentIncome = sumByType(currentTransactions, "income");
+  const currentExpenses = sumByType(currentTransactions, "expense");
+  const averageIncome = average(previousMonths.map((month) => month.income).filter((value) => value > 0));
+  const averageExpenses = average(previousMonths.map((month) => month.expenses).filter((value) => value > 0));
+  const alerts: FinancialHealthAlert[] = [];
+  const createdAt = now.toISOString();
+
+  if (averageExpenses > 0 && currentExpenses > averageExpenses * 1.35) {
+    alerts.push({
+      id: "expense_above_routine",
+      title: "Despesa acima da rotina",
+      message: `As saidas do mes chegaram a ${formatCurrency(currentExpenses)}, acima da media recente de ${formatCurrency(averageExpenses)}.`,
+      priority: currentExpenses > averageExpenses * 1.75 ? "critical" : "warning",
+      createdAt
+    });
+  }
+
+  if (averageIncome > 0 && currentIncome > 0 && currentIncome < averageIncome * 0.75) {
+    alerts.push({
+      id: "income_below_routine",
+      title: "Renda abaixo da rotina",
+      message: `As entradas do mes estao em ${formatCurrency(currentIncome)}, abaixo da media recente de ${formatCurrency(averageIncome)}.`,
+      priority: "warning",
+      createdAt
+    });
+  }
+
+  if (averageIncome > 0 && currentIncome > averageIncome * 1.35) {
+    alerts.push({
+      id: "income_above_routine",
+      title: "Renda acima da rotina",
+      message: `As entradas do mes subiram para ${formatCurrency(currentIncome)}. Vale separar uma parte para metas ou reserva.`,
+      priority: "info",
+      createdAt
+    });
+  }
+
+  const categoryAverages = buildExpenseCategoryAverages(state.transactions, currentMonth);
+  const unusualTransaction = currentTransactions
+    .filter((transaction) => transaction.type === "expense")
+    .map((transaction) => ({
+      transaction,
+      average: categoryAverages[transaction.category] ?? 0
+    }))
+    .filter((item) => item.average > 0 && item.transaction.amount > item.average * 2)
+    .sort((a, b) => b.transaction.amount - a.transaction.amount)[0];
+
+  if (unusualTransaction) {
+    alerts.push({
+      id: `expense_spike_${unusualTransaction.transaction.id}`,
+      title: "Gasto fora do padrao",
+      message: `${unusualTransaction.transaction.description} em ${formatCurrency(unusualTransaction.transaction.amount)} ficou bem acima da rotina de ${unusualTransaction.transaction.category}.`,
+      priority: "warning",
+      createdAt
+    });
+  }
+
+  return alerts.slice(0, 4);
 }
 
 export function buildDataQualityReport(state: FinanceState): DataQualityReport {
@@ -551,6 +616,37 @@ function calculateHealthScore(current: MonthSummary, state: FinanceState) {
     100,
     Math.round(savingsComponent + balanceComponent + goalComponent + predictabilityComponent + budgetComponent)
   );
+}
+
+function buildExpenseCategoryAverages(transactions: Transaction[], currentMonth: string) {
+  const previousMonths = buildMonthSummaries(transactions, 4)
+    .map((month) => month.month)
+    .filter((month) => month !== currentMonth);
+  const totals: Record<string, number[]> = {};
+
+  previousMonths.forEach((month) => {
+    const monthTransactions = getTransactionsByMonth(transactions, month).filter(
+      (transaction) => transaction.type === "expense"
+    );
+    const monthTotals = monthTransactions.reduce<Record<string, number>>((accumulator, transaction) => {
+      accumulator[transaction.category] = (accumulator[transaction.category] ?? 0) + transaction.amount;
+      return accumulator;
+    }, {});
+
+    Object.entries(monthTotals).forEach(([category, amount]) => {
+      totals[category] = [...(totals[category] ?? []), amount];
+    });
+  });
+
+  return Object.fromEntries(Object.entries(totals).map(([category, values]) => [category, average(values)]));
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function emptyMonth(month: string): MonthSummary {

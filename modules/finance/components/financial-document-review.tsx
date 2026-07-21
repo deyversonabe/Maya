@@ -1,9 +1,9 @@
 "use client";
 
-import { FileImage } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import type { FinancialDocumentDraft, PaymentMethod, Person } from "../types";
+import { AttachmentLink } from "./attachment-link";
 
 type DateField = "documentDate" | "dueDate" | "entryDate";
 
@@ -62,17 +62,12 @@ export function FinancialDocumentReview({
           </p>
         </div>
 
-        {draft.attachmentDataUrl ? (
-          <a
-            href={draft.attachmentDataUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/30 bg-moss-950/40 px-3 text-sm font-black text-cyan-100 transition hover:border-bronze/50 hover:text-bronze"
-          >
-            <FileImage className="size-4" aria-hidden="true" />
-            Ver anexo
-          </a>
-        ) : null}
+        <AttachmentLink
+          dataUrl={draft.attachmentDataUrl}
+          storagePath={draft.attachmentStoragePath}
+          imageName={draft.attachmentImageName}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/30 bg-moss-950/40 px-3 text-sm font-black text-cyan-100 transition hover:border-bronze/50 hover:text-bronze"
+        />
       </div>
 
       {missingFields.length > 0 ? (
@@ -137,7 +132,7 @@ export function FinancialDocumentReview({
       </div>
 
       {showPayment ? (
-        <div className="mt-3 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="mt-3 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
           <Label>
             Pagamento
             <Select
@@ -160,6 +155,28 @@ export function FinancialDocumentReview({
             />
           </Label>
         </div>
+      ) : null}
+
+      {showPayment && draft.paymentMethod === "pix" ? (
+        <Label className="mt-3">
+          Para quem foi feito
+          <Input
+            value={draft.paymentRecipient ?? ""}
+            onChange={(event) => onChange({ paymentRecipient: event.target.value })}
+            placeholder="Nome da pessoa ou empresa"
+          />
+        </Label>
+      ) : null}
+
+      {draft.category === "Outros" ? (
+        <Label className="mt-3">
+          Descrever outros
+          <Input
+            value={draft.otherCategoryDescription ?? ""}
+            onChange={(event) => onChange({ otherCategoryDescription: event.target.value })}
+            placeholder="Opcional: detalhe a categoria"
+          />
+        </Label>
       ) : null}
 
       <Label className="mt-3">

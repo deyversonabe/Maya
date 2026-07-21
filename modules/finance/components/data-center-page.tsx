@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  Clock3,
   CloudOff,
   Database,
   Download,
@@ -70,7 +71,7 @@ export function DataCenterPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `juntos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado com seus dados atuais.");
@@ -130,6 +131,7 @@ export function DataCenterPage() {
               <DataMetric label="Orcamentos" value={String(state.budgets.length)} />
               <DataMetric label="Contas" value={String(billCount)} />
               <DataMetric label="Comprovantes" value={String(receiptCount)} />
+              <DataMetric label="Atividades" value={String(state.activityLogs.length)} />
               <DataMetric label="Atualizado em" value={state.updatedAt.slice(0, 10)} />
               <DataMetric label="Backup" value="Disponivel" />
             </div>
@@ -156,6 +158,35 @@ export function DataCenterPage() {
               <QualityList title="Ja existe" items={quality.completed} empty="Nada concluido ainda." tone="success" />
               <QualityList title="Falta para melhorar" items={quality.missing} empty="Base suficiente para esta etapa." tone="warning" />
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              eyebrow="Auditoria"
+              title="Historico de atividades"
+              action={<Badge tone="neutral">{state.activityLogs.length}</Badge>}
+            />
+            {state.activityLogs.length === 0 ? (
+              <p className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4 text-sm leading-6 text-muted">
+                Nenhuma atividade registrada ainda. Novos lancamentos, pagamentos e alteracoes aparecerao aqui.
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                {state.activityLogs.slice(0, 12).map((activity) => (
+                  <div key={activity.id} className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Clock3 className="size-4 text-bronze" aria-hidden="true" />
+                      <strong className="text-cream">{activity.action}</strong>
+                      <Badge tone="neutral">{activity.entityType}</Badge>
+                    </div>
+                    <p className="text-sm leading-6 text-muted">
+                      {activity.entityLabel} - {activity.actorEmail} - {formatDateTime(activity.createdAt)}
+                    </p>
+                    {activity.details ? <p className="mt-1 text-sm leading-6 text-muted">{activity.details}</p> : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 
@@ -201,7 +232,7 @@ export function DataCenterPage() {
             <div className="flex items-start gap-3">
               <LockKeyhole className="mt-1 size-5 text-bronze" aria-hidden="true" />
               <p className="text-sm leading-6 text-muted">
-                O Juntos Maya usa apenas os dados que voces cadastram ou confirmam. Nenhuma despesa extraida de imagem
+                O Maya usa apenas os dados que voces cadastram ou confirmam. Nenhuma despesa extraida de imagem
                 e salva sem revisao.
               </p>
             </div>
@@ -286,4 +317,17 @@ function ConsentStep({ title, text }: { title: string; text: string }) {
       <p className="text-sm leading-6 text-cyan-100">{text}</p>
     </div>
   );
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(date);
 }
