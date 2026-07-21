@@ -2,21 +2,21 @@ import type { Metadata } from "next";
 import { LegalPage } from "@/components/app/legal-page";
 
 export const metadata: Metadata = {
-  title: "Termos de Servico | Juntos Maya",
-  description: "Termos de servico do Juntos Maya."
+  title: "Termos de Servico | Maya",
+  description: "Termos de servico do Maya."
 };
 
 export default function TermsPage() {
   return (
     <LegalPage
       title="Termos de Servico"
-      description="Estes termos descrevem as regras gerais de uso do Juntos Maya."
+      description="Estes termos descrevem as regras gerais de uso do Maya."
       updatedAt="14 de julho de 2026"
       sections={[
         {
           title: "Uso do aplicativo",
           paragraphs: [
-            "O Juntos Maya e uma ferramenta de organizacao financeira pessoal e familiar.",
+            "O Maya e uma ferramenta de organizacao financeira pessoal e familiar.",
             "O usuario e responsavel por revisar dados cadastrados, rascunhos de comprovantes e informacoes financeiras antes de tomar decisoes."
           ]
         },
@@ -44,7 +44,7 @@ export default function TermsPage() {
         {
           title: "Contato",
           paragraphs: [
-            "Para suporte ou duvidas sobre estes termos, entre em contato pelo e-mail: mayajuntosia@gmail.com."
+            "Para suporte ou duvidas sobre estes termos, entre em contato pelo e-mail: deyversonsilvaf@gmail.com."
           ]
         }
       ]}

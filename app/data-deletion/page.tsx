@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { LegalPage } from "@/components/app/legal-page";
 
 export const metadata: Metadata = {
-  title: "Exclusao de Dados | Juntos Maya",
-  description: "Instrucoes para solicitar exclusao de dados no Juntos Maya."
+  title: "Exclusao de Dados | Maya",
+  description: "Instrucoes para solicitar exclusao de dados no Maya."
 };
 
 export default function DataDeletionPage() {
   return (
     <LegalPage
       title="Exclusao de Dados"
-      description="Esta pagina informa como solicitar a exclusao de dados relacionados ao Juntos Maya."
+      description="Esta pagina informa como solicitar a exclusao de dados relacionados ao Maya."
       updatedAt="14 de julho de 2026"
       sections={[
         {
@@ -23,8 +23,8 @@ export default function DataDeletionPage() {
         {
           title: "Solicitacao por e-mail",
           paragraphs: [
-            "Para solicitar exclusao de dados associados ao seu contato, envie um e-mail para mayajuntosia@gmail.com com o assunto: Exclusao de dados - Juntos Maya.",
-            "Informe o telefone ou e-mail usado no contato com o Juntos Maya para que possamos localizar a solicitacao.",
+            "Para solicitar exclusao de dados associados ao seu contato, envie um e-mail para deyversonsilvaf@gmail.com com o assunto: Exclusao de dados - Maya.",
+            "Informe o telefone ou e-mail usado no contato com o Maya para que possamos localizar a solicitacao.",
             "Nunca envie senhas, tokens, documentos completos ou informacoes financeiras sensiveis por e-mail."
           ]
         },

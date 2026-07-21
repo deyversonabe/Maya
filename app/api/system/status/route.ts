@@ -12,10 +12,35 @@ export function GET() {
       backup: {
         available: true
       },
+      reports: {
+        pdf: true,
+        excel: true
+      },
       sync: {
         available: Boolean(
           process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
         )
+      },
+      admin: {
+        available: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+      },
+      push: {
+        available: Boolean(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
+            process.env.VAPID_PRIVATE_KEY &&
+            process.env.VAPID_SUBJECT &&
+            process.env.CRON_SECRET
+        )
+      },
+      storage: {
+        bucket: process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments",
+        available: Boolean(
+          process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        )
+      },
+      pwa: {
+        available: true,
+        cache: "static-assets-only"
       },
       whatsapp: {
         available: Boolean(
