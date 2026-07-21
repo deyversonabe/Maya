@@ -1,6 +1,6 @@
 {
-  "name": "Juntos",
-  "short_name": "Juntos",
+  "name": "Maya",
+  "short_name": "Maya",
   "description": "Organizacao financeira e planejamento do casal.",
   "start_url": "/",
   "display": "standalone",
@@ -8,8 +8,8 @@
   "theme_color": "#102118",
   "icons": [
     {
-      "src": "/brand/juntos-maya-logo.png",
-      "sizes": "1254x1254",
+      "src": "/brand/maya-favicon.png",
+      "sizes": "1536x1024",
       "type": "image/png",
       "purpose": "any"
     }
