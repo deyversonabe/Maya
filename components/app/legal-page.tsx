@@ -25,8 +25,8 @@ export function LegalPage({
           className="mb-4 inline-flex items-center gap-3 rounded-xl border border-bronze/20 bg-moss-950/80 px-4 py-3 text-bronze shadow-soft transition hover:border-bronze/40"
           aria-label="Voltar para o inicio"
         >
-          <Image src="/brand/juntos-maya-logo.png" alt="Juntos Maya" width={72} height={72} className="size-12 object-contain" />
-          <span className="font-serif text-2xl font-bold">Juntos Maya</span>
+          <Image src="/brand/maya-logo.png" alt="Maya" width={72} height={72} className="size-12 rounded-full object-cover" />
+          <span className="font-serif text-2xl font-bold">Maya</span>
         </Link>
 
         <section className="rounded-card border border-bronze/20 bg-moss-900/80 p-5 shadow-soft md:p-8">

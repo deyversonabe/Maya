@@ -6,7 +6,8 @@ export function Card({
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
   return (
-    <section className={cn("glass-panel rounded-card p-5", className)} {...props}>
+    <section className={cn("glass-panel relative overflow-hidden rounded-card p-5", className)} {...props}>
+      <span className="neon-topline opacity-50" aria-hidden="true" />
       {children}
     </section>
   );

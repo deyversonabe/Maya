@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 type BadgeTone = "success" | "warning" | "info" | "neutral";
 
 const toneClass: Record<BadgeTone, string> = {
-  success: "border-emerald-300/40 bg-emerald-400/10 text-emerald-200",
-  warning: "border-amber-300/40 bg-amber-400/10 text-amber-200",
-  info: "border-cyan-300/40 bg-cyan-400/10 text-cyan-200",
-  neutral: "border-bronze/40 bg-bronze/10 text-bronze"
+  success: "border-neon-green/40 bg-neon-green/10 text-emerald-100 shadow-[0_0_18px_rgba(114,255,182,0.12)]",
+  warning: "border-neon-amber/45 bg-neon-amber/10 text-amber-100 shadow-[0_0_18px_rgba(255,210,122,0.12)]",
+  info: "border-neon-cyan/45 bg-neon-cyan/10 text-cyan-100 shadow-[0_0_18px_rgba(85,247,255,0.12)]",
+  neutral: "border-bronze/45 bg-bronze/10 text-bronze shadow-[0_0_18px_rgba(184,121,69,0.12)]"
 };
 
 export function Badge({

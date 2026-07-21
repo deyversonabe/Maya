@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn, financialValueClass } from "@/lib/utils";
 import { Badge } from "./badge";
 
 export function VisualMetric({
@@ -19,17 +19,18 @@ export function VisualMetric({
   return (
     <div
       className={cn(
-        "group rounded-card border border-cream/10 bg-cream/[0.045] p-4 transition duration-300 hover:-translate-y-0.5 hover:border-bronze/40 hover:bg-cream/[0.07]",
+        "neon-card group p-4 transition duration-300 hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:bg-cream/[0.07]",
         className
       )}
     >
+      <span className="neon-topline opacity-60 transition group-hover:opacity-100" aria-hidden="true" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">{label}</p>
-          <strong className="mt-3 block font-serif text-3xl leading-none text-bronze">{value}</strong>
+          <strong className={cn("relative mt-3 block font-serif text-3xl leading-none", financialValueClass(value))}>{value}</strong>
         </div>
         {icon ? (
-          <div className="grid size-11 place-items-center rounded-xl border border-bronze/20 bg-bronze/10 text-bronze transition group-hover:scale-105">
+          <div className="relative grid size-11 place-items-center overflow-hidden rounded-xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan shadow-neon transition group-hover:scale-105 group-hover:border-bronze/40 group-hover:text-bronze">
             {icon}
           </div>
         ) : null}
