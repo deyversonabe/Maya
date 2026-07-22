@@ -67,6 +67,7 @@ async function ensureSharedWorkspace() {
     goals: [],
     budgets: [],
     bills: [],
+    activityLogs: [],
     updatedAt: new Date().toISOString()
   };
 
