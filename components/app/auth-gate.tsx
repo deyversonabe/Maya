@@ -177,7 +177,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       .from("finance_workspace_members")
       .select("role,status")
       .eq("workspace_id", WORKSPACE_ID)
-      .eq("user_id", session.user.id)
       .maybeSingle();
 
     if (memberResult.error && isMissingStatusColumn(memberResult.error.message)) {
@@ -185,7 +184,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         .from("finance_workspace_members")
         .select("role")
         .eq("workspace_id", WORKSPACE_ID)
-        .eq("user_id", session.user.id)
         .maybeSingle();
     }
 
