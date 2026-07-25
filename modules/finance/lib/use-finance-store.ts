@@ -41,6 +41,11 @@ interface FinanceCloudRow {
   updated_at: string | null;
 }
 
+interface SafeWorkspaceStateSaveRow {
+  state: unknown;
+  updated_at: string | null;
+}
+
 export function useFinanceStore() {
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const [state, setState] = useState<FinanceState>(() => createEmptyFinanceState());
@@ -105,21 +110,29 @@ export function useFinanceStore() {
         return;
       }
 
-      const { error } = await supabase.from(CLOUD_TABLE).upsert(
-        {
-          workspace_id: CLOUD_WORKSPACE_ID,
-          state: cloudState,
-          updated_by: userIdRef.current,
-          updated_at: cloudState.updatedAt
-        },
-        { onConflict: "workspace_id" }
-      );
+      const { data, error } = await supabase
+        .rpc("save_finance_workspace_state_locked", {
+          p_workspace_id: CLOUD_WORKSPACE_ID,
+          p_state: cloudState
+        })
+        .maybeSingle();
 
       if (error) {
         throw new Error(formatCloudError(error));
       }
 
-      lastCloudPayloadRef.current = payload;
+      const savedRow = data as SafeWorkspaceStateSaveRow | null;
+      const savedState = savedRow?.state ? migrateFinanceState(savedRow.state) : cloudState;
+      const savedPayload = JSON.stringify(prepareFinanceStateForCloud(savedState));
+
+      lastCloudPayloadRef.current = savedPayload || payload;
+
+      if (savedPayload && savedPayload !== payload) {
+        skipNextCloudSaveRef.current = true;
+        setState(savedState);
+        persistFinanceStateLocally(savedState);
+      }
+
       setCloud((current) => ({
         ...current,
         status: "online",
@@ -142,15 +155,19 @@ export function useFinanceStore() {
     const localTime = getTime(localState.updatedAt);
     const remoteTime = getTime(remoteState.updatedAt);
     const nextState = localTime > remoteTime ? mergeFinanceStates(remoteState, localState) : remoteState;
+    const shouldResaveMergedState =
+      localTime > remoteTime && hasDifferentCloudPayload(nextState, remoteState);
 
-    skipNextCloudSaveRef.current = true;
+    skipNextCloudSaveRef.current = !shouldResaveMergedState;
     lastCloudPayloadRef.current = remotePayload;
     setState(nextState);
     persistFinanceStateLocally(nextState);
     setCloud((current) => ({
       ...current,
-      status: "online",
-      message: "Dados atualizados pela conta compartilhada.",
+      status: shouldResaveMergedState ? "syncing" : "online",
+      message: shouldResaveMergedState
+        ? "Mesclando alteracoes deste aparelho com a conta compartilhada."
+        : "Dados atualizados pela conta compartilhada.",
       lastSyncedAt: new Date().toISOString()
     }));
   }, []);
@@ -906,41 +923,42 @@ function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState):
   };
 }
 
-function mergeById<
-  T extends {
-    id: string;
-    attachmentDataUrl?: string;
-    attachmentStoragePath?: string;
-    attachmentMimeType?: string;
-    attachmentSize?: number;
-  }
->(base: T[], incoming: T[]) {
+type MergeableFinanceItem = {
+  id: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  attachmentImageName?: string;
+  receiptImageName?: string;
+  documentItems?: unknown[];
+  fiscalDocument?: unknown;
+};
+
+function mergeById<T extends MergeableFinanceItem>(base: T[], incoming: T[]) {
   const merged = new Map<string, T>();
 
   base.forEach((item) => merged.set(item.id, item));
   incoming.forEach((item) => {
     const existing = merged.get(item.id);
-    merged.set(item.id, existing ? preserveAttachmentDataUrl(existing, item) : item);
+    merged.set(item.id, existing ? preserveDocumentFields(existing, item) : item);
   });
 
   return Array.from(merged.values());
 }
 
-function preserveAttachmentDataUrl<
-  T extends {
-    attachmentDataUrl?: string;
-    attachmentStoragePath?: string;
-    attachmentMimeType?: string;
-    attachmentSize?: number;
-  }
->(base: T, incoming: T): T {
+function preserveDocumentFields<T extends MergeableFinanceItem>(base: T, incoming: T): T {
   return {
     ...base,
     ...incoming,
     attachmentDataUrl: incoming.attachmentDataUrl || base.attachmentDataUrl,
     attachmentStoragePath: incoming.attachmentStoragePath || base.attachmentStoragePath,
     attachmentMimeType: incoming.attachmentMimeType || base.attachmentMimeType,
-    attachmentSize: incoming.attachmentSize || base.attachmentSize
+    attachmentSize: incoming.attachmentSize || base.attachmentSize,
+    attachmentImageName: incoming.attachmentImageName || base.attachmentImageName,
+    receiptImageName: incoming.receiptImageName || base.receiptImageName,
+    documentItems: incoming.documentItems?.length ? incoming.documentItems : base.documentItems,
+    fiscalDocument: incoming.fiscalDocument || base.fiscalDocument
   };
 }
 
@@ -992,6 +1010,8 @@ function formatCloudError(error: { message?: string; code?: string }) {
   const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
 
   if (
+    text.includes("save_finance_workspace_state_locked") ||
+    text.includes("function") ||
     text.includes("finance_states") ||
     text.includes("finance_workspace") ||
     text.includes("relation") ||

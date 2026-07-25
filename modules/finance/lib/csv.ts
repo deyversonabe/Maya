@@ -1,3 +1,4 @@
+import { parseFinancialAmountInput } from "@/lib/utils";
 import type { Person, Transaction, TransactionType } from "../types";
 
 const validTypes = new Set<TransactionType>(["income", "expense", "investment", "transfer"]);
@@ -24,7 +25,7 @@ export function parseTransactionsCsv(csv: string): Transaction[] {
 function rowToTransaction(headers: string[], columns: string[]): Transaction | null {
   const value = (name: string) => columns[headers.indexOf(name)]?.trim();
   const type = value("type") as TransactionType;
-  const amount = Number(value("amount")?.replace(",", "."));
+  const amount = parseFinancialAmountInput(value("amount") ?? "");
   const personValue = value("person") as Person;
   const date = value("date");
   const description = value("description");

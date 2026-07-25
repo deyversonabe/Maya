@@ -25,7 +25,7 @@ export function findTransactionDuplicateMatches(
     existingTransactions
       .filter((existing) => isPossibleTransactionDuplicate(existing, incoming))
       .forEach((existing) => {
-        const key = `${existing.id}_${incoming.type}_${incoming.date}_${Math.round(incoming.amount * 100)}_${incoming.description}`;
+        const key = `${existing.id}_${incoming.type}_${incoming.date}_${normalizeAmountKey(incoming.amount)}_${incoming.description}`;
 
         if (seen.has(key)) {
           return;
@@ -118,7 +118,11 @@ function isTrackedTransactionType(type: Transaction["type"]) {
 }
 
 function areSameMoneyValue(left: number, right: number) {
-  return Math.round(left * 100) === Math.round(right * 100);
+  return Object.is(left, right) || Math.abs(left - right) < Number.EPSILON;
+}
+
+function normalizeAmountKey(value: number) {
+  return Number.isFinite(value) ? String(value) : "invalid";
 }
 
 function areDatesNear(left: string, right: string) {

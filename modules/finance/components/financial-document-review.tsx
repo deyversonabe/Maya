@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import { parseFinancialAmountInput } from "@/lib/utils";
 import type { FinancialDocumentDraft, PaymentMethod, Person } from "../types";
 import { AttachmentLink } from "./attachment-link";
 
@@ -47,6 +48,7 @@ export function FinancialDocumentReview({
   const missingFields = draft.missingFields
     .map((field) => missingFieldLabels[field] ?? field)
     .filter(Boolean);
+  const fiscalEntries = buildFiscalEntries(draft);
 
   return (
     <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">
@@ -74,6 +76,20 @@ export function FinancialDocumentReview({
         <p className="mb-4 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm font-bold text-amber-100">
           Complete antes de salvar: {missingFields.join(", ")}.
         </p>
+      ) : null}
+
+      {fiscalEntries.length > 0 ? (
+        <div className="mb-4 rounded-lg border border-bronze/25 bg-bronze/10 p-3">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-bronze">Dados fiscais lidos</p>
+          <dl className="mt-2 grid gap-2 text-sm md:grid-cols-2">
+            {fiscalEntries.map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-md border border-cream/10 bg-moss-950/35 p-2">
+                <dt className="text-xs font-bold uppercase text-muted">{label}</dt>
+                <dd className="mt-1 break-words font-semibold text-cream">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       ) : null}
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px]">
@@ -192,7 +208,57 @@ export function FinancialDocumentReview({
 }
 
 function parseMoney(value: string) {
-  const number = Number(value.replace(/\./g, "").replace(",", "."));
+  const number = parseFinancialAmountInput(value);
 
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function buildFiscalEntries(draft: FinancialDocumentDraft): Array<[string, string]> {
+  const fiscalDocument = draft.fiscalDocument;
+
+  if (!fiscalDocument) {
+    return [];
+  }
+
+  const typeLabels: Record<string, string> = {
+    danfe_nfe: "DANFE NF-e",
+    danfe_nfce: "DANFE NFC-e",
+    cupom_fiscal: "Cupom fiscal",
+    boleto: "Boleto",
+    pix: "Pix",
+    recibo: "Recibo",
+    extrato: "Extrato",
+    unknown: "Documento nao identificado"
+  };
+  const entries: Array<[string, string]> = [];
+
+  if (fiscalDocument.documentType) {
+    entries.push(["Tipo", typeLabels[fiscalDocument.documentType] ?? fiscalDocument.documentType]);
+  }
+
+  if (fiscalDocument.issuerName) {
+    entries.push(["Emissor", fiscalDocument.issuerName]);
+  }
+
+  if (fiscalDocument.issuerCnpj) {
+    entries.push(["CNPJ", fiscalDocument.issuerCnpj]);
+  }
+
+  if (fiscalDocument.documentNumber) {
+    entries.push(["Numero", fiscalDocument.documentNumber]);
+  }
+
+  if (fiscalDocument.series) {
+    entries.push(["Serie", fiscalDocument.series]);
+  }
+
+  if (fiscalDocument.accessKey) {
+    entries.push(["Chave de acesso", fiscalDocument.accessKey]);
+  }
+
+  if (fiscalDocument.protocolNumber) {
+    entries.push(["Protocolo", fiscalDocument.protocolNumber]);
+  }
+
+  return entries;
 }

@@ -96,7 +96,7 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
   };
 }
 
-export function buildReportFilename(report: FinanceReport, extension: "pdf" | "xlsx" | "json") {
+export function buildReportFilename(report: FinanceReport, extension: "pdf" | "xls" | "json") {
   const safeLabel = report.period.label.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
   return `maya-relatorio-${safeLabel}-${new Date().toISOString().slice(0, 10)}.${extension}`;
 }

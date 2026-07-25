@@ -19,7 +19,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { expenseCategories } from "../data/defaults";
 import {
   addMonths,
@@ -189,7 +189,7 @@ export function BillsPage() {
 
   function submitBill(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(form.amount.replace(",", "."));
+    const amount = parseFinancialAmountInput(form.amount);
 
     if (!form.title.trim() || !Number.isFinite(amount) || amount <= 0 || !form.dueDate) {
       setFeedback("Preencha titulo, valor e vencimento antes de salvar.");
@@ -223,6 +223,7 @@ export function BillsPage() {
       attachmentMimeType: documentDraft?.attachmentMimeType,
       attachmentSize: documentDraft?.attachmentSize,
       documentItems: documentDraft?.items,
+      fiscalDocument: documentDraft?.fiscalDocument,
       source: documentDraft ? "attachment" : "manual"
     });
 
@@ -883,6 +884,7 @@ function createPlannedBills({
   attachmentMimeType,
   attachmentSize,
   documentItems,
+  fiscalDocument,
   source
 }: {
   title: string;
@@ -906,6 +908,7 @@ function createPlannedBills({
   attachmentMimeType?: string;
   attachmentSize?: number;
   documentItems?: FinancialDocumentDraft["items"];
+  fiscalDocument?: FinancialDocumentDraft["fiscalDocument"];
   source: "manual" | "attachment";
 }): Array<Omit<PayableBill, "id" | "createdAt">> {
   const count = plan === "recurring" ? clampCount(months, 1, 60) : plan === "installment" ? clampCount(installments, 1, 120) : 1;
@@ -936,6 +939,7 @@ function createPlannedBills({
     attachmentMimeType,
     attachmentSize,
     documentItems,
+    fiscalDocument,
     notes,
     paidAt: status === "paid" ? now : undefined
   }));

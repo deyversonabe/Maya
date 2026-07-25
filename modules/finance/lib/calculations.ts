@@ -121,13 +121,13 @@ export function buildInsights(state: FinanceState) {
   } else if (summary.savingsRate >= 30) {
     insights.push({
       title: "Ritmo excelente",
-      body: `A taxa de economia esta em ${Math.round(summary.savingsRate)}%. Esse ritmo fortalece metas e reserva.`,
+      body: `A taxa de economia esta em ${formatPercent(summary.savingsRate)}. Esse ritmo fortalece metas e reserva.`,
       tone: "success"
     });
   } else if (summary.savingsRate >= 10) {
     insights.push({
       title: "Bom caminho",
-      body: `A taxa de economia esta em ${Math.round(summary.savingsRate)}%. Um pequeno ajuste em gastos variaveis pode acelerar as metas.`,
+      body: `A taxa de economia esta em ${formatPercent(summary.savingsRate)}. Um pequeno ajuste em gastos variaveis pode acelerar as metas.`,
       tone: "info"
     });
   } else {
@@ -168,7 +168,7 @@ export function buildInsights(state: FinanceState) {
   if (urgentGoal) {
     insights.push({
       title: "Meta para cuidar",
-      body: `${urgentGoal.goal.name} esta com ${Math.round(urgentGoal.progress)}% de progresso. Um aporte pequeno e recorrente ja muda a curva.`,
+      body: `${urgentGoal.goal.name} esta com ${formatPercent(urgentGoal.progress)} de progresso. Um aporte pequeno e recorrente ja muda a curva.`,
       tone: "warning"
     });
   }

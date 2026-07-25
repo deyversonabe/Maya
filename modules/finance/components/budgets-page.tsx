@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
-import { cn, financialValueClass, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput } from "@/lib/utils";
 import { expenseCategories } from "../data/defaults";
 import { buildBudgetSummary } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -26,7 +26,7 @@ export function BudgetsPage() {
 
   function submitBudget(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const limitAmount = Number(form.limitAmount.replace(",", "."));
+    const limitAmount = parseFinancialAmountInput(form.limitAmount);
 
     if (!Number.isFinite(limitAmount) || limitAmount <= 0) {
       return;

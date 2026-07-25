@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
+import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { financialValueClass, formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
 import { exportFinanceReportExcel, exportFinanceReportJson, exportFinanceReportPdf } from "../lib/report-export";
@@ -78,6 +79,7 @@ type PeriodMode = "month" | "custom";
 export function AdminPage() {
   const { state, cloud } = useFinanceStore();
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const adminAccess = useMayaAdminAccess();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [feedback, setFeedback] = useState("Painel pronto para administracao, relatorios e notificacoes.");
   const [isLoading, setIsLoading] = useState(false);
@@ -90,6 +92,11 @@ export function AdminPage() {
   const report = useMemo(() => buildFinanceReport(state, reportPeriod), [reportPeriod, state]);
 
   const loadOverview = useCallback(async () => {
+    if (!adminAccess.isAdmin) {
+      setFeedback("Painel admin disponivel somente para a conta administradora.");
+      return;
+    }
+
     if (!supabase) {
       setFeedback("Supabase precisa estar configurado para abrir o painel admin.");
       return;
@@ -118,11 +125,15 @@ export function AdminPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, [adminAccess.isAdmin, supabase]);
 
   useEffect(() => {
+    if (!adminAccess.isAdmin) {
+      return;
+    }
+
     void loadOverview();
-  }, [loadOverview]);
+  }, [adminAccess.isAdmin, loadOverview]);
 
   async function changeMemberStatus(userId: string, status: "active" | "blocked") {
     if (!supabase) {
@@ -184,6 +195,35 @@ export function AdminPage() {
   function exportJson() {
     exportFinanceReportJson(report);
     setFeedback("Backup JSON do periodo gerado.");
+  }
+
+  if (!adminAccess.checked) {
+    return (
+      <AppShell>
+        <LedPanel className="p-5" glow="cyan">
+          <p className="text-sm font-bold text-muted">Verificando permissao administrativa...</p>
+        </LedPanel>
+      </AppShell>
+    );
+  }
+
+  if (!adminAccess.isAdmin) {
+    return (
+      <AppShell>
+        <LedPanel className="p-5" glow="bronze">
+          <div className="flex items-start gap-3">
+            <LockKeyhole className="mt-1 size-5 text-bronze" aria-hidden="true" />
+            <div>
+              <p className="eyebrow">Painel restrito</p>
+              <h1 className="mt-2 font-serif text-3xl font-bold text-bronze">Somente o administrador da Maya pode acessar.</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+                Usuarios autorizados continuam usando despesas, contas, metas, meses e MAYA, mas nao veem usuarios, banco de dados ou funcoes administrativas.
+              </p>
+            </div>
+          </div>
+        </LedPanel>
+      </AppShell>
+    );
   }
 
   return (

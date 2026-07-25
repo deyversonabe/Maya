@@ -6,7 +6,9 @@ import type {
   ExpenseDraft,
   FinanceState,
   FinancialDocumentDraft,
+  FinancialDocumentItem,
   FinancialDocumentKind,
+  FiscalDocumentMetadata,
   MayaAnalysis,
   PaymentMethod,
   StatementTransactionDraft,
@@ -142,12 +144,17 @@ export async function readReceiptWithMaya({
                   "Voce e a MAYA. Leia esta imagem financeira com cuidado.",
                   "O usuario quer um rascunho revisavel para o app Maya.",
                   `Tipo solicitado: ${documentKind}.`,
-                  "A imagem pode ser nota, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
-                  "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, notes.",
+                  "A imagem pode ser nota, DANFE NF-e, DANFE NFC-e, cupom fiscal, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
+                  "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, fiscalDocument, notes.",
                   "kind deve ser expense, income ou bill.",
                   "paymentMethod deve ser boleto, pix, card ou other quando existir.",
                   "Quando paymentMethod for pix e houver destinatario/remetente legivel, preencha paymentRecipient.",
-                  "items deve listar itens de nota ou linhas de extrato com name, amount, date, type e category quando legiveis.",
+                  "Se for DANFE, NF-e, NFC-e ou cupom fiscal, trate como documento fiscal brasileiro e extraia fiscalDocument com documentType, accessKey, issuerName, issuerCnpj, documentNumber, series, issueTime, protocolNumber, totalItemsAmount, discountAmount, taxAmount e paidAmount quando legiveis.",
+                  "documentType deve ser danfe_nfe, danfe_nfce, cupom_fiscal, boleto, pix, recibo, extrato ou unknown.",
+                  "accessKey deve ter somente os 44 digitos da chave de acesso quando estiver legivel; nunca invente chave de acesso nem leia conteudo interno de QR Code se ele nao estiver textual.",
+                  "Para DANFE/NF-e/NFC-e, amount deve ser o Valor Total da Nota ou Valor Pago quando esse for o total final; nao use impostos, desconto, troco, subtotal, base de calculo ou valor unitario como total.",
+                  "title deve ser o emissor/estabelecimento quando legivel. description deve resumir o documento sem inventar: exemplo 'Nota fiscal de mercado' ou 'Conta de energia'.",
+                  "items deve listar ate 30 itens ou linhas mais legiveis com name, amount, quantity, unit, unitPrice, code, ean, ncm, date, type, category, paymentMethod e paymentRecipient quando legiveis.",
                   "Em extrato bancario, use type income para entrada e expense para saida quando a propria linha sustentar essa classificacao.",
                   "Use datas no formato YYYY-MM-DD.",
                   "Para conta a pagar, dueDate e a data de vencimento. Para renda, entryDate e a data de entrada.",
@@ -164,7 +171,7 @@ export async function readReceiptWithMaya({
             ]
           }
         ],
-        max_output_tokens: 900,
+        max_output_tokens: 1600,
         store: false,
         text: { format: { type: "json_object" } }
     });
@@ -498,9 +505,15 @@ function normalizeFinancialDraft(
   requestedKind: FinancialDocumentKind
 ): FinancialDocumentDraft {
   const kind = normalizeKind(parsed.kind, requestedKind);
+  const fiscalDocument = normalizeFiscalDocument(parsed);
   const title = toCleanString(parsed.title);
   const description = toCleanString(parsed.description);
-  const amount = clampNumber(parsed.amount, 0, 9999999, 0);
+  const amount = clampNumber(
+    parsed.amount,
+    0,
+    9999999,
+    fiscalDocument?.paidAmount ?? fiscalDocument?.totalItemsAmount ?? 0
+  );
   const documentDate = toDateString(parsed.documentDate) || toDateString(parsed.date);
   const dueDate = toDateString(parsed.dueDate) || (kind === "bill" ? documentDate : "");
   const entryDate = toDateString(parsed.entryDate) || (kind === "income" ? documentDate : "");
@@ -552,7 +565,8 @@ function normalizeFinancialDraft(
     confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
     missingFields: Array.from(missingFields),
     items: normalizeItems(parsed.items),
-    notes: toCleanString(parsed.notes) || fallback.notes
+    fiscalDocument,
+    notes: buildFinancialDocumentNotes(toCleanString(parsed.notes), fiscalDocument, fallback.notes)
   };
 }
 
@@ -569,7 +583,8 @@ function buildExpenseDraftFromFinancialDraft(draft: FinancialDocumentDraft): Exp
     paymentMethod: draft.paymentMethod,
     paymentRecipient: draft.paymentRecipient,
     otherCategoryDescription: draft.otherCategoryDescription,
-    items: draft.items
+    items: draft.items,
+    fiscalDocument: draft.fiscalDocument
   };
 }
 
@@ -693,9 +708,166 @@ function normalizeKind(value: unknown, fallback: FinancialDocumentKind): Financi
   return value === "expense" || value === "income" || value === "bill" || value === "statement" ? value : fallback;
 }
 
+function normalizeFiscalDocument(parsed: Record<string, unknown>): FiscalDocumentMetadata | undefined {
+  const fiscalSource = getObjectRecord(parsed.fiscalDocument) ?? parsed;
+  const documentType = normalizeFiscalDocumentType(
+    fiscalSource.documentType ?? fiscalSource.fiscalDocumentType ?? fiscalSource.type
+  );
+  const accessKey = normalizeFixedDigits(
+    fiscalSource.accessKey ?? fiscalSource.chaveAcesso ?? fiscalSource.chaveDeAcesso,
+    44
+  );
+  const issuerName = toCleanString(fiscalSource.issuerName ?? fiscalSource.merchantName ?? fiscalSource.establishmentName);
+  const issuerCnpj = normalizeCnpj(fiscalSource.issuerCnpj ?? fiscalSource.cnpj ?? fiscalSource.merchantCnpj);
+  const documentNumber = normalizeLooseId(
+    fiscalSource.documentNumber ?? fiscalSource.nfNumber ?? fiscalSource.number ?? fiscalSource.numero
+  );
+  const series = normalizeLooseId(fiscalSource.series ?? fiscalSource.serie);
+  const issueTime = normalizeTimeString(fiscalSource.issueTime ?? fiscalSource.time ?? fiscalSource.hora);
+  const protocolNumber = normalizeLooseId(fiscalSource.protocolNumber ?? fiscalSource.protocolo);
+  const totalItemsAmount = optionalAmount(fiscalSource.totalItemsAmount ?? fiscalSource.itemsTotal);
+  const discountAmount = optionalAmount(fiscalSource.discountAmount ?? fiscalSource.discount);
+  const taxAmount = optionalAmount(fiscalSource.taxAmount ?? fiscalSource.taxes);
+  const paidAmount = optionalAmount(fiscalSource.paidAmount ?? fiscalSource.totalAmount ?? fiscalSource.amount);
+
+  const fiscalDocument = {
+    documentType,
+    accessKey,
+    issuerName,
+    issuerCnpj,
+    documentNumber,
+    series,
+    issueTime,
+    protocolNumber,
+    totalItemsAmount,
+    discountAmount,
+    taxAmount,
+    paidAmount
+  };
+
+  const hasFiscalData = Object.values(fiscalDocument).some((value) => value !== undefined && value !== "");
+
+  return hasFiscalData ? fiscalDocument : undefined;
+}
+
+function normalizeFiscalDocumentType(value: unknown): FiscalDocumentMetadata["documentType"] | undefined {
+  const text = toCleanString(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (!text) {
+    return undefined;
+  }
+
+  if (text.includes("nfce") || text.includes("nfc-e") || text.includes("danfe nfce")) {
+    return "danfe_nfce";
+  }
+
+  if (text.includes("nfe") || text.includes("nf-e") || text.includes("danfe")) {
+    return "danfe_nfe";
+  }
+
+  if (text.includes("cupom")) {
+    return "cupom_fiscal";
+  }
+
+  if (text.includes("boleto")) {
+    return "boleto";
+  }
+
+  if (text.includes("pix")) {
+    return "pix";
+  }
+
+  if (text.includes("recibo")) {
+    return "recibo";
+  }
+
+  if (text.includes("extrato")) {
+    return "extrato";
+  }
+
+  return text === "unknown" ? "unknown" : undefined;
+}
+
+function buildFinancialDocumentNotes(
+  aiNotes: string,
+  fiscalDocument: FiscalDocumentMetadata | undefined,
+  fallbackNotes?: string
+) {
+  const fiscalLines = buildFiscalDocumentSummary(fiscalDocument);
+  const notes = [aiNotes, ...fiscalLines].filter(Boolean).join("\n");
+
+  return notes || fallbackNotes;
+}
+
+function buildFiscalDocumentSummary(fiscalDocument?: FiscalDocumentMetadata) {
+  if (!fiscalDocument) {
+    return [];
+  }
+
+  const lines = ["Dados fiscais lidos pela MAYA:"];
+  const documentTypeLabels: Record<NonNullable<FiscalDocumentMetadata["documentType"]>, string> = {
+    danfe_nfe: "DANFE NF-e",
+    danfe_nfce: "DANFE NFC-e",
+    cupom_fiscal: "Cupom fiscal",
+    boleto: "Boleto",
+    pix: "Pix",
+    recibo: "Recibo",
+    extrato: "Extrato",
+    unknown: "Documento nao identificado"
+  };
+
+  if (fiscalDocument.documentType) {
+    lines.push(`Tipo: ${documentTypeLabels[fiscalDocument.documentType]}.`);
+  }
+
+  if (fiscalDocument.issuerName) {
+    lines.push(`Emissor: ${fiscalDocument.issuerName}.`);
+  }
+
+  if (fiscalDocument.issuerCnpj) {
+    lines.push(`CNPJ: ${fiscalDocument.issuerCnpj}.`);
+  }
+
+  if (fiscalDocument.documentNumber) {
+    lines.push(`Numero: ${fiscalDocument.documentNumber}.`);
+  }
+
+  if (fiscalDocument.series) {
+    lines.push(`Serie: ${fiscalDocument.series}.`);
+  }
+
+  if (fiscalDocument.accessKey) {
+    lines.push(`Chave de acesso: ${fiscalDocument.accessKey}.`);
+  }
+
+  if (fiscalDocument.protocolNumber) {
+    lines.push(`Protocolo: ${fiscalDocument.protocolNumber}.`);
+  }
+
+  return lines;
+}
+
 function normalizePaymentMethod(value: unknown, fallback?: PaymentMethod): PaymentMethod | undefined {
   if (value === "boleto" || value === "pix" || value === "card" || value === "other") {
     return value;
+  }
+
+  const text = toCleanString(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (text.includes("pix")) {
+    return "pix";
+  }
+
+  if (text.includes("boleto") || text.includes("linha digitavel") || text.includes("codigo de barras")) {
+    return "boleto";
+  }
+
+  if (text.includes("cartao") || text.includes("card") || text.includes("credito") || text.includes("debito")) {
+    return "card";
+  }
+
+  if (text) {
+    return "other";
   }
 
   return fallback;
@@ -715,25 +887,41 @@ function toDateString(value: unknown) {
   return text;
 }
 
-function normalizeItems(value: unknown) {
+function normalizeItems(value: unknown): FinancialDocumentItem[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value
-    .map((item) => ({
-      name: String((item as { name?: unknown }).name ?? "").trim(),
-      amount: Number((item as { amount?: unknown }).amount),
-      date: toDateString((item as { date?: unknown }).date),
-      type: normalizeTransactionType((item as { type?: unknown }).type),
-      category: toCleanString((item as { category?: unknown }).category),
-      paymentMethod: normalizePaymentMethod((item as { paymentMethod?: unknown }).paymentMethod, undefined),
-      paymentRecipient: toCleanString((item as { paymentRecipient?: unknown }).paymentRecipient)
-    }))
+    .map((item) => {
+      const source = getObjectRecord(item);
+
+      return {
+        name: toCleanString(source?.name ?? source?.description ?? source?.descricao),
+        amount: optionalAmount(source?.amount ?? source?.total ?? source?.valor),
+        quantity: optionalAmount(source?.quantity ?? source?.qty ?? source?.quantidade),
+        unit: toCleanString(source?.unit ?? source?.unidade),
+        unitPrice: optionalAmount(source?.unitPrice ?? source?.price ?? source?.valorUnitario),
+        code: normalizeLooseId(source?.code ?? source?.codigo),
+        ean: normalizeLooseId(source?.ean ?? source?.barcode ?? source?.codigoDeBarras),
+        ncm: normalizeLooseId(source?.ncm),
+        date: toDateString(source?.date),
+        type: normalizeTransactionType(source?.type),
+        category: toCleanString(source?.category),
+        paymentMethod: normalizePaymentMethod(source?.paymentMethod, undefined),
+        paymentRecipient: toCleanString(source?.paymentRecipient)
+      };
+    })
     .filter((item) => item.name)
     .map((item) => ({
       name: item.name,
-      amount: Number.isFinite(item.amount) ? item.amount : undefined,
+      amount: item.amount,
+      quantity: item.quantity,
+      unit: item.unit || undefined,
+      unitPrice: item.unitPrice,
+      code: item.code || undefined,
+      ean: item.ean || undefined,
+      ncm: item.ncm || undefined,
       date: item.date || undefined,
       type: item.type,
       category: item.category || undefined,
@@ -751,13 +939,68 @@ function normalizeTransactionType(value: unknown): TransactionType | undefined {
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number) {
-  const number = Number(value);
+  const number = parseNumber(value);
 
   if (!Number.isFinite(number)) {
     return fallback;
   }
 
   return Math.max(min, Math.min(max, number));
+}
+
+function optionalAmount(value: unknown) {
+  const number = parseNumber(value);
+
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function parseNumber(value: unknown) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return Number.NaN;
+  }
+
+  const text = value.trim().replace(/[^\d,.-]/g, "");
+
+  if (!text) {
+    return Number.NaN;
+  }
+
+  const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+
+  return Number(normalized);
+}
+
+function getObjectRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function normalizeFixedDigits(value: unknown, length: number) {
+  const digits = normalizeLooseId(value);
+
+  return digits.length === length ? digits : "";
+}
+
+function normalizeCnpj(value: unknown) {
+  const digits = normalizeLooseId(value);
+
+  return digits.length === 14 ? digits : "";
+}
+
+function normalizeLooseId(value: unknown) {
+  return toCleanString(value).replace(/\D/g, "");
+}
+
+function normalizeTimeString(value: unknown) {
+  const text = toCleanString(value);
+  const match = text.match(/\b([01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\b/);
+
+  return match?.[0] ?? "";
 }
 
 function toStringArray(value: unknown, fallback: string[]) {

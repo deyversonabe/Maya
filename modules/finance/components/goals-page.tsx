@@ -9,7 +9,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { getGoalProgress } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { GoalPriority, GoalType } from "../types";
@@ -54,8 +54,8 @@ export function GoalsPage() {
 
   function submitGoal(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const targetAmount = Number(form.targetAmount.replace(",", "."));
-    const currentAmount = Number(form.currentAmount.replace(",", ".") || 0);
+    const targetAmount = parseFinancialAmountInput(form.targetAmount);
+    const currentAmount = form.currentAmount.trim() ? parseFinancialAmountInput(form.currentAmount) : 0;
 
     if (!form.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) {
       setFeedback("Preencha nome e valor alvo valido para salvar a meta.");
@@ -117,7 +117,7 @@ export function GoalsPage() {
       date: toInputDate(new Date()),
       notes: ""
     };
-    const amount = Number(contributionForm.amount.replace(",", "."));
+    const amount = parseFinancialAmountInput(contributionForm.amount);
 
     if (!Number.isFinite(amount) || amount <= 0 || !contributionForm.date) {
       setFeedback("Informe valor guardado e data do saldo antes de adicionar na meta.");
@@ -156,7 +156,7 @@ export function GoalsPage() {
           </div>
           <div className="min-w-0 rounded-2xl border border-bronze/20 bg-bronze/10 p-4">
             <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Progresso geral</p>
-            <strong className="mt-2 block font-serif text-5xl text-bronze">{Math.round(totals.progress)}%</strong>
+            <strong className="mt-2 block font-serif text-5xl text-bronze">{formatPercent(totals.progress)}</strong>
             <p className="mt-2 text-sm text-muted">
               {formatCurrency(totals.current)} de {formatCurrency(totals.target)}
             </p>
@@ -309,13 +309,13 @@ export function GoalsPage() {
                       defaultValue={goal.currentAmount}
                       aria-label={`Valor atual da meta ${goal.name}`}
                       onBlur={(event) => {
-                        const value = Number(event.target.value.replace(",", "."));
+                        const value = parseFinancialAmountInput(event.target.value);
                         if (Number.isFinite(value) && value >= 0) {
                           actions.updateGoalAmount(goal.id, value);
                         }
                       }}
                     />
-                    <Badge tone={progress >= 70 ? "success" : "warning"}>{Math.round(progress)}%</Badge>
+                    <Badge tone={progress >= 70 ? "success" : "warning"}>{formatPercent(progress)}</Badge>
                   </div>
 
                   <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">

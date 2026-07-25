@@ -9,7 +9,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
@@ -265,7 +265,7 @@ export function ExpensesPage() {
 
   function submitExpense(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(form.amount.replace(",", "."));
+    const amount = parseFinancialAmountInput(form.amount);
 
     if (!form.description.trim() || !Number.isFinite(amount) || amount <= 0 || !form.date) {
       setFeedback("Preencha descricao, valor e data para salvar.");
@@ -296,6 +296,7 @@ export function ExpensesPage() {
       attachmentMimeType: receiptDraft?.attachmentMimeType,
       attachmentSize: receiptDraft?.attachmentSize,
       documentItems: receiptDraft?.items,
+      fiscalDocument: receiptDraft?.fiscalDocument,
       source: receiptDraft ? "receipt" : "manual"
     });
 
@@ -681,6 +682,7 @@ function createPlannedExpenses({
   attachmentMimeType,
   attachmentSize,
   documentItems,
+  fiscalDocument,
   source
 }: {
   description: string;
@@ -701,6 +703,7 @@ function createPlannedExpenses({
   attachmentMimeType?: string;
   attachmentSize?: number;
   documentItems?: FinancialDocumentDraft["items"];
+  fiscalDocument?: FinancialDocumentDraft["fiscalDocument"];
   source: "manual" | "receipt";
 }): Array<Omit<Transaction, "id" | "createdAt">> {
   const count = plan === "recurring" ? clampCount(months, 1, 60) : plan === "installment" ? clampCount(installments, 1, 120) : 1;
@@ -729,6 +732,7 @@ function createPlannedExpenses({
     attachmentMimeType,
     attachmentSize,
     documentItems,
+    fiscalDocument,
     notes
   }));
 }
@@ -771,7 +775,7 @@ function findInternalDuplicateMatches(transactions: Array<Omit<Transaction, "id"
   const matches: Array<[Omit<Transaction, "id" | "createdAt">, Omit<Transaction, "id" | "createdAt">]> = [];
 
   transactions.forEach((transaction) => {
-    const key = `${transaction.date}_${Math.round(transaction.amount * 100)}`;
+    const key = `${transaction.date}_${normalizeAmountKey(transaction.amount)}`;
     const existing = seen.get(key);
 
     if (existing) {
@@ -857,7 +861,7 @@ function StatementDraftReview({
             const categories = line.type === "income" ? incomeCategories : expenseCategories;
 
             return (
-              <div key={`${line.date}_${line.description}_${index}`} className="rounded-lg border border-cyan-200/20 bg-moss-950/35 p-3">
+              <div key={index} className="rounded-lg border border-cyan-200/20 bg-moss-950/35 p-3">
                 <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_130px]">
                   <Label>
                     Tipo
@@ -999,9 +1003,13 @@ function buildAvailableMonths(transactions: Transaction[]) {
 }
 
 function parseMoney(value: string) {
-  const number = Number(value.replace(/\./g, "").replace(",", "."));
+  const number = parseFinancialAmountInput(value);
 
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function normalizeAmountKey(value: number) {
+  return Number.isFinite(value) ? String(value) : "invalid";
 }
 
 function DuplicateTransactionReview({

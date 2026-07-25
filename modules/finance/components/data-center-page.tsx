@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { LedPanel } from "@/components/ui/led-panel";
+import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { buildDataQualityReport } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import { CloudAccountPanel } from "./cloud-account-panel";
@@ -38,6 +39,7 @@ type SystemStatus = {
 
 export function DataCenterPage() {
   const { state, isHydrated, actions, cloud } = useFinanceStore();
+  const adminAccess = useMayaAdminAccess();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [feedback, setFeedback] = useState("Central pronta para revisar dados, backups e conexoes.");
   const quality = useMemo(() => buildDataQualityReport(state), [state]);
@@ -46,6 +48,10 @@ export function DataCenterPage() {
   const billCount = state.bills.length;
 
   useEffect(() => {
+    if (!adminAccess.isAdmin) {
+      return;
+    }
+
     let isMounted = true;
 
     fetch("/api/system/status")
@@ -64,7 +70,36 @@ export function DataCenterPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [adminAccess.isAdmin]);
+
+  if (!adminAccess.checked) {
+    return (
+      <AppShell>
+        <LedPanel className="p-5" glow="cyan">
+          <p className="text-sm font-bold text-muted">Verificando permissao administrativa...</p>
+        </LedPanel>
+      </AppShell>
+    );
+  }
+
+  if (!adminAccess.isAdmin) {
+    return (
+      <AppShell>
+        <LedPanel className="p-5" glow="bronze">
+          <div className="flex items-start gap-3">
+            <LockKeyhole className="mt-1 size-5 text-bronze" aria-hidden="true" />
+            <div>
+              <p className="eyebrow">Area restrita</p>
+              <h1 className="mt-2 font-serif text-3xl font-bold text-bronze">Acesso exclusivo do administrador.</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+                A central de dados, backups e controles de confianca fica disponivel somente para a conta administradora da Maya.
+              </p>
+            </div>
+          </div>
+        </LedPanel>
+      </AppShell>
+    );
+  }
 
   function exportBackup() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });

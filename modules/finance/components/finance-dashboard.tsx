@@ -27,7 +27,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
-import { cn, financialValueClass, formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { getTransactionCategoriesByType } from "../data/defaults";
 import {
   buildBudgetSummary,
@@ -214,7 +214,7 @@ export function FinanceDashboard() {
 
   function submitTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(transactionForm.amount.replace(",", "."));
+    const amount = parseFinancialAmountInput(transactionForm.amount);
 
     if (!transactionForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !transactionForm.date) {
       setFeedback("Preencha descricao, valor e data para salvar a transacao.");
@@ -247,6 +247,7 @@ export function FinanceDashboard() {
       attachmentMimeType: transactionDraft?.attachmentMimeType,
       attachmentSize: transactionDraft?.attachmentSize,
       documentItems: transactionDraft?.items,
+      fiscalDocument: transactionDraft?.fiscalDocument,
       notes: transactionDraft?.notes
     } satisfies Omit<Transaction, "id" | "createdAt">;
 
@@ -278,8 +279,8 @@ export function FinanceDashboard() {
 
   function submitGoal(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const targetAmount = Number(goalForm.targetAmount.replace(",", "."));
-    const currentAmount = Number(goalForm.currentAmount.replace(",", ".") || 0);
+    const targetAmount = parseFinancialAmountInput(goalForm.targetAmount);
+    const currentAmount = goalForm.currentAmount.trim() ? parseFinancialAmountInput(goalForm.currentAmount) : 0;
 
     if (!goalForm.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) {
       setFeedback("Preencha nome e valor alvo valido para salvar a meta.");
@@ -862,13 +863,13 @@ export function FinanceDashboard() {
                             defaultValue={goal.currentAmount}
                             aria-label={`Valor atual da meta ${goal.name}`}
                             onBlur={(event) => {
-                              const value = Number(event.target.value.replace(",", "."));
+                              const value = parseFinancialAmountInput(event.target.value);
                               if (Number.isFinite(value) && value >= 0) {
                                 actions.updateGoalAmount(goal.id, value);
                               }
                             }}
                           />
-                          <Badge tone={progress >= 70 ? "success" : "warning"}>{Math.round(progress)}%</Badge>
+                          <Badge tone={progress >= 70 ? "success" : "warning"}>{formatPercent(progress)}</Badge>
                         </div>
                       </div>
                     );

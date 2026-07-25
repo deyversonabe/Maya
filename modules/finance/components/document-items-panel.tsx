@@ -37,6 +37,9 @@ export function DocumentItemsPanel({
               {item.name}
               {item.category ? ` - ${item.category}` : ""}
               {item.paymentMethod === "pix" && item.paymentRecipient ? ` - Pix: ${item.paymentRecipient}` : ""}
+              {buildItemDetails(item).length > 0 ? (
+                <small className="mt-1 block text-xs font-semibold text-muted">{buildItemDetails(item).join(" | ")}</small>
+              ) : null}
             </span>
             <strong className={typeof item.amount === "number" ? financialValueClass(item.amount) : "text-bronze"}>
               {typeof item.amount === "number" ? formatCurrency(item.amount) : "valor nao lido"}
@@ -51,4 +54,14 @@ export function DocumentItemsPanel({
       </div>
     </details>
   );
+}
+
+function buildItemDetails(item: FinancialDocumentItem) {
+  return [
+    typeof item.quantity === "number" ? `Qtd. ${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "",
+    typeof item.unitPrice === "number" ? `Unit. ${formatCurrency(item.unitPrice)}` : "",
+    item.code ? `Cod. ${item.code}` : "",
+    item.ean ? `EAN ${item.ean}` : "",
+    item.ncm ? `NCM ${item.ncm}` : ""
+  ].filter(Boolean);
 }

@@ -79,59 +79,79 @@ export async function exportFinanceReportPdf(report: FinanceReport) {
 }
 
 export async function exportFinanceReportExcel(report: FinanceReport) {
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.utils.book_new();
+  const workbookXml = buildExcelXmlWorkbook([
+    {
+      name: "Resumo",
+      rows: [
+        ["Indicador", "Valor"],
+        ...summaryRows(report).map((row) => [row.Indicador, row.Valor])
+      ]
+    },
+    {
+      name: "Transacoes",
+      rows: [
+        ["Data", "Tipo", "Descricao", "Categoria", "Pessoa", "Metodo", "Destinatario", "Valor", "Anexo"],
+        ...report.transactions.map((transaction) => [
+          transaction.date,
+          translateType(transaction.type),
+          transaction.description,
+          transaction.category,
+          transaction.person,
+          transaction.paymentMethod ?? "",
+          transaction.paymentRecipient ?? "",
+          transaction.amount,
+          transaction.attachmentStoragePath || transaction.attachmentImageName || ""
+        ])
+      ]
+    },
+    {
+      name: "Contas",
+      rows: [
+        ["Vencimento", "Conta", "Categoria", "Pessoa", "Status", "Metodo", "Destinatario", "Valor", "Anexo"],
+        ...report.bills.map((bill) => [
+          bill.dueDate,
+          bill.title,
+          bill.category,
+          bill.person,
+          translateBillStatus(bill.status),
+          bill.paymentMethod,
+          bill.paymentRecipient ?? "",
+          bill.amount,
+          bill.attachmentStoragePath || bill.attachmentImageName || ""
+        ])
+      ]
+    },
+    {
+      name: "Recorrentes",
+      rows: [
+        ["Descricao", "Total", "Quantidade"],
+        ...report.recurring.map((item) => [item.label, item.total, item.count])
+      ]
+    },
+    {
+      name: "Renda",
+      rows: [
+        ["Categoria", "Total", "Quantidade"],
+        ...report.incomeByCategory.map((item) => [item.category, item.total, item.count])
+      ]
+    },
+    {
+      name: "Despesas",
+      rows: [
+        ["Categoria", "Total", "Quantidade"],
+        ...report.expensesByCategory.map((item) => [item.category, item.total, item.count])
+      ]
+    }
+  ]);
 
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows(report)), "Resumo");
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      report.transactions.map((transaction) => ({
-        Data: transaction.date,
-        Tipo: translateType(transaction.type),
-        Descricao: transaction.description,
-        Categoria: transaction.category,
-        Pessoa: transaction.person,
-        Metodo: transaction.paymentMethod ?? "",
-        Destinatario: transaction.paymentRecipient ?? "",
-        Valor: transaction.amount,
-        Anexo: transaction.attachmentStoragePath || transaction.attachmentImageName || ""
-      }))
-    ),
-    "Transacoes"
+  downloadBlob(
+    new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8" }),
+    buildReportFilename(report, "xls")
   );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      report.bills.map((bill) => ({
-        Vencimento: bill.dueDate,
-        Conta: bill.title,
-        Categoria: bill.category,
-        Pessoa: bill.person,
-        Status: translateBillStatus(bill.status),
-        Metodo: bill.paymentMethod,
-        Destinatario: bill.paymentRecipient ?? "",
-        Valor: bill.amount,
-        Anexo: bill.attachmentStoragePath || bill.attachmentImageName || ""
-      }))
-    ),
-    "Contas"
-  );
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.recurring), "Recorrentes");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.incomeByCategory), "Renda");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.expensesByCategory), "Despesas");
-
-  XLSX.writeFile(workbook, buildReportFilename(report, "xlsx"));
 }
 
 export function exportFinanceReportJson(report: FinanceReport) {
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = buildReportFilename(report, "json");
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), buildReportFilename(report, "json"));
 }
 
 function summaryRows(report: FinanceReport) {
@@ -188,4 +208,76 @@ function formatDateTime(value: string) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(date);
+}
+
+type SpreadsheetCellValue = string | number | boolean | null | undefined;
+
+type SpreadsheetSheet = {
+  name: string;
+  rows: SpreadsheetCellValue[][];
+};
+
+function buildExcelXmlWorkbook(sheets: SpreadsheetSheet[]) {
+  const worksheets = sheets.map((sheet) => {
+    const rows = sheet.rows.map((row, rowIndex) => {
+      const cells = row.map((cell) => buildExcelXmlCell(cell, rowIndex === 0)).join("");
+      return `<Row>${cells}</Row>`;
+    });
+
+    return [
+      `<Worksheet ss:Name="${escapeXmlAttribute(sanitizeWorksheetName(sheet.name))}">`,
+      "<Table>",
+      ...rows,
+      "</Table>",
+      "</Worksheet>"
+    ].join("");
+  });
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<?mso-application progid="Excel.Sheet"?>',
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:o="urn:schemas-microsoft-com:office:office"',
+    ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
+    ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:html="http://www.w3.org/TR/REC-html40">',
+    "<Styles>",
+    '<Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#B87945" ss:Pattern="Solid"/></Style>',
+    "</Styles>",
+    ...worksheets,
+    "</Workbook>"
+  ].join("");
+}
+
+function buildExcelXmlCell(value: SpreadsheetCellValue, isHeader: boolean) {
+  const style = isHeader ? ' ss:StyleID="Header"' : "";
+  const type = typeof value === "number" && Number.isFinite(value) ? "Number" : "String";
+  const content = value === null || value === undefined ? "" : String(value);
+
+  return `<Cell${style}><Data ss:Type="${type}">${escapeXmlText(content)}</Data></Cell>`;
+}
+
+function sanitizeWorksheetName(name: string) {
+  const cleanName = name.replace(/[\[\]:*?/\\]/g, " ").trim() || "Planilha";
+  return cleanName.slice(0, 31);
+}
+
+function escapeXmlText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXmlAttribute(value: string) {
+  return escapeXmlText(value).replace(/"/g, "&quot;");
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }

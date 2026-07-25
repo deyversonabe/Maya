@@ -14,6 +14,16 @@ export type FinancialDocumentKind = "expense" | "income" | "bill" | "statement";
 
 export type PaymentMethod = "boleto" | "pix" | "card" | "other";
 
+export type FiscalDocumentType =
+  | "danfe_nfe"
+  | "danfe_nfce"
+  | "cupom_fiscal"
+  | "boleto"
+  | "pix"
+  | "recibo"
+  | "extrato"
+  | "unknown";
+
 export type BillRecurrence = "none" | "monthly";
 
 export type BillStatus = "pending" | "paid" | "overdue";
@@ -44,6 +54,7 @@ export interface Transaction {
   attachmentMimeType?: string;
   attachmentSize?: number;
   documentItems?: FinancialDocumentItem[];
+  fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
   createdAt: string;
 }
@@ -102,6 +113,7 @@ export interface PayableBill {
   attachmentMimeType?: string;
   attachmentSize?: number;
   documentItems?: FinancialDocumentItem[];
+  fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
   paidAt?: string;
   createdAt: string;
@@ -201,16 +213,38 @@ export interface ExpenseDraft {
   paymentRecipient?: string;
   otherCategoryDescription?: string;
   items?: FinancialDocumentItem[];
+  fiscalDocument?: FiscalDocumentMetadata;
 }
 
 export interface FinancialDocumentItem {
   name: string;
   amount?: number;
+  quantity?: number;
+  unit?: string;
+  unitPrice?: number;
+  code?: string;
+  ean?: string;
+  ncm?: string;
   date?: string;
   type?: TransactionType;
   category?: string;
   paymentMethod?: PaymentMethod;
   paymentRecipient?: string;
+}
+
+export interface FiscalDocumentMetadata {
+  documentType?: FiscalDocumentType;
+  accessKey?: string;
+  issuerName?: string;
+  issuerCnpj?: string;
+  documentNumber?: string;
+  series?: string;
+  issueTime?: string;
+  protocolNumber?: string;
+  totalItemsAmount?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  paidAmount?: number;
 }
 
 export interface StatementTransactionDraft {
@@ -265,6 +299,7 @@ export interface FinancialDocumentDraft {
   attachmentSize?: number;
   missingFields: string[];
   items?: FinancialDocumentItem[];
+  fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
 }
 
