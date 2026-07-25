@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { MAYA_ADMIN_EMAIL, isMayaAdminEmail } from "@/lib/auth/admin";
 import { createSupabaseServiceClient, getBearerToken } from "@/lib/supabase/server";
 
 export const ADMIN_WORKSPACE_ID =
@@ -45,6 +46,16 @@ export async function requireWorkspaceAdmin(request: Request): Promise<AdminCont
     return {
       ok: false,
       response: NextResponse.json({ ok: false, message: "Sessao invalida." }, { status: 401 })
+    };
+  }
+
+  if (!isMayaAdminEmail(data.user.email)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, message: `Somente ${MAYA_ADMIN_EMAIL} pode acessar esta acao administrativa.` },
+        { status: 403 }
+      )
     };
   }
 
