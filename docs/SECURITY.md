@@ -70,9 +70,12 @@ Regras de seguranca:
 - `attachmentDataUrl` deve ser tratado apenas como fallback temporario para ambientes sem bucket.
 - Historico de atividades deve registrar acoes operacionais sem gravar segredos ou conteudo bruto de comprovantes.
 - Backups continuam disponiveis como copia manual controlada pelo usuario.
-- Painel admin deve exigir usuario com papel `admin` no backend, usando access token Supabase e service role apenas no servidor.
+- Painel admin deve exigir o e-mail fixo `deyversonsilvaf@gmail.com` e papel `admin` no backend, usando access token Supabase e service role apenas no servidor.
+- Abas `Dados` e `Admin`, listagem de usuarios, bloqueio/reativacao e exportacoes administrativas nao devem aparecer para membros que nao sejam esse e-mail administrador.
+- A trigger `finance_workspace_members_enforce_single_maya_admin` deve impedir que usuarios atuais ou futuros, diferentes de `deyversonsilvaf@gmail.com`, permanecam com papel `admin`.
 - Usuario bloqueado em `finance_workspace_members.status` nao deve acessar dados do workspace nem passar pela funcao `is_finance_workspace_member`.
 - `last_seen_at` deve ser atualizado por funcao segura no banco, nunca por permissao ampla de update em membros.
+- Escritas em `finance_workspace_states` devem passar pela RPC `save_finance_workspace_state_locked`, que usa lock de linha e evita sobrescrita cega do JSONB.
 - Push real deve usar chaves VAPID em variaveis de ambiente; somente a chave publica pode usar `NEXT_PUBLIC_`.
 - Rotina de envio push deve exigir `CRON_SECRET` e registrar entregas para reduzir repeticao.
 - Inscricoes push expiradas ou rejeitadas devem ser desativadas.

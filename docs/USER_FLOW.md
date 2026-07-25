@@ -134,12 +134,13 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 ### Painel admin
 
 1. Usuario admin acessa Admin.
-2. Sistema valida sessao e papel administrativo no backend.
-3. Admin visualiza usuarios autorizados, papel, status, ultimo acesso e aparelhos com push.
-4. Admin pode bloquear ou reativar um usuario.
-5. Admin visualiza saude da sincronizacao e volume de dados.
-6. Admin escolhe periodo e exporta PDF, Excel ou JSON.
-7. Admin pode salvar o aparelho atual para receber push real.
+2. Sistema valida sessao, e-mail `deyversonsilvaf@gmail.com` e papel administrativo no backend.
+3. Usuarios comuns nao veem as abas Dados/Admin e, se acessarem por URL direta, recebem bloqueio de area restrita.
+4. Admin visualiza usuarios autorizados, papel, status, ultimo acesso e aparelhos com push.
+5. Admin pode bloquear ou reativar um usuario.
+6. Admin visualiza saude da sincronizacao e volume de dados.
+7. Admin escolhe periodo e exporta PDF, Excel ou JSON.
+8. Admin pode salvar o aparelho atual para receber push real.
 
 ### Push real
 

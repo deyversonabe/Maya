@@ -90,7 +90,7 @@ Saida:
 Seguranca:
 
 - Usa `SUPABASE_SERVICE_ROLE_KEY` somente no servidor.
-- Verifica se o usuario autenticado e membro ativo com papel `admin`.
+- Verifica se o usuario autenticado e `deyversonsilvaf@gmail.com`, membro ativo e com papel `admin`.
 - Nunca retorna tokens ou segredos.
 
 ### `POST /api/admin/member-status`
@@ -105,7 +105,31 @@ Entrada:
 Regra:
 
 - Administrador nao pode bloquear a propria conta.
+- Apenas `deyversonsilvaf@gmail.com` pode executar a acao.
 - Usuario bloqueado deixa de passar pela funcao `is_finance_workspace_member`.
+
+## RPC Supabase de sincronizacao
+
+### `save_finance_workspace_state_locked`
+
+Objetivo: salvar o estado financeiro compartilhado sem sobrescrever silenciosamente alteracoes concorrentes.
+
+Entrada:
+
+- `p_workspace_id`: identificador do workspace.
+- `p_state`: `FinanceState` em JSONB.
+
+Saida:
+
+- `state`: estado mesclado e salvo.
+- `updated_at`: data/hora persistida no banco.
+
+Regras:
+
+- Exige usuario autenticado e membro ativo do workspace.
+- Usa `SELECT ... FOR UPDATE` para serializar escritas sobre a mesma linha.
+- Mescla listas por `id` para preservar lancamentos, contas, metas, orcamentos e logs criados por outra sessao.
+- Clientes autenticados nao devem fazer `upsert` direto em `finance_workspace_states`.
 
 ### `POST /api/notifications/subscribe`
 

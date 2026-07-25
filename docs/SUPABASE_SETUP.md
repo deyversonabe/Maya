@@ -21,6 +21,7 @@ supabase/migrations/20260719_finance_states.sql
 supabase/migrations/20260719_shared_finance_workspace.sql
 supabase/migrations/20260721_finance_attachments_storage.sql
 supabase/migrations/20260721_admin_push_relational_foundation.sql
+supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql
 ```
 
 8. Abra `Project Settings > API`.
@@ -94,7 +95,8 @@ docs/AUTH_USERS_SETUP.md
 - O app carrega os dados que ja existem no aparelho como cache local.
 - Ao entrar na conta, ele busca a base compartilhada online.
 - Se existirem dados nos dois lugares, ele combina listas por `id`.
-- Depois disso, cada alteracao confirmada e salva online automaticamente.
+- Depois disso, cada alteracao confirmada e salva online automaticamente pela RPC `save_finance_workspace_state_locked`.
+- A RPC segura usa lock de linha no Postgres para reduzir risco de perda de lancamentos quando dois aparelhos salvam quase ao mesmo tempo.
 - Outros aparelhos autenticados recebem a atualizacao pelo Supabase Realtime.
 - Se a internet ou Supabase falhar, o app continua localmente e permite tentar sincronizar depois.
 - Ao fechar a aba ou ficar sem uso por `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES`, o app pede senha novamente.
@@ -102,6 +104,7 @@ docs/AUTH_USERS_SETUP.md
 - Se o bucket ainda nao existir, o app preserva o anexo otimizado no estado financeiro como fallback temporario.
 - O historico de atividades registra quem lancou, importou, pagou, editou ou removeu itens relevantes.
 - O painel Admin usa `SUPABASE_SERVICE_ROLE_KEY` somente no servidor para listar usuarios e bloquear/reativar membros.
+- Apenas `deyversonsilvaf@gmail.com` deve ver as abas `Dados` e `Admin` e executar funcoes administrativas.
 - Push real usa `finance_push_subscriptions`, `finance_push_deliveries`, service worker e cron diario da Vercel.
 
 ## Seguranca
@@ -109,6 +112,7 @@ docs/AUTH_USERS_SETUP.md
 - As tabelas `finance_workspaces`, `finance_workspace_members` e `finance_workspace_states` usam RLS.
 - O bucket `maya-finance-attachments` usa politicas em `storage.objects` vinculadas ao mesmo workspace.
 - Apenas usuarios membros do workspace conseguem ler ou alterar a base compartilhada.
+- Escrita direta na tabela `finance_workspace_states` deve ficar bloqueada; o app usa a funcao segura de salvamento.
 - Anexos ficam privados e sao abertos no app por URLs assinadas temporarias.
 - A chave `anon public key` pode ficar no frontend porque a protecao real vem das politicas RLS.
 - A `service_role key` nunca deve ser colocada como variavel publica ou com prefixo `NEXT_PUBLIC_`.
@@ -117,7 +121,7 @@ docs/AUTH_USERS_SETUP.md
 
 ## Limites atuais
 
-- A sincronizacao atual salva o estado financeiro completo em JSONB.
+- A sincronizacao atual salva o estado financeiro completo em JSONB, mas a escrita passa pela RPC com lock de linha.
 - As tabelas relacionais ja existem para evolucao SaaS, mas o app ainda usa o JSONB compartilhado como fonte operacional principal.
 - O workspace atual e unico para o MVP; SaaS futuro deve criar workspaces por casal/empresa.
 - Anexos usam Supabase Storage privado quando configurado; o fallback em JSONB deve ser tratado como contingencia.

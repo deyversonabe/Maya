@@ -77,7 +77,9 @@ Regras:
 - O workspace padrao do MVP usa `00000000-0000-4000-8000-000000000001`.
 - Ao entrar na conta, o app compara dados locais e dados compartilhados online.
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
-- Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase.
+- Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase pela RPC `save_finance_workspace_state_locked`.
+- `save_finance_workspace_state_locked` valida membro ativo, bloqueia a linha com `SELECT ... FOR UPDATE` e mescla listas por `id` antes de gravar, evitando sobrescrita cega do JSONB em sessoes concorrentes.
+- Escritas diretas em `finance_workspace_states` por cliente autenticado devem permanecer bloqueadas por RLS; o app deve usar a RPC segura.
 - A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
 - Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
 - Quando Supabase esta configurado e nao existe sessao autenticada, o app nao deve exibir dados financeiros locais.
@@ -87,6 +89,7 @@ Regras:
 - `activityLogs` guarda ate 200 eventos recentes de acoes relevantes feitas por usuarios autorizados.
 - `finance_workspace_members.status` controla bloqueio administrativo (`active` ou `blocked`).
 - `finance_workspace_members.last_seen_at` registra ultimo acesso por funcao segura `touch_finance_workspace_member`.
+- O unico e-mail autorizado como administrador e `deyversonsilvaf@gmail.com`; a trigger `finance_workspace_members_enforce_single_maya_admin` converte qualquer outro usuario com papel `admin` para `member`.
 - Tabelas de push devem usar RLS e aceitar escrita apenas do proprio usuario membro ativo.
 - Entregas push devem ser registradas antes do envio para reduzir alerta duplicado por rotina agendada.
 
@@ -96,6 +99,7 @@ Arquivo SQL:
 - `supabase/migrations/20260719_shared_finance_workspace.sql`.
 - `supabase/migrations/20260721_finance_attachments_storage.sql`.
 - `supabase/migrations/20260721_admin_push_relational_foundation.sql`.
+- `supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql`.
 
 ## Modelo financeiro inicial
 

@@ -12,6 +12,8 @@ Todos os usuarios autorizados devem ser membros do workspace financeiro comparti
 
 Cadastro publico fica desativado no app. Novos acessos devem ser criados pelo administrador no Supabase.
 
+O unico administrador permitido e `deyversonsilvaf@gmail.com`. Todos os demais usuarios atuais ou futuros devem ficar como `member`, sem abas `Dados`, `Admin`, usuarios ou funcoes administrativas.
+
 ## Usuarios solicitados
 
 | Nome de exibicao | E-mail de acesso | Observacao |
@@ -84,6 +86,8 @@ from auth.users
 where email in ('deyversonsilvaf@gmail.com', 'cole_o_email_real_do_tom')
 on conflict (workspace_id, user_id) do update set role = excluded.role;
 ```
+
+Depois de aplicar `supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql`, qualquer tentativa de deixar outro e-mail como `admin` sera corrigida automaticamente para `member`.
 
 ## Criacao por script administrativo
 

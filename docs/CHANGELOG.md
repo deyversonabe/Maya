@@ -89,6 +89,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - MAYA ganhou memoria financeira por periodo e plano automatico de economia para metas cadastradas.
 - Atalho mobile "Nova despesa" adicionado acima da navegacao inferior.
 - Login ganhou acao `Esqueci minha senha`, fluxo de nova senha por link Supabase e botao para mostrar/ocultar senha.
+- Migration `20260725_admin_unique_and_safe_workspace_state.sql` adicionada para admin unico por e-mail e salvamento com lock de linha no Supabase.
 
 ### Fixed
 
@@ -112,6 +113,13 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Caixa rapida da MAYA na pagina inicial agora usa fallback local quando a rota de IA falha ou retorna resposta invalida.
 - Documentacao duplicada removida de `components/`; conteudo relevante consolidado em `docs/`, mantendo componentes apenas como arquivos de UI.
 - Link de recuperacao do Supabase passa a abrir tela de definicao de nova senha em vez de voltar para o bloqueio de login.
+- Autorizacao pos-login passa a filtrar `finance_workspace_members` por `workspace_id` e `user_id`, evitando logout indevido quando Deyveron e Tom estao no mesmo workspace.
+- Pasta duplicada `supabase/migrations/migrations` removida, mantendo migrations somente em `supabase/migrations/`.
+- Login deixa de reaproveitar trava local antiga depois de uma autenticacao bem-sucedida, reduzindo bloqueios intermitentes por historico do navegador.
+- Abas `Dados` e `Admin`, painel de usuarios e rotas administrativas passam a ser exclusivas de `deyversonsilvaf@gmail.com`.
+- Salvamento do estado financeiro compartilhado passa a usar RPC com `SELECT ... FOR UPDATE`, reduzindo risco de perda silenciosa de lancamentos concorrentes.
+- `package-lock.json` atualizado por `npm audit fix`, elevando resolucoes automaticas seguras sem adicionar dependencia direta nova.
+- Dependencia `xlsx` removida; exportacao Excel passa a gerar planilha XML `.xls` compativel com Excel sem biblioteca vulneravel.
 
 ## [0.0.1] - 2026-07-09
 

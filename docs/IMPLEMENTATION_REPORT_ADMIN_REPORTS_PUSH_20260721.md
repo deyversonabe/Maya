@@ -53,7 +53,7 @@ Evoluir a Maya para uma ferramenta mais profissional com painel administrativo, 
 
 - `jspdf`
 - `jspdf-autotable`
-- `xlsx`
+- `xlsx` foi usado inicialmente para exportacao Excel e removido em 2026-07-25; a exportacao atual usa XML `.xls` sem dependencia externa.
 - `web-push`
 - `@types/web-push`
 
