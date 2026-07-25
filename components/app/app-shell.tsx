@@ -1,9 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, ReceiptText, ShieldCheck, Target, WalletCards } from "lucide-react";
+import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -14,13 +16,18 @@ const navItems = [
   { href: "/bills", label: "Contas", icon: BellRing },
   { href: "/budgets", label: "Orcamentos", icon: WalletCards },
   { href: "/goals", label: "Metas", icon: Target },
-  { href: "/data", label: "Dados", icon: Database },
-  { href: "/admin", label: "Admin", icon: ShieldCheck },
+  { href: "/data", label: "Dados", icon: Database, adminOnly: true },
+  { href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true },
   { href: "/maya", label: "MAYA", icon: Bot }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { isAdmin } = useMayaAdminAccess();
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => !item.adminOnly || isAdmin),
+    [isAdmin]
+  );
 
   return (
     <main className="app-container pb-28 md:pb-8">
@@ -43,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-10" aria-label="Navegacao principal">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
 
@@ -77,8 +84,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Nova despesa
       </Link>
 
-      <nav className="fixed inset-x-2 bottom-3 z-40 grid grid-cols-9 gap-1 rounded-2xl border border-neon-cyan/20 bg-moss-950/92 p-2 shadow-neon backdrop-blur-2xl md:hidden" aria-label="Navegacao mobile">
-        {navItems
+      <nav
+        className={cn(
+          "fixed inset-x-2 bottom-3 z-40 grid gap-1 rounded-2xl border border-neon-cyan/20 bg-moss-950/92 p-2 shadow-neon backdrop-blur-2xl md:hidden",
+          isAdmin ? "grid-cols-9" : "grid-cols-7"
+        )}
+        aria-label="Navegacao mobile"
+      >
+        {visibleNavItems
           .filter((item) => ["/", "/months", "/expenses", "/bills", "/budgets", "/goals", "/data", "/admin", "/maya"].includes(item.href))
           .map((item) => {
             const Icon = item.icon;

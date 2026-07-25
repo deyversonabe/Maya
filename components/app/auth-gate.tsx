@@ -104,6 +104,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (event === "SIGNED_IN" && session?.user) {
+        clearSessionLocked();
+        recordSessionActivity();
+      }
+
       void validateSession(session);
     });
 
@@ -177,6 +182,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       .from("finance_workspace_members")
       .select("role,status")
       .eq("workspace_id", WORKSPACE_ID)
+      .eq("user_id", session.user.id)
       .maybeSingle();
 
     if (memberResult.error && isMissingStatusColumn(memberResult.error.message)) {
@@ -184,6 +190,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         .from("finance_workspace_members")
         .select("role")
         .eq("workspace_id", WORKSPACE_ID)
+        .eq("user_id", session.user.id)
         .maybeSingle();
     }
 
@@ -238,6 +245,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       setIsSubmitting(false);
       return;
     }
+
+    clearSessionLocked();
+    recordSessionActivity();
 
     const isAllowed = await validateSession(result.data.session);
 
