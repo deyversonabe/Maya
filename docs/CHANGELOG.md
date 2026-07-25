@@ -112,8 +112,6 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Caixa rapida da MAYA na pagina inicial agora usa fallback local quando a rota de IA falha ou retorna resposta invalida.
 - Documentacao duplicada removida de `components/`; conteudo relevante consolidado em `docs/`, mantendo componentes apenas como arquivos de UI.
 - Link de recuperacao do Supabase passa a abrir tela de definicao de nova senha em vez de voltar para o bloqueio de login.
-- Autorizacao pos-login passa a filtrar `finance_workspace_members` por `workspace_id` e `user_id`, evitando logout indevido quando Deyveron e Tom estao no mesmo workspace.
-- Pasta duplicada `supabase/migrations/migrations` removida, mantendo migrations somente em `supabase/migrations/`.
 
 ## [0.0.1] - 2026-07-09
 
