@@ -1,22 +1,39 @@
-import type { FinanceState, TransactionType } from "../types";
+import type { FinanceAccount, FinanceState, TransactionType } from "../types";
 
 const now = () => new Date().toISOString();
+export const DEFAULT_FINANCE_ACCOUNT_ID = "account_main";
 
 export function createEmptyFinanceState(): FinanceState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     profile: {
       name: "Maya",
       slogan: "Organizar hoje. Construir o amanha.",
       monthlyIncomeTarget: 0,
       emergencyReserveTarget: 0
     },
+    accounts: [createDefaultFinanceAccount()],
     transactions: [],
     goals: [],
     budgets: [],
     bills: [],
     activityLogs: [],
     updatedAt: now()
+  };
+}
+
+export function createDefaultFinanceAccount(): FinanceAccount {
+  const timestamp = now();
+
+  return {
+    id: DEFAULT_FINANCE_ACCOUNT_ID,
+    name: "Conta principal",
+    kind: "checking",
+    owner: "Casal",
+    openingBalance: 0,
+    openingBalanceDate: timestamp.slice(0, 10),
+    color: "#55f7ff",
+    createdAt: timestamp
   };
 }
 

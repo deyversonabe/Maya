@@ -1,7 +1,8 @@
-import { createEmptyFinanceState } from "../data/defaults";
+import { DEFAULT_FINANCE_ACCOUNT_ID, createDefaultFinanceAccount, createEmptyFinanceState } from "../data/defaults";
 import type {
   Budget,
   FinanceActivityLog,
+  FinanceAccount,
   FinanceState,
   Goal,
   GoalContribution,
@@ -27,8 +28,19 @@ interface PersistedFinanceStateV2 {
   updatedAt: string;
 }
 
-interface PersistedFinanceStateV3 extends FinanceState {
+interface PersistedFinanceStateV3 {
   schemaVersion: 3;
+  profile: HouseholdProfile;
+  transactions: Transaction[];
+  goals: Goal[];
+  budgets: Budget[];
+  bills: PayableBill[];
+  activityLogs?: FinanceActivityLog[];
+  updatedAt: string;
+}
+
+interface PersistedFinanceStateV4 extends FinanceState {
+  schemaVersion: 4;
 }
 
 export function migrateFinanceState(value: unknown): FinanceState {
@@ -36,15 +48,25 @@ export function migrateFinanceState(value: unknown): FinanceState {
     return createEmptyFinanceState();
   }
 
+  if (value.schemaVersion === 4) {
+    return normalizeV4(value as unknown as PersistedFinanceStateV4);
+  }
+
   if (value.schemaVersion === 3) {
-    return normalizeV3(value as unknown as PersistedFinanceStateV3);
+    const state = normalizeV3(value as unknown as PersistedFinanceStateV3);
+    return {
+      ...state,
+      schemaVersion: 4,
+      accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts)
+    };
   }
 
   if (value.schemaVersion === 2) {
     const state = value as unknown as PersistedFinanceStateV2;
     return {
       ...normalizeV2(state),
-      schemaVersion: 3,
+      schemaVersion: 4,
+      accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts),
       bills: normalizeBills((value as { bills?: PayableBill[] }).bills),
       activityLogs: normalizeActivityLogs((value as { activityLogs?: FinanceActivityLog[] }).activityLogs),
       updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
@@ -54,8 +76,9 @@ export function migrateFinanceState(value: unknown): FinanceState {
   if (value.schemaVersion === 1) {
     const state = value as unknown as PersistedFinanceStateV1;
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
+      accounts: [createDefaultFinanceAccount()],
       transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
       goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
       budgets: [],
@@ -68,9 +91,23 @@ export function migrateFinanceState(value: unknown): FinanceState {
   return createEmptyFinanceState();
 }
 
-function normalizeV3(state: PersistedFinanceStateV3): FinanceState {
+function normalizeV4(state: PersistedFinanceStateV4): FinanceState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
+    accounts: normalizeAccounts(state.accounts),
+    transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
+    goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
+    budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
+    bills: normalizeBills(state.bills),
+    activityLogs: normalizeActivityLogs((state as { activityLogs?: FinanceActivityLog[] }).activityLogs),
+    updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
+  };
+}
+
+function normalizeV3(state: PersistedFinanceStateV3) {
+  return {
+    schemaVersion: 3 as const,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
     transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
@@ -94,6 +131,39 @@ function normalizeV2(state: PersistedFinanceStateV2) {
 
 function normalizeBudgets(budgets: Budget[] | undefined) {
   return Array.isArray(budgets) ? budgets.filter((budget) => budget.limitAmount > 0) : [];
+}
+
+function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccount[] {
+  const normalized = Array.isArray(accounts)
+    ? accounts
+        .filter((account) => typeof account.name === "string" && account.name.trim())
+        .map((account): FinanceAccount => ({
+          ...account,
+          id: typeof account.id === "string" && account.id ? account.id : `account_${crypto.randomUUID()}`,
+          name: account.name.trim(),
+          kind:
+            account.kind === "cash" ||
+            account.kind === "wallet" ||
+            account.kind === "savings" ||
+            account.kind === "other"
+              ? account.kind
+              : "checking",
+          owner: account.owner === "Pessoa 1" || account.owner === "Pessoa 2" ? account.owner : "Casal",
+          openingBalance: Number.isFinite(account.openingBalance) ? account.openingBalance : 0,
+          openingBalanceDate:
+            typeof account.openingBalanceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(account.openingBalanceDate)
+              ? account.openingBalanceDate
+              : new Date().toISOString().slice(0, 10),
+          color: typeof account.color === "string" ? account.color : undefined,
+          createdAt: typeof account.createdAt === "string" ? account.createdAt : new Date().toISOString()
+        }))
+    : [];
+
+  if (!normalized.some((account) => account.id === DEFAULT_FINANCE_ACCOUNT_ID)) {
+    return [createDefaultFinanceAccount(), ...normalized];
+  }
+
+  return normalized;
 }
 
 function normalizeGoals(goals: Goal[] | undefined): Goal[] {
@@ -181,6 +251,7 @@ function normalizeActivityLogs(logs: FinanceActivityLog[] | undefined): FinanceA
         log.entityType === "bill" ||
         log.entityType === "goal" ||
         log.entityType === "budget" ||
+        log.entityType === "account" ||
         log.entityType === "sync" ||
         log.entityType === "system"
           ? log.entityType

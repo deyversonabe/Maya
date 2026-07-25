@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
-import { createEmptyFinanceState } from "../data/defaults";
+import { DEFAULT_FINANCE_ACCOUNT_ID, createEmptyFinanceState } from "../data/defaults";
 import { migrateFinanceState } from "./migrations";
 import type {
   Budget,
   FinanceActivityEntity,
   FinanceActivityLog,
+  FinanceAccount,
   FinanceState,
   Goal,
   GoalContribution,
@@ -588,6 +589,57 @@ export function useFinanceStore() {
           updatedAt: new Date().toISOString()
         }));
       },
+      addAccount(account: Omit<FinanceAccount, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          accounts: [
+            {
+              ...account,
+              id: `account_${crypto.randomUUID()}`,
+              createdAt: now
+            },
+            ...current.accounts
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou carteira",
+            entityType: "account",
+            entityLabel: account.name
+          }),
+          updatedAt: now
+        }));
+      },
+      updateAccount(id: string, account: Partial<Omit<FinanceAccount, "id" | "createdAt">>) {
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.map((item) => (item.id === id ? { ...item, ...account } : item)),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou carteira",
+            entityType: "account",
+            entityLabel: current.accounts.find((item) => item.id === id)?.name ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      removeAccount(id: string) {
+        if (id === DEFAULT_FINANCE_ACCOUNT_ID) {
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.filter((account) => account.id !== id),
+          transactions: current.transactions.map((transaction) =>
+            transaction.accountId === id ? { ...transaction, accountId: DEFAULT_FINANCE_ACCOUNT_ID } : transaction
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu carteira",
+            entityType: "account",
+            entityLabel: current.accounts.find((account) => account.id === id)?.name ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
       addGoal(goal: Omit<Goal, "id" | "createdAt" | "contributions"> & { contributions?: GoalContribution[] }) {
         const now = new Date().toISOString();
         const initialContribution =
@@ -897,7 +949,8 @@ function hasFinanceContent(state: FinanceState) {
     state.transactions.length > 0 ||
     state.goals.length > 0 ||
     state.budgets.length > 0 ||
-    state.bills.length > 0
+    state.bills.length > 0 ||
+    state.accounts.some((account) => account.id !== DEFAULT_FINANCE_ACCOUNT_ID || account.openingBalance !== 0)
   );
 }
 
@@ -910,8 +963,9 @@ function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState):
   const localTime = getTime(localState.updatedAt);
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     profile: localTime >= cloudTime ? localState.profile : cloudState.profile,
+    accounts: mergeById(cloudState.accounts, localState.accounts).sort(sortByCreatedAtDesc),
     transactions: mergeById(cloudState.transactions, localState.transactions).sort(sortByCreatedAtDesc),
     goals: mergeById(cloudState.goals, localState.goals).sort(sortByCreatedAtDesc),
     budgets: mergeById(cloudState.budgets, localState.budgets).sort(sortByCreatedAtDesc),

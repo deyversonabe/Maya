@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
-import { expenseCategories, incomeCategories } from "../data/defaults";
+import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
@@ -57,6 +57,7 @@ export function ExpensesPage() {
     category: "Alimentacao",
     otherCategoryDescription: "",
     person: "Casal" as Person,
+    accountId: DEFAULT_FINANCE_ACCOUNT_ID,
     date: toInputDate(new Date()),
     paymentMethod: "other" as PaymentMethod,
     paymentRecipient: "",
@@ -70,6 +71,9 @@ export function ExpensesPage() {
     (transaction) => transaction.type === "expense"
   );
   const monthTotal = monthTransactions.reduce((total, transaction) => total + transaction.amount, 0);
+  const selectedExpenseAccountId = state.accounts.some((account) => account.id === form.accountId)
+    ? form.accountId
+    : DEFAULT_FINANCE_ACCOUNT_ID;
 
   function applyDraft(draft: FinancialDocumentDraft) {
     const date = draft.documentDate || draft.dueDate || "";
@@ -283,6 +287,7 @@ export function ExpensesPage() {
       category: form.category,
       otherCategoryDescription: form.category === "Outros" ? form.otherCategoryDescription.trim() : undefined,
       person: form.person,
+      accountId: selectedExpenseAccountId,
       date: form.date,
       paymentMethod: form.paymentMethod,
       paymentRecipient: form.paymentRecipient.trim(),
@@ -485,7 +490,7 @@ export function ExpensesPage() {
               </Label>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <Label>
                 Categoria
                 <Select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>
@@ -502,6 +507,19 @@ export function ExpensesPage() {
                   {personOptions.map((person) => (
                     <option key={person} value={person}>
                       {person}
+                    </option>
+                  ))}
+                </Select>
+              </Label>
+              <Label>
+                Carteira
+                <Select
+                  value={selectedExpenseAccountId}
+                  onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
+                >
+                  {state.accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
                     </option>
                   ))}
                 </Select>
@@ -669,6 +687,7 @@ function createPlannedExpenses({
   category,
   otherCategoryDescription,
   person,
+  accountId,
   date,
   paymentMethod,
   paymentRecipient,
@@ -690,6 +709,7 @@ function createPlannedExpenses({
   category: string;
   otherCategoryDescription?: string;
   person: Person;
+  accountId: string;
   date: string;
   paymentMethod?: PaymentMethod;
   paymentRecipient?: string;
@@ -716,6 +736,7 @@ function createPlannedExpenses({
     category,
     otherCategoryDescription,
     person,
+    accountId,
     date: addMonths(date, index),
     paymentMethod,
     paymentRecipient,

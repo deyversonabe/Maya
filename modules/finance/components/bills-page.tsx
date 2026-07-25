@@ -20,7 +20,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
-import { expenseCategories } from "../data/defaults";
+import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories } from "../data/defaults";
 import {
   addMonths,
   buildBillAlerts,
@@ -81,6 +81,7 @@ export function BillsPage() {
     category: "Moradia",
     otherCategoryDescription: "",
     person: "Casal" as Person,
+    accountId: DEFAULT_FINANCE_ACCOUNT_ID,
     dueDate: toInputDate(new Date()),
     paymentMethod: "boleto" as PaymentMethod,
     paymentCode: "",
@@ -96,6 +97,9 @@ export function BillsPage() {
   const monthSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
   const alerts = useMemo(() => buildBillAlerts(state.bills), [state.bills]);
   const healthAlerts = useMemo(() => buildFinancialHealthAlerts(state), [state]);
+  const selectedBillAccountId = state.accounts.some((account) => account.id === form.accountId)
+    ? form.accountId
+    : DEFAULT_FINANCE_ACCOUNT_ID;
   const monthBills = monthSummary.monthBills
     .slice()
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title));
@@ -208,6 +212,7 @@ export function BillsPage() {
       category: form.category,
       otherCategoryDescription: form.category === "Outros" ? form.otherCategoryDescription.trim() : undefined,
       person: form.person,
+      accountId: selectedBillAccountId,
       dueDate: form.dueDate,
       paymentMethod: form.paymentMethod,
       paymentCode: form.paymentCode.trim(),
@@ -442,7 +447,7 @@ export function BillsPage() {
               />
             </Label>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <Label>
                 Vencimento
                 <Input
@@ -473,6 +478,19 @@ export function BillsPage() {
                   {personOptions.map((person) => (
                     <option key={person} value={person}>
                       {person}
+                    </option>
+                  ))}
+                </Select>
+              </Label>
+              <Label>
+                Carteira
+                <Select
+                  value={selectedBillAccountId}
+                  onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
+                >
+                  {state.accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
                     </option>
                   ))}
                 </Select>
@@ -869,6 +887,7 @@ function createPlannedBills({
   category,
   otherCategoryDescription,
   person,
+  accountId,
   dueDate,
   paymentMethod,
   paymentCode,
@@ -893,6 +912,7 @@ function createPlannedBills({
   category: string;
   otherCategoryDescription?: string;
   person: Person;
+  accountId: string;
   dueDate: string;
   paymentMethod: PaymentMethod;
   paymentCode?: string;
@@ -922,6 +942,7 @@ function createPlannedBills({
     category,
     otherCategoryDescription,
     person,
+    accountId,
     dueDate: addMonths(dueDate, index),
     paymentMethod,
     paymentCode,

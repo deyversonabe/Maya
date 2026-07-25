@@ -14,6 +14,8 @@ export type FinancialDocumentKind = "expense" | "income" | "bill" | "statement";
 
 export type PaymentMethod = "boleto" | "pix" | "card" | "other";
 
+export type FinanceAccountKind = "checking" | "cash" | "wallet" | "savings" | "other";
+
 export type FiscalDocumentType =
   | "danfe_nfe"
   | "danfe_nfce"
@@ -56,6 +58,18 @@ export interface Transaction {
   documentItems?: FinancialDocumentItem[];
   fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
+  accountId?: string;
+  createdAt: string;
+}
+
+export interface FinanceAccount {
+  id: string;
+  name: string;
+  kind: FinanceAccountKind;
+  owner: Person;
+  openingBalance: number;
+  openingBalanceDate: string;
+  color?: string;
   createdAt: string;
 }
 
@@ -115,6 +129,7 @@ export interface PayableBill {
   documentItems?: FinancialDocumentItem[];
   fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
+  accountId?: string;
   paidAt?: string;
   createdAt: string;
 }
@@ -127,8 +142,9 @@ export interface HouseholdProfile {
 }
 
 export interface FinanceState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   profile: HouseholdProfile;
+  accounts: FinanceAccount[];
   transactions: Transaction[];
   goals: Goal[];
   budgets: Budget[];
@@ -137,7 +153,7 @@ export interface FinanceState {
   updatedAt: string;
 }
 
-export type FinanceActivityEntity = "transaction" | "bill" | "goal" | "budget" | "sync" | "system";
+export type FinanceActivityEntity = "transaction" | "bill" | "goal" | "budget" | "account" | "sync" | "system";
 
 export interface FinanceActivityLog {
   id: string;
