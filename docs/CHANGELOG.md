@@ -83,6 +83,12 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Valores financeiros deixam de ser exibidos arredondados para reais inteiros; moeda preserva centavos e casas decimais relevantes.
 - Parser financeiro unificado adicionado para entradas manuais e CSV, aceitando formatos brasileiros como `1.234,56` sem perder o valor real.
 - Editor de linhas de extrato corrigido para nao remontar o campo a cada caractere digitado, preservando foco/cursor durante a edicao.
+- Pagina `Receitas e extrato` adicionada em `/income` para cadastrar renda variavel ou mensal fixa fora de Orcamentos.
+- Entrada `Receitas` adicionada na navegacao desktop e mobile para acesso direto ao cadastro de renda e extrato.
+- Visao de extrato tipo conta bancaria adicionada com entradas, debitos, contas pagas, saldo atual e saldo projetado considerando contas pendentes.
+- Carteiras/contas internas adicionadas com saldo inicial, data do saldo, responsavel e saldo atual por carteira.
+- Receitas, despesas e contas a pagar agora podem ser vinculadas a uma carteira para refletir no extrato e no saldo geral.
+- Migration `20260725_finance_accounts_wallets.sql` adicionada para atualizar o JSONB compartilhado e a RPC de merge com `accounts`.
 - Service worker conservador adicionado para instalacao PWA e cache apenas de assets estaticos, sem cachear APIs financeiras.
 - Painel de notificacoes locais adicionado para alertas de contas vencendo, vencendo hoje, atrasadas e saude financeira quando o navegador permitir.
 - Tema visual neon/LED adicionado com scanlines, brilho controlado, cards mais vivos, botoes com destaque e movimento sutil.

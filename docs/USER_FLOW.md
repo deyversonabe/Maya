@@ -18,20 +18,32 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa a URL raiz do projeto.
 2. Sistema exibe tela inicial premium com logo, resumo do casal e acoes principais.
-3. Usuario escolhe Dashboard, Meses, Despesas, Orcamentos, Metas, Dados ou MAYA.
-4. Sistema carrega dados salvos no navegador ou cria dados iniciais.
+3. Usuario escolhe Dashboard, Receitas, Meses, Despesas, Orcamentos, Metas, Dados ou MAYA.
+4. Sistema carrega dados compartilhados da nuvem quando Supabase estiver configurado.
 5. Usuario visualiza saldo, receitas, despesas, metas e insights.
 6. Usuario cadastra transacoes, metas, recorrencias ou parcelas.
 7. Sistema recalcula os indicadores imediatamente.
-8. Sistema salva os dados localmente.
+8. Sistema sincroniza os dados confirmados com a base compartilhada.
 9. Usuario pode exportar dados para backup.
 
 ### Navegacao mobile
 
 1. Usuario acessa o app em celular.
 2. Sistema exibe navegacao inferior fixa.
-3. Usuario alterna entre Inicio, Meses, Despesas, Orcamentos, Metas, Dados e MAYA com um toque.
+3. Usuario alterna entre Inicio, Receitas, Meses, Despesas, Orcamentos, Metas, Dados e MAYA com um toque.
 4. O conteudo principal mantem espacamento inferior para nao ficar coberto pela barra.
+
+### Cadastro de renda e extrato
+
+1. Usuario acessa Receitas.
+2. Usuario cria ou ajusta uma carteira com nome, responsavel, saldo inicial e data do saldo.
+3. Usuario escolhe renda variavel ou renda mensal fixa.
+4. Usuario informa titulo, valor, data, categoria, pessoa, carteira e observacoes quando necessario.
+5. Para renda mensal fixa, sistema gera lancamentos mensais pela quantidade de meses escolhida.
+6. Sistema salva a renda como transacao real do tipo `income` vinculada a carteira selecionada.
+7. Sistema atualiza saldo da carteira, saldo geral, resumo mensal e extrato imediatamente.
+8. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
+9. Sistema mostra saldo atual acumulado e saldo projetado considerando contas pendentes e atrasadas.
 
 ### Cadastro de despesa com nota
 
@@ -43,8 +55,9 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 6. Sistema exibe os dados do anexo em painel editavel.
 7. Usuario pode abrir o anexo original para conferencia.
 8. Usuario revisa e edita nome, descricao, valor, categoria, pessoa, data e parcelas.
-9. Usuario confirma.
-10. Sistema salva a despesa.
+9. Usuario escolhe a carteira de saida quando houver mais de uma.
+10. Usuario confirma.
+11. Sistema salva a despesa vinculada a carteira selecionada.
 
 ### Envio de nota pelo WhatsApp
 
@@ -225,6 +238,15 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 4. Interface mostra a suspeita de duplicidade e os registros relacionados.
 5. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
 6. Sistema so soma e sincroniza o valor quando houver aprovacao para computar.
+
+### Carteiras e saldo inicial
+
+1. Usuario acessa Receitas.
+2. Usuario abre Saldo inicial e contas.
+3. Usuario cria uma carteira interna ou edita a Conta principal.
+4. Usuario informa saldo inicial real e data do saldo.
+5. Sistema recalcula saldo da carteira somando entradas e subtraindo despesas, investimentos e contas pagas.
+6. Ao remover uma carteira que nao seja a Conta principal, sistema preserva os lancamentos e os move para a Conta principal.
 
 ### Consentimento financeiro futuro
 

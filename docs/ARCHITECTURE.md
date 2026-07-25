@@ -158,6 +158,8 @@ Diretrizes:
 - Pagamentos recorrentes, boletos, contas e parcelas podem ser agrupados por periodo entre dias ou meses.
 - Alertas de saude financeira devem comparar o mes atual com rotina recente e usar linguagem de aviso, nao conclusao definitiva.
 - Pagamentos reais e agendamentos continuam fora do escopo da arquitetura atual.
+- Carteiras internas representam saldos informados pelo usuario e agrupamento de lancamentos; nao representam conta bancaria conectada nem saldo consultado em banco.
+- O saldo operacional deve ser calculado por `FinanceAccount.openingBalance` mais transacoes vinculadas por `accountId`, mantendo lancamentos antigos na Conta principal quando `accountId` estiver ausente.
 
 ## Multi-tenancy
 

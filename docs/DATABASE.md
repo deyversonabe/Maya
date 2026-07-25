@@ -101,6 +101,7 @@ Arquivo SQL:
 - `supabase/migrations/20260721_finance_attachments_storage.sql`.
 - `supabase/migrations/20260721_admin_push_relational_foundation.sql`.
 - `supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql`.
+- `supabase/migrations/20260725_finance_accounts_wallets.sql`.
 
 ## Modelo financeiro inicial
 
@@ -111,6 +112,7 @@ Entidades funcionais do MVP:
 - Budget: orcamentos mensais por categoria.
 - Category: classificacao de receitas e despesas.
 - HouseholdProfile: configuracoes do casal.
+- FinanceAccount: carteiras/contas internas com saldo inicial.
 - Insight: recomendacoes calculadas a partir dos dados.
 
 Campos essenciais de Transaction:
@@ -140,6 +142,26 @@ Campos essenciais de Transaction:
 - `documentItems`.
 - `fiscalDocument`.
 - `notes`.
+- `accountId`.
+
+Campos essenciais de FinanceAccount:
+
+- `id`.
+- `name`.
+- `kind`.
+- `owner`.
+- `openingBalance`.
+- `openingBalanceDate`.
+- `color`.
+- `createdAt`.
+
+Regras de FinanceAccount:
+
+- Toda base financeira possui uma carteira padrao chamada `Conta principal`.
+- `openingBalance` representa o saldo real inicial informado pelo usuario, sem depender de banco conectado.
+- Lancamentos sem `accountId` sao tratados como pertencentes a carteira padrao para compatibilidade com dados antigos.
+- O saldo geral e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
+- Carteiras internas nao executam pagamentos, Pix, boletos ou conexao bancaria real.
 
 Campos essenciais de Goal:
 
@@ -234,6 +256,7 @@ Campos essenciais de PayableBill:
 - `documentItems`.
 - `fiscalDocument`.
 - `notes`.
+- `accountId`.
 - `paidAt`.
 - `createdAt`.
 

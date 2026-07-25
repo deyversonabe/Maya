@@ -300,6 +300,29 @@ Fora de escopo nesta etapa:
 - Criacao automatica sem confirmacao do usuario.
 - Conciliacao bancaria automatica.
 
+### Receitas e extrato
+
+Objetivo: permitir que o casal cadastre renda mensal fixa e renda variavel em uma area propria, com impacto direto no saldo financeiro.
+
+Escopo:
+
+- Cadastrar renda variavel ou unica.
+- Cadastrar renda mensal fixa repetida por quantidade definida de meses.
+- Categorizar renda em Salario, Sobrancelha, Henna, Cabelo, Jogos ou Outros.
+- Exibir extrato tipo conta bancaria com entradas, despesas, investimentos, transferencias neutras e contas pagas.
+- Exibir saldo atual acumulado a cada movimento.
+- Exibir saldo projetado descontando contas pendentes/atrasadas.
+- Criar carteiras/contas internas, como Conta principal, dinheiro, bancos ou carteira de cada pessoa.
+- Informar saldo inicial e data inicial de cada carteira.
+- Vincular receitas, despesas, investimentos e transferencias a uma carteira para calcular saldo por conta e saldo geral.
+- Manter Orcamentos apenas como planejamento de limite de gastos, nao como cadastro de renda.
+
+Fora de escopo nesta etapa:
+
+- Conexao bancaria real.
+- Conciliacao automatica com Open Finance.
+- Pagamentos, Pix ou boletos iniciados pelo app.
+
 ### Confirmacao de duplicidade
 
 Objetivo: evitar que uma mesma renda, despesa ou conta seja cadastrada duas vezes por engano.
