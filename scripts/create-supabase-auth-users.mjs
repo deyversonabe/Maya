@@ -51,7 +51,7 @@ await ensureSharedWorkspace();
 
 for (const user of users) {
   const authUser = await upsertAuthUser(user);
-  await ensureWorkspaceMember(authUser.id, user.username === "Deyveron" ? "admin" : "member");
+  await ensureWorkspaceMember(authUser.id, isAdminEmail(user.email) ? "admin" : "member");
 }
 
 console.log("Usuarios iniciais e acesso compartilhado processados com sucesso.");
@@ -203,4 +203,8 @@ function maskEmail(email) {
 
   const visible = name.slice(0, 2);
   return `${visible}${"*".repeat(Math.max(2, name.length - visible.length))}@${domain}`;
+}
+
+function isAdminEmail(email) {
+  return email?.trim().toLowerCase() === "deyversonsilvaf@gmail.com";
 }
