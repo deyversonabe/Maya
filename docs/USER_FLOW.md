@@ -124,8 +124,12 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Administrador adiciona cada usuario ao workspace compartilhado.
 3. Sistema usa e-mail como login tecnico e nome de exibicao para identificar pessoas como Deyveron e Tom.
 4. Senhas iniciais nao sao armazenadas no repositorio.
-5. Recuperacao de senha e iniciada pelo painel do Supabase.
-6. Conta administradora usa `deyversonsilvaf@gmail.com` como e-mail de recuperacao administrativa.
+5. Usuario pode alternar a senha entre oculta e visivel no formulario de login.
+6. Usuario pode clicar em `Esqueci minha senha`, informar e-mail e receber link seguro do Supabase.
+7. Ao abrir o link, a Maya exibe a tela para salvar nova senha sem pedir a senha antiga.
+8. Depois de alterar a senha, usuario volta ao login e entra com a nova senha.
+9. Recuperacao tambem pode ser iniciada pelo painel do Supabase quando o administrador precisar ajudar.
+10. Conta administradora usa `deyversonsilvaf@gmail.com` como e-mail de recuperacao administrativa.
 
 ### Painel admin
 

@@ -126,9 +126,23 @@ https://maya-steel.vercel.app
 ```
 
 3. Adicione tambem os dominios finais e de desenvolvimento em `Redirect URLs`, quando existirem.
-4. Abra `Authentication > Users`.
-5. Selecione o usuario.
-6. Use a acao de recuperacao/redefinicao de senha do painel.
+4. Inclua a URL de recuperacao usada pelo app:
+
+```text
+https://maya-steel.vercel.app/?maya_recovery=1
+```
+
+Troque `maya-steel.vercel.app` pelo dominio de producao real quando ele mudar.
+
+5. O proprio login da Maya possui a acao `Esqueci minha senha`; ela envia o link de recuperacao para o e-mail informado.
+6. Ao abrir o link do e-mail, a Maya deve mostrar a tela `Salvar nova senha`, sem exigir a senha antiga.
+7. Apos salvar a nova senha, o usuario entra novamente com e-mail e senha atualizada.
+
+Recuperacao manual pelo painel:
+
+1. Abra `Authentication > Users`.
+2. Selecione o usuario.
+3. Use a acao de recuperacao/redefinicao de senha do painel.
 
 O reset padrao do Supabase envia o e-mail para o e-mail do proprio usuario. Para o administrador receber instrucoes, a conta administradora deve usar `deyversonsilvaf@gmail.com`; para outros usuarios, o administrador pode gerar o reset pelo painel e orientar o usuario fora do sistema.
 

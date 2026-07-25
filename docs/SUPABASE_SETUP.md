@@ -59,6 +59,18 @@ npm run push:generate-keys
 16. Use qualquer usuario autorizado para ver a mesma base no celular e no desktop.
 17. Abra `/admin` com usuario admin para conferir usuarios, exportacoes e push.
 
+## URLs de recuperacao de senha
+
+No Supabase, abra `Authentication > URL Configuration` e configure:
+
+```text
+Site URL=https://maya-steel.vercel.app
+Redirect URL=https://maya-steel.vercel.app/?maya_recovery=1
+```
+
+Use o dominio real de producao no lugar de `maya-steel.vercel.app` quando houver dominio proprio.
+Sem essa permissao de redirect, o e-mail de recuperacao pode voltar para a tela de login sem liberar a troca de senha.
+
 ## Usuarios iniciais
 
 Para criar acessos como `Deyveron` e `Tom`, use Supabase Auth.
@@ -69,6 +81,7 @@ Para criar acessos como `Deyveron` e `Tom`, use Supabase Auth.
 - Os usuarios precisam existir em `finance_workspace_members` para ver a base compartilhada.
 - Senhas nao devem ser salvas no GitHub, em `.env.example` ou em arquivos do projeto.
 - O e-mail administrador de recuperacao inicial e `deyversonsilvaf@gmail.com`.
+- O login da Maya permite mostrar/ocultar senha e solicitar recuperacao por e-mail.
 
 Guia completo:
 

@@ -88,6 +88,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Base relacional Supabase preparada para transacoes, contas, metas e anexos, mantendo JSONB compartilhado como fonte operacional do MVP.
 - MAYA ganhou memoria financeira por periodo e plano automatico de economia para metas cadastradas.
 - Atalho mobile "Nova despesa" adicionado acima da navegacao inferior.
+- Login ganhou acao `Esqueci minha senha`, fluxo de nova senha por link Supabase e botao para mostrar/ocultar senha.
 
 ### Fixed
 
@@ -109,7 +110,8 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Corrigido `AuthGate` que existia no projeto, mas nao estava aplicado ao layout, deixando o app abrir sem login.
 - Cadastro publico removido da interface de conta e bloqueado na funcao interna de sincronizacao.
 - Caixa rapida da MAYA na pagina inicial agora usa fallback local quando a rota de IA falha ou retorna resposta invalida.
-- Documentacao duplicada removida de `components/`; a documentacao viva permanece em `docs/`.
+- Documentacao duplicada removida de `components/`; conteudo relevante consolidado em `docs/`, mantendo componentes apenas como arquivos de UI.
+- Link de recuperacao do Supabase passa a abrir tela de definicao de nova senha em vez de voltar para o bloqueio de login.
 
 ## [0.0.1] - 2026-07-09
 
