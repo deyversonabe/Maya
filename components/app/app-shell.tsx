@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, ReceiptText, ShieldCheck, Target, WalletCards } from "lucide-react";
+import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, LogOut, ReceiptText, ShieldCheck, Target, WalletCards } from "lucide-react";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isAdmin } = useMayaAdminAccess();
+  const { email, isAdmin, signOut } = useMayaAdminAccess();
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.adminOnly || isAdmin),
     [isAdmin]
@@ -71,6 +71,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+
+        {email ? (
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-cream/10 bg-cream/[0.04] px-3 text-sm font-black text-muted transition hover:border-alert-red/40 hover:bg-alert-red/10 hover:text-red-100 focus:outline-none focus:ring-4 focus:ring-alert-red/20"
+            onClick={() => void signOut()}
+            title="Sair da conta"
+            aria-label="Sair da conta"
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+            Sair
+          </button>
+        ) : null}
       </div>
 
       {children}
