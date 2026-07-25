@@ -4,13 +4,14 @@ import { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, LogOut, ReceiptText, ShieldCheck, Target, WalletCards } from "lucide-react";
+import { BarChart3, BellRing, Bot, CalendarDays, Database, Home, Landmark, LogOut, ReceiptText, ShieldCheck, Target, WalletCards } from "lucide-react";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
+  { href: "/income", label: "Receitas", icon: Landmark },
   { href: "/months", label: "Meses", icon: CalendarDays },
   { href: "/expenses", label: "Despesas", icon: ReceiptText },
   { href: "/bills", label: "Contas", icon: BellRing },
@@ -49,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="ml-3 font-serif text-3xl font-bold text-bronze drop-shadow-[0_0_18px_rgba(184,121,69,0.26)]">Maya</span>
         </Link>
 
-        <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-10" aria-label="Navegacao principal">
+        <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-11" aria-label="Navegacao principal">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
@@ -100,12 +101,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav
         className={cn(
           "fixed inset-x-2 bottom-3 z-40 grid gap-1 rounded-2xl border border-neon-cyan/20 bg-moss-950/92 p-2 shadow-neon backdrop-blur-2xl md:hidden",
-          isAdmin ? "grid-cols-9" : "grid-cols-7"
+          isAdmin ? "grid-cols-10" : "grid-cols-8"
         )}
         aria-label="Navegacao mobile"
       >
         {visibleNavItems
-          .filter((item) => ["/", "/months", "/expenses", "/bills", "/budgets", "/goals", "/data", "/admin", "/maya"].includes(item.href))
+          .filter((item) => ["/", "/income", "/months", "/expenses", "/bills", "/budgets", "/goals", "/data", "/admin", "/maya"].includes(item.href))
           .map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
@@ -138,6 +139,10 @@ function getMobileLabel(label: string) {
 
   if (label === "Despesas") {
     return "Desp.";
+  }
+
+  if (label === "Receitas") {
+    return "Rec.";
   }
 
   if (label === "Admin") {
