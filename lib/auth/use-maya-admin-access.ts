@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isMayaAdminEmail } from "./admin";
+
+const SESSION_LOCK_KEY = "maya.finance.session_locked.v1";
 
 export function useMayaAdminAccess() {
   const [supabase] = useState(() => createBrowserSupabaseClient());
@@ -49,5 +51,18 @@ export function useMayaAdminAccess() {
     };
   }, [supabase]);
 
-  return access;
+  const signOut = useCallback(async () => {
+    if (!supabase) {
+      return;
+    }
+
+    window.localStorage.setItem(SESSION_LOCK_KEY, "true");
+    await supabase.auth.signOut();
+    setAccess({ checked: true, email: null, isAdmin: false });
+  }, [supabase]);
+
+  return {
+    ...access,
+    signOut
+  };
 }
