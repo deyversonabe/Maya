@@ -17,6 +17,7 @@ Corrigir bloqueios intermitentes de login, limitar funcoes administrativas ao e-
 
 - `components/app/auth-gate.tsx`
 - `components/app/app-shell.tsx`
+- `lib/auth/use-maya-admin-access.ts`
 - `modules/finance/components/admin-page.tsx`
 - `modules/finance/components/data-center-page.tsx`
 - `modules/finance/lib/report-export.ts`
@@ -33,22 +34,27 @@ Corrigir bloqueios intermitentes de login, limitar funcoes administrativas ao e-
 - `docs/AUTH_USERS_SETUP.md`
 - `docs/API.md`
 - `docs/USER_FLOW.md`
+- `docs/IMPLEMENTATION_REPORT_VARREDURA_CRITICA_20260725.md`
 
 ## Decisoes arquiteturais
 
 - Admin unico passa a ser definido por e-mail fixo: `deyversonsilvaf@gmail.com`.
 - A navegacao esconde `Dados` e `Admin` para membros comuns.
+- A barra principal mantem um botao `Sair` para todos os usuarios autenticados, preservando controle de sessao mesmo sem a aba `Dados`.
 - As paginas `/data` e `/admin` tambem bloqueiam acesso direto por URL para membros comuns.
 - As rotas `/api/admin/*` validam o e-mail admin no backend antes de consultar ou alterar dados administrativos.
 - O script administrativo cria papel `admin` somente para o e-mail oficial; demais usuarios ficam como `member`.
 - O salvamento do estado compartilhado deixa de usar `upsert` direto e passa a chamar `save_finance_workspace_state_locked`.
 - A RPC usa lock de linha e mescla arrays por `id`, preservando lancamentos simultaneos criados por outras sessoes.
+- O merge da RPC preserva campos de anexo e `documentItems` quando a mesma entidade chega com versoes diferentes entre aparelhos.
+- O merge em tempo real do cliente reenvia a mescla quando este aparelho tem alteracoes locais mais novas, evitando que um dado fique salvo apenas localmente.
+- A exportacao Excel removeu a dependencia `xlsx` e tambem deixou de aplicar formato monetario generico a colunas numericas de quantidade.
 
 ## Dependencias
 
-Nenhuma dependencia nova foi adicionada.
+`sharp` foi fixado em versao corrigida (`0.35.3`) por `overrides`, removendo a copia vulneravel herdada pelo Next sem usar `npm audit fix --force`.
 
-O `package-lock.json` foi atualizado por `npm audit fix`, mantendo `package.json` sem novas dependencias diretas e resolvendo parte dos alertas de seguranca automaticos.
+O `package-lock.json` foi atualizado por reinstalacao controlada, elevando resolucoes automaticas seguras.
 
 A dependencia `xlsx` foi removida porque continuava com alertas altos sem correcao disponivel. A exportacao Excel agora gera um workbook XML `.xls` compativel com Excel diretamente no navegador.
 
@@ -59,12 +65,13 @@ A dependencia `xlsx` foi removida porque continuava com alertas altos sem correc
 - Membros comuns continuam acessando dados financeiros compartilhados, mas sem central de dados, painel admin, usuarios, backup e funcoes administrativas.
 - Delecoes concorrentes ainda precisam de tombstones em etapa futura para representar remocao intencional em multiplas sessoes offline.
 - A exportacao Excel muda de `.xlsx` para `.xls` em XML Spreadsheet 2003, que abre no Excel e reduz superficie de dependencia.
+- Registros sem tombstone ainda nao representam delecao concorrente intencional; a mudanca atual prioriza preservacao contra perda silenciosa.
 
 ## Validacao
 
 - `npm run typecheck`: aprovado.
 - `npm run build`: aprovado.
-- `npm audit --omit=dev`: ainda aponta alertas altos em `sharp` via Next; o ajuste automatico restante exige `npm audit fix --force` com mudanca quebravel/downgrade sugerido.
+- `npm audit --omit=dev`: aprovado, sem vulnerabilidades reportadas.
 
 ## Pendencias
 
@@ -72,7 +79,7 @@ A dependencia `xlsx` foi removida porque continuava com alertas altos sem correc
 - Fazer redeploy na Vercel depois da migration.
 - Testar Deyveron e Tom em dois aparelhos adicionando lancamentos quase ao mesmo tempo.
 - Considerar migracao gradual para tabelas relacionais como fonte primaria de transacoes, contas, metas e anexos.
-- Acompanhar atualizacao segura do Next/sharp sem `audit fix --force` quebravel.
+- Monitorar atualizacoes futuras do Next/sharp sem aplicar downgrades forcados.
 
 ## Proximos passos recomendados
 

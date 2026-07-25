@@ -79,6 +79,7 @@ Regras:
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
 - Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase pela RPC `save_finance_workspace_state_locked`.
 - `save_finance_workspace_state_locked` valida membro ativo, bloqueia a linha com `SELECT ... FOR UPDATE` e mescla listas por `id` antes de gravar, evitando sobrescrita cega do JSONB em sessoes concorrentes.
+- O merge da RPC e o merge em tempo real do cliente preservam campos de anexo e itens lidos (`attachmentStoragePath`, `attachmentDataUrl`, `attachmentImageName`, `receiptImageName`, `documentItems` e equivalentes) quando outra sessao salva uma versao menos completa do mesmo registro.
 - Escritas diretas em `finance_workspace_states` por cliente autenticado devem permanecer bloqueadas por RLS; o app deve usar a RPC segura.
 - A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
 - Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
@@ -137,6 +138,7 @@ Campos essenciais de Transaction:
 - `attachmentMimeType`.
 - `attachmentSize`.
 - `documentItems`.
+- `fiscalDocument`.
 - `notes`.
 
 Campos essenciais de Goal:
@@ -230,6 +232,7 @@ Campos essenciais de PayableBill:
 - `attachmentImageName`.
 - `attachmentDataUrl`.
 - `documentItems`.
+- `fiscalDocument`.
 - `notes`.
 - `paidAt`.
 - `createdAt`.
@@ -263,6 +266,7 @@ Campos essenciais:
 - `confidence`.
 - `missingFields`.
 - `items`.
+- `fiscalDocument`: metadados opcionais de DANFE/NF-e/NFC-e/cupom fiscal, como tipo fiscal, chave de acesso, emissor, CNPJ, numero, serie, protocolo e totais.
 - `attachmentImageName`.
 - `attachmentDataUrl`.
 

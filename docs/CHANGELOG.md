@@ -78,6 +78,11 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Supabase Storage privado adicionado para comprovantes, notas, boletos, Pix e extratos anexados, com fallback local quando o bucket ainda nao estiver configurado.
 - Links assinados de anexo adicionados para visualizar comprovantes em celular e desktop sem tornar arquivos publicos.
 - Historico de atividades adicionado para registrar usuario, acao, entidade e horario de lancamentos, importacoes, metas, orcamentos e contas.
+- Leitura de notas reforcada para DANFE NF-e, DANFE NFC-e e cupom fiscal, com chave de acesso, CNPJ, numero, serie, protocolo, totais e itens fiscais quando legiveis.
+- Dados fiscais lidos pela MAYA passam a ser preservados em `fiscalDocument` e exibidos na revisao do anexo antes de salvar.
+- Valores financeiros deixam de ser exibidos arredondados para reais inteiros; moeda preserva centavos e casas decimais relevantes.
+- Parser financeiro unificado adicionado para entradas manuais e CSV, aceitando formatos brasileiros como `1.234,56` sem perder o valor real.
+- Editor de linhas de extrato corrigido para nao remontar o campo a cada caractere digitado, preservando foco/cursor durante a edicao.
 - Service worker conservador adicionado para instalacao PWA e cache apenas de assets estaticos, sem cachear APIs financeiras.
 - Painel de notificacoes locais adicionado para alertas de contas vencendo, vencendo hoje, atrasadas e saude financeira quando o navegador permitir.
 - Tema visual neon/LED adicionado com scanlines, brilho controlado, cards mais vivos, botoes com destaque e movimento sutil.
@@ -90,6 +95,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Atalho mobile "Nova despesa" adicionado acima da navegacao inferior.
 - Login ganhou acao `Esqueci minha senha`, fluxo de nova senha por link Supabase e botao para mostrar/ocultar senha.
 - Migration `20260725_admin_unique_and_safe_workspace_state.sql` adicionada para admin unico por e-mail e salvamento com lock de linha no Supabase.
+- Merge seguro da RPC passa a preservar campos de anexo e itens lidos quando duas sessoes salvam versoes diferentes do mesmo registro.
 
 ### Fixed
 
@@ -118,8 +124,13 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Login deixa de reaproveitar trava local antiga depois de uma autenticacao bem-sucedida, reduzindo bloqueios intermitentes por historico do navegador.
 - Abas `Dados` e `Admin`, painel de usuarios e rotas administrativas passam a ser exclusivas de `deyversonsilvaf@gmail.com`.
 - Salvamento do estado financeiro compartilhado passa a usar RPC com `SELECT ... FOR UPDATE`, reduzindo risco de perda silenciosa de lancamentos concorrentes.
-- `package-lock.json` atualizado por `npm audit fix`, elevando resolucoes automaticas seguras sem adicionar dependencia direta nova.
+- Merge em tempo real do cliente passa a reenviar a mescla quando este aparelho possui alteracoes locais mais novas, evitando que dados fiquem presos em uma sessao.
+- `package-lock.json` atualizado por reinstalacao controlada, elevando resolucoes automaticas seguras.
 - Dependencia `xlsx` removida; exportacao Excel passa a gerar planilha XML `.xls` compativel com Excel sem biblioteca vulneravel.
+- Dependencia transitoria `sharp` fixada em versao corrigida via `overrides`, removendo a copia vulneravel herdada do Next sem downgrade forcado.
+- Planilha XML `.xls` deixa de aplicar formato monetario generico a todo numero, evitando que colunas de quantidade sejam exibidas como valores em dinheiro.
+- Botao `Sair` adicionado na barra principal para usuarios comuns manterem controle da sessao mesmo sem acesso a `Dados`.
+- Merge local de registros passa a preservar `attachmentImageName`, `receiptImageName` e `documentItems`, alem dos dados tecnicos do anexo.
 
 ## [0.0.1] - 2026-07-09
 

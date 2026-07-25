@@ -338,6 +338,7 @@ Saida:
 
 - `financialDraft`: rascunho normalizado de despesa, renda ou conta a pagar.
 - `expenseDraft`: compatibilidade com a primeira versao de despesas por nota.
+- `financialDraft.fiscalDocument`: metadados fiscais opcionais para DANFE NF-e, DANFE NFC-e e cupom fiscal, incluindo tipo, chave de acesso, emissor, CNPJ, numero, serie, protocolo e totais quando legiveis.
 - `needsReview`: sempre `true`.
 - `message`: orientacao curta para revisao.
 
@@ -349,6 +350,7 @@ Regras:
 - A rota solicita saida JSON estruturada e rejeita respostas vazias ou malformadas.
 - Quando a OpenAI nao estiver configurada ou falhar, retorna rascunho seguro com campos essenciais vazios.
 - A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
+- Em DANFE/NF-e/NFC-e/cupom fiscal, a IA deve usar o valor total da nota ou valor pago como `amount` e manter chave de acesso/CNPJ apenas quando legiveis.
 - A IA pode retornar itens de nota ou linhas de extrato em `items`, mas esses itens sao informativos ate que o usuario confirme o lancamento.
 - O frontend deve exigir preenchimento manual dos campos obrigatorios antes de salvar.
 - O frontend deve verificar suspeita de duplicidade por data, valor e tipo antes de persistir renda ou despesa.

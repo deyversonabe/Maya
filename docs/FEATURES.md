@@ -285,6 +285,7 @@ Escopo:
 - Exibir um painel de dados do anexo com nome/titulo, descricao, valor, data, categoria, pessoa e observacoes editaveis antes do salvamento.
 - Permitir abrir o anexo original para conferencia visual durante a revisao.
 - Ler descricoes e itens de notas, comprovantes e extratos bancarios quando estiverem legiveis.
+- Ler DANFE NF-e, DANFE NFC-e e cupom fiscal quando estiverem legiveis, preservando chave de acesso, CNPJ, emissor, numero, serie, protocolo, totais e itens fiscais.
 - Usar campos vazios quando a imagem nao sustentar uma informacao.
 - Bloquear salvamento quando titulo, valor ou data obrigatoria estiverem ausentes.
 - Salvar o anexo confirmado junto do lancamento ou da conta correspondente.
