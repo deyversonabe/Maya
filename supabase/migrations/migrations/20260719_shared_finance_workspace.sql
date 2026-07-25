@@ -38,7 +38,6 @@ values (
     'goals', jsonb_build_array(),
     'budgets', jsonb_build_array(),
     'bills', jsonb_build_array(),
-    'activityLogs', jsonb_build_array(),
     'updatedAt', now()
   )
 )
