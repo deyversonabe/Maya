@@ -153,13 +153,13 @@ Analiticos por periodo ficam no modulo `finance` e devem ser calculados a partir
 Diretrizes:
 
 - Grafico mensal deve comparar renda e despesa com dados reais, sem preencher lacunas com valores inventados.
-- Filtros de renda usam categorias especificas de entrada: Salario, Sobrancelha, Henna, Cabelo, Jogos e Outros.
+- Filtros de renda usam categorias especificas de entrada: Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos e Outros.
 - Filtros de despesa usam categorias de saida e agrupam Pix por destinatario quando disponivel.
 - Pagamentos recorrentes, boletos, contas e parcelas podem ser agrupados por periodo entre dias ou meses.
 - Alertas de saude financeira devem comparar o mes atual com rotina recente e usar linguagem de aviso, nao conclusao definitiva.
 - Pagamentos reais e agendamentos continuam fora do escopo da arquitetura atual.
 - Carteiras internas representam saldos informados pelo usuario e agrupamento de lancamentos; nao representam conta bancaria conectada nem saldo consultado em banco.
-- O saldo operacional deve ser calculado por `FinanceAccount.openingBalance` mais transacoes vinculadas por `accountId`, mantendo lancamentos antigos na Conta principal quando `accountId` estiver ausente.
+- O saldo operacional deve ser calculado por `FinanceAccount.openingBalance` mais transacoes vinculadas por `accountId`, mantendo lancamentos antigos na Carteira do casal quando `accountId` estiver ausente.
 
 ## Multi-tenancy
 

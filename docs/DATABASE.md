@@ -144,6 +144,15 @@ Campos essenciais de Transaction:
 - `notes`.
 - `accountId`.
 
+Regras atuais de Transaction:
+
+- `paymentMethod` aceita `cash`, `boleto`, `pix`, `card` ou `other`.
+- `cash` representa pagamento em dinheiro e deve aparecer na interface como `Dinheiro`.
+- Em renda variavel do studio, `paymentRecipient` registra a cliente ou pessoa que pagou.
+- Em despesa Pix, `paymentRecipient` registra a pessoa ou empresa que recebeu o Pix.
+- Renda fixa criada manualmente deve gerar somente 3 meses por padrao; renda variavel nao deve ser projetada.
+- Toda renda ou despesa confirmada deve ser editavel e removivel pelo usuario autorizado.
+
 Campos essenciais de FinanceAccount:
 
 - `id`.
@@ -157,9 +166,10 @@ Campos essenciais de FinanceAccount:
 
 Regras de FinanceAccount:
 
-- Toda base financeira possui uma carteira padrao chamada `Conta principal`.
+- Toda base financeira possui uma carteira padrao chamada `Carteira do casal`.
 - `openingBalance` representa o saldo real inicial informado pelo usuario, sem depender de banco conectado.
 - Lancamentos sem `accountId` sao tratados como pertencentes a carteira padrao para compatibilidade com dados antigos.
+- Dados antigos marcados como `Pessoa 1` e `Pessoa 2` sao normalizados no cliente para `Deyveron` e `Tom`.
 - O saldo geral e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
 - Carteiras internas nao executam pagamentos, Pix, boletos ou conexao bancaria real.
 

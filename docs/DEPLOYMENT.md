@@ -78,7 +78,7 @@ Se a leitura de nota cair no rascunho manual mesmo com chave configurada, confer
 4. O deploy foi refeito depois de alterar variaveis.
 5. Os logs da Vercel mostram `maya_receipt_read_failed` com categoria segura da falha.
 
-Se a requisicao `/api/maya/receipt` retornar 503/504, o codigo deve garantir que a chamada externa seja abortada antes do limite da funcao. A rota atual declara `maxDuration = 10` e usa timeout interno de 7,5 segundos para devolver rascunho manual controlado.
+Se a requisicao `/api/maya/receipt` retornar 503/504, o codigo deve garantir que a chamada externa seja abortada antes do limite da funcao. A rota atual declara `maxDuration = 25` e usa timeout interno controlado para devolver rascunho manual controlado quando o provedor externo falhar.
 
 Para ativar WhatsApp no futuro:
 

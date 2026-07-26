@@ -84,6 +84,8 @@ Limites:
 - Em DANFE NF-e, DANFE NFC-e e cupom fiscal, MAYA deve usar o valor total da nota ou valor pago como `amount`; nunca deve usar imposto, desconto, troco, subtotal, base de calculo ou valor unitario como total.
 - Em documentos fiscais brasileiros, MAYA deve extrair chave de acesso de 44 digitos, CNPJ, emissor, numero, serie, protocolo e itens somente quando estiverem legiveis.
 - MAYA nao deve inferir conteudo interno de QR Code ou codigo de barras quando ele nao aparecer como texto legivel.
+- MAYA deve priorizar fidelidade de OCR em documentos financeiros: preservar centavos, nao arredondar valores, ler cabecalho, totais, vencimento, beneficiario/pagador, forma de pagamento e itens/linhas legiveis antes de tentar resumir.
+- Quando uma imagem tiver muitos itens ou texto pequeno, a preparacao no cliente deve privilegiar resolucao suficiente para leitura, mesmo que o upload fique maior dentro do limite aceito pela API.
 - MAYA nao deve inventar linhas de extrato, destinatarios Pix ou categorias quando o documento nao sustentar a informacao.
 - Em extratos, MAYA deve ignorar saldo, limite, totais, subtotais, cabecalhos e linhas nao transacionais.
 - Em Pix, MAYA deve preencher destinatario/remetente apenas quando estiver legivel; se nao estiver, o usuario deve completar antes de salvar.

@@ -37,13 +37,15 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa Receitas.
 2. Usuario cria ou ajusta uma carteira com nome, responsavel, saldo inicial e data do saldo.
-3. Usuario escolhe renda variavel ou renda mensal fixa.
-4. Usuario informa titulo, valor, data, categoria, pessoa, carteira e observacoes quando necessario.
-5. Para renda mensal fixa, sistema gera lancamentos mensais pela quantidade de meses escolhida.
+3. Usuario escolhe venda variavel do studio ou renda fixa por 3 meses.
+4. Para venda variavel, usuario informa titulo/servico, valor real, data, categoria, pessoa, carteira, forma de pagamento e nome da cliente ou de quem pagou.
+5. Para renda fixa, sistema gera somente 3 lancamentos mensais, sem projetar renda variavel.
 6. Sistema salva a renda como transacao real do tipo `income` vinculada a carteira selecionada.
-7. Sistema atualiza saldo da carteira, saldo geral, resumo mensal e extrato imediatamente.
-8. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
-9. Sistema mostra saldo atual acumulado e saldo projetado considerando contas pendentes e atrasadas.
+7. Antes de salvar, sistema compara valor e data com rendas e despesas existentes e pede confirmacao quando houver suspeita de duplicidade.
+8. Sistema atualiza saldo da carteira, saldo geral, resumo mensal e extrato imediatamente.
+9. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
+10. Sistema mostra saldo atual acumulado e saldo apos contas pendentes e atrasadas.
+11. Usuario pode editar ou excluir qualquer renda cadastrada.
 
 ### Cadastro de despesa com nota
 
@@ -79,7 +81,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 3. Para recorrente, sistema gera lancamentos mensais pelo periodo informado.
 4. Para parcelada, sistema gera uma transacao por parcela em cada mes.
 5. Todas as parcelas ficam visiveis na divisao por meses.
-6. Usuario pode remover lancamentos individualmente.
+6. Usuario pode editar ou remover lancamentos individualmente.
 
 ### Resumo mensal de entradas e saidas
 
@@ -88,7 +90,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 3. Sistema mostra entradas, saidas, investimentos, transferencias e saldo final do mes.
 4. Sistema lista lancamentos discriminados por tipo.
 5. Usuario identifica descricao, categoria, pessoa, data, recorrencia e parcelas.
-6. Usuario pode remover um lancamento se identificar erro.
+6. Usuario pode editar ou remover um lancamento se identificar erro.
 
 ### Planejamento por orcamento mensal
 
@@ -216,7 +218,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Usuario visualiza grafico de linha com renda e despesa entre meses.
 3. Usuario escolhe filtro entre dias ou entre meses.
 4. Usuario filtra despesas por categoria e ve soma de Pix nominais, boletos, contas, recorrencias e parcelas.
-5. Usuario filtra rendas por Salario, Sobrancelha, Henna, Cabelo, Jogos ou Outros.
+5. Usuario filtra rendas por Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos ou Outros.
 6. Sistema mostra total e quantidade de transacoes do periodo filtrado.
 7. MAYA exibe alertas quando a renda ou despesa do mes fugir da rotina recente.
 
@@ -243,10 +245,10 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Usuario acessa Receitas.
 2. Usuario abre Saldo inicial e contas.
-3. Usuario cria uma carteira interna ou edita a Conta principal.
+3. Usuario cria uma carteira interna ou edita a Carteira do casal.
 4. Usuario informa saldo inicial real e data do saldo.
 5. Sistema recalcula saldo da carteira somando entradas e subtraindo despesas, investimentos e contas pagas.
-6. Ao remover uma carteira que nao seja a Conta principal, sistema preserva os lancamentos e os move para a Conta principal.
+6. Ao remover uma carteira que nao seja a Carteira do casal, sistema preserva os lancamentos e os move para a Carteira do casal.
 
 ### Consentimento financeiro futuro
 

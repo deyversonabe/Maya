@@ -344,9 +344,9 @@ Saida:
 
 Regras:
 
-- A rota limita tamanho de imagem a 4 MB em data URL, abaixo do limite de payload das funcoes da Vercel.
+- A rota limita tamanho de imagem a 7 MB em data URL para preservar texto pequeno de notas, DANFE e extratos.
 - A rota usa `OPENAI_API_KEY` apenas no servidor.
-- A rota declara `maxDuration = 10` e usa timeout interno menor na chamada de IA para evitar que a Vercel encerre a funcao antes do fallback.
+- A rota declara `maxDuration = 25` e usa timeout interno controlado para reduzir falhas em documentos longos sem travar a interface.
 - A rota solicita saida JSON estruturada e rejeita respostas vazias ou malformadas.
 - Quando a OpenAI nao estiver configurada ou falhar, retorna rascunho seguro com campos essenciais vazios.
 - A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
@@ -356,7 +356,7 @@ Regras:
 - O frontend deve verificar suspeita de duplicidade por data, valor e tipo antes de persistir renda ou despesa.
 - O frontend tambem deve alertar quando houver mesmo valor no mesmo dia, mesmo que o tipo tenha sido classificado diferente.
 - Quando houver possivel duplicidade, o frontend deve pedir decisao explicita para computar ou excluir o novo registro.
-- O frontend deve otimizar imagens de anexo para JPEG antes do envio quando o navegador conseguir decodificar o arquivo.
+- O frontend deve otimizar imagens de anexo para JPEG antes do envio quando o navegador conseguir decodificar o arquivo, preservando resolucao suficiente para OCR.
 - Logs tecnicos devem categorizar falhas de leitura sem expor chave, imagem ou conteudo sensivel.
 
 Erros esperados:

@@ -307,15 +307,20 @@ Objetivo: permitir que o casal cadastre renda mensal fixa e renda variavel em um
 Escopo:
 
 - Cadastrar renda variavel ou unica.
-- Cadastrar renda mensal fixa repetida por quantidade definida de meses.
-- Categorizar renda em Salario, Sobrancelha, Henna, Cabelo, Jogos ou Outros.
+- Cadastrar venda variavel do studio de sobrancelhas com forma de pagamento `Dinheiro`, `Pix`, `Cartao` ou `Outro`.
+- Exigir nome da cliente ou de quem pagou antes de salvar uma venda variavel.
+- Cadastrar renda fixa por 3 meses, sem projetar renda variavel e mantendo cada lancamento futuro editavel.
+- Categorizar renda em Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos ou Outros.
 - Exibir extrato tipo conta bancaria com entradas, despesas, investimentos, transferencias neutras e contas pagas.
 - Exibir saldo atual acumulado a cada movimento.
-- Exibir saldo projetado descontando contas pendentes/atrasadas.
-- Criar carteiras/contas internas, como Conta principal, dinheiro, bancos ou carteira de cada pessoa.
+- Exibir saldo apos contas, descontando contas pendentes/atrasadas sem tratar renda variavel como previsao.
+- Criar carteiras/contas internas usando nomes claros, como Carteira do casal, Deyveron, Tom, dinheiro, bancos ou outra carteira personalizada.
 - Informar saldo inicial e data inicial de cada carteira.
 - Vincular receitas, despesas, investimentos e transferencias a uma carteira para calcular saldo por conta e saldo geral.
+- Editar ou excluir qualquer renda ou despesa cadastrada.
 - Manter Orcamentos apenas como planejamento de limite de gastos, nao como cadastro de renda.
+- Categorias de despesa incluem Combustivel, Melhoria casa, Conforto e Manutencao.
+- Formas de pagamento incluem Dinheiro quando a movimentacao nao passar por Pix, boleto ou cartao.
 
 Fora de escopo nesta etapa:
 
@@ -374,7 +379,7 @@ Escopo:
 - Revisar cada linha antes de importar, com tipo, descricao, valor, data, categoria, pessoa, forma de pagamento e destinatario Pix.
 - Alertar quando houver valor repetido no mesmo dia dentro do extrato ou contra dados ja salvos.
 - Exigir destinatario quando uma despesa for marcada como Pix.
-- Diferenciar categorias de renda: Salario, Sobrancelha, Henna, Cabelo, Jogos e Outros.
+- Diferenciar categorias de renda: Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos e Outros.
 - Abrir campo opcional de descricao quando renda ou despesa estiver em Outros.
 - Guardar itens/linhas lidos no anexo dentro da transacao ou conta confirmada.
 - Permitir consultar os itens do anexo dentro do app, sem baixar o arquivo novamente.

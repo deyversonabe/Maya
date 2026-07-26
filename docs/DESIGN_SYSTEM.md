@@ -166,6 +166,10 @@ Diretrizes da UI v2:
 
 - Home com mensagem humana, logo em destaque, resumo financeiro e acoes principais.
 - Navegacao desktop compacta no topo e navegacao mobile fixa inferior.
+- No celular, a experiencia deve parecer app: cabecalho compacto, ate cinco acoes fixas na barra inferior e demais areas dentro de um menu secundario.
+- A navegacao mobile nao deve mostrar todas as abas ao mesmo tempo quando isso reduzir legibilidade ou criar sobreposicao.
+- Botoes flutuantes no mobile devem ser evitados quando competirem com a barra inferior; a acao deve ficar em uma aba primaria ou dentro da propria tela.
+- A home mobile deve priorizar estado financeiro, entrada rapida e MAYA; paineis explicativos e blocos secundarios podem aparecer apenas em tablet/desktop.
 - Dashboard com "Resumo do Casal" como primeiro bloco de leitura.
 - Cards com iluminacao sutil em bronze/ciano, sem exagero visual.
 - Iluminacao deve priorizar linhas, bordas, sombras e gradientes lineares; evitar manchas circulares decorativas.
@@ -178,6 +182,7 @@ Componentes visuais preferenciais:
 
 - `AppShell`: cabecalho e navegacao responsiva.
 - `BottomNav`: navegacao mobile fixa.
+- `MobileAppMenu`: menu secundario para areas menos frequentes no celular.
 - `HeroPanel`: bloco premium de entrada.
 - `CoupleSummary`: resumo de saude financeira do casal.
 - `VisualMetric`: card de indicador com movimento e destaque.

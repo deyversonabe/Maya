@@ -8,6 +8,17 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Categorias de despesa adicionadas: Combustivel, Melhoria casa, Conforto e Manutencao.
+- Pessoas dos lancamentos atualizadas para `Deyveron`, `Tom` e `Casal`, com migracao local de registros antigos `Pessoa 1` e `Pessoa 2`.
+- Carteira padrao renomeada para `Carteira do casal`.
+- Salvamento online reforcado com sincronizacao mais rapida, tentativa de salvar antes de sair da conta e fallback para Supabase quando a RPC segura ainda nao foi aplicada.
+
+- Renda variavel adaptada ao fluxo de studio de sobrancelhas, com forma de pagamento `Dinheiro`, `Pix`, `Cartao` ou `Outro` e campo obrigatorio de cliente/quem pagou.
+- Renda fixa limitada a geracao de 3 meses, mantendo cada lancamento editavel para ajustes futuros de valor, data ou aumento.
+- Confirmacao de possivel duplicidade antes de salvar renda variavel ou fixa quando houver lancamento parecido por data e valor.
+- Edicao e exclusao de receitas diretamente no extrato financeiro tipo conta bancaria.
+- Edicao e exclusao de despesas diretamente na lista mensal de despesas.
+- Metodo de pagamento `cash`/`Dinheiro` aceito no modelo financeiro, nos formularios e na leitura feita pela MAYA.
 - Estrutura inicial de documentacao viva em `docs/`.
 - Documento principal `PROJECT_RULES.md` definido como fonte de verdade do projeto.
 - Diretrizes iniciais para arquitetura, banco de dados, API, design system, IA, seguranca, contribuicao e roadmap.
@@ -51,7 +62,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Rota `POST /api/maya/validate` corrigida e integrada aos tipos atuais para revisar duplicidade e transferencia interna sem quebrar o build.
 - Preparacao de anexos no navegador adicionada para reduzir imagens grandes e converter comprovantes para JPEG antes da leitura da MAYA.
 - Logs seguros `maya_receipt_read_failed` adicionados para diagnosticar falhas de leitura de comprovantes sem expor segredos ou imagens.
-- Rota `/api/maya/receipt` configurada com `maxDuration = 10` e timeout interno de 7,5s para evitar 503/504 por encerramento da funcao na Vercel.
+- Rota `/api/maya/receipt` configurada inicialmente com `maxDuration = 10` e timeout interno para evitar 503/504 por encerramento da funcao na Vercel.
 - Painel editavel de dados do anexo adicionado para revisar nome/titulo, descricao, valor, data, categoria, pessoa e observacoes antes de salvar.
 - Sincronizacao online com Supabase Auth adicionada para acessar os mesmos dados no celular e no desktop.
 - Migracao SQL `supabase/migrations/20260719_finance_states.sql` adicionada com RLS por usuario.
@@ -78,6 +89,10 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Supabase Storage privado adicionado para comprovantes, notas, boletos, Pix e extratos anexados, com fallback local quando o bucket ainda nao estiver configurado.
 - Links assinados de anexo adicionados para visualizar comprovantes em celular e desktop sem tornar arquivos publicos.
 - Historico de atividades adicionado para registrar usuario, acao, entidade e horario de lancamentos, importacoes, metas, orcamentos e contas.
+
+### Removed
+
+- Cards visiveis de `Qualidade` removidos da Home, MAYA, Dados e Admin para reduzir confusao de uso.
 - Leitura de notas reforcada para DANFE NF-e, DANFE NFC-e e cupom fiscal, com chave de acesso, CNPJ, numero, serie, protocolo, totais e itens fiscais quando legiveis.
 - Dados fiscais lidos pela MAYA passam a ser preservados em `fiscalDocument` e exibidos na revisao do anexo antes de salvar.
 - Valores financeiros deixam de ser exibidos arredondados para reais inteiros; moeda preserva centavos e casas decimais relevantes.
@@ -88,6 +103,15 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Visao de extrato tipo conta bancaria adicionada com entradas, debitos, contas pagas, saldo atual e saldo projetado considerando contas pendentes.
 - Carteiras/contas internas adicionadas com saldo inicial, data do saldo, responsavel e saldo atual por carteira.
 - Receitas, despesas e contas a pagar agora podem ser vinculadas a uma carteira para refletir no extrato e no saldo geral.
+- Leitura de documentos financeiros reforcada com maior preservacao de resolucao no navegador, `maxDuration = 25`, timeout interno ampliado e prompts mais detalhados para nota, DANFE, boleto, Pix e extrato.
+- Normalizacao da MAYA ampliada para aceitar aliases comuns em portugues e formatos brasileiros de data/valor, reduzindo perda de informacoes extraidas de anexos.
+- Layout mobile revisado para modo app, com cabecalho compacto, barra inferior de cinco acoes e menu secundario para evitar abas sobrepostas.
+- Home mobile simplificada com avatar menor, menos cards explicativos e formulario da MAYA adaptado para uso com uma mao.
+
+### Fixed
+
+- Captura fraca de anexos corrigida ao reduzir perda de qualidade na compressao de imagens e preservar centavos sem arredondamento durante a leitura por IA.
+- Botao flutuante duplicado da home removido do mobile para nao competir com a navegacao inferior.
 - Migration `20260725_finance_accounts_wallets.sql` adicionada para atualizar o JSONB compartilhado e a RPC de merge com `accounts`.
 - Service worker conservador adicionado para instalacao PWA e cache apenas de assets estaticos, sem cachear APIs financeiras.
 - Painel de notificacoes locais adicionado para alertas de contas vencendo, vencendo hoje, atrasadas e saude financeira quando o navegador permitir.
