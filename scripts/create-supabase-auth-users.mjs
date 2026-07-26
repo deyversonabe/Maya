@@ -61,7 +61,7 @@ async function ensureSharedWorkspace() {
     schemaVersion: 3,
     profile: {
       familyName: "MAYA",
-      people: ["Pessoa 1", "Pessoa 2"]
+      people: ["Deyveron", "Tom"]
     },
     transactions: [],
     goals: [],
