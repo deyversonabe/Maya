@@ -32,7 +32,7 @@ values (
     'schemaVersion', 3,
     'profile', jsonb_build_object(
       'familyName', 'MAYA',
-      'people', jsonb_build_array('Pessoa 1', 'Pessoa 2')
+      'people', jsonb_build_array('Deyveron', 'Tom')
     ),
     'transactions', jsonb_build_array(),
     'goals', jsonb_build_array(),
