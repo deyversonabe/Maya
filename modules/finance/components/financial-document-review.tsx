@@ -9,6 +9,7 @@ import { AttachmentLink } from "./attachment-link";
 type DateField = "documentDate" | "dueDate" | "entryDate";
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: "Dinheiro",
   boleto: "Boleto",
   pix: "Pix copia e cola",
   card: "Cartao",

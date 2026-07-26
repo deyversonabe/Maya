@@ -2,9 +2,9 @@
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
-const MAX_IMAGE_EDGE = 1600;
-const MAX_DATA_URL_LENGTH = 1_200_000;
-const JPEG_QUALITY = 0.82;
+const MAX_IMAGE_EDGE = 2600;
+const MAX_DATA_URL_LENGTH = 3_200_000;
+const JPEG_QUALITY = 0.9;
 const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
 const WORKSPACE_ID =
   process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
@@ -54,14 +54,14 @@ export async function fileToOptimizedImageDataUrl(file: File) {
         return dataUrl;
       }
 
-      if (quality > 0.62) {
-        quality -= 0.08;
+      if (quality > 0.72) {
+        quality -= 0.06;
       } else {
         dimensions = {
-          width: Math.max(1, Math.round(dimensions.width * 0.85)),
-          height: Math.max(1, Math.round(dimensions.height * 0.85))
+          width: Math.max(1, Math.round(dimensions.width * 0.9)),
+          height: Math.max(1, Math.round(dimensions.height * 0.9))
         };
-        quality = 0.78;
+        quality = 0.84;
       }
     }
 

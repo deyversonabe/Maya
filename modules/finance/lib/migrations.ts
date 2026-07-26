@@ -8,6 +8,8 @@ import type {
   GoalContribution,
   HouseholdProfile,
   PayableBill,
+  PaymentMethod,
+  Person,
   Transaction
 } from "../types";
 
@@ -140,7 +142,7 @@ function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccou
         .map((account): FinanceAccount => ({
           ...account,
           id: typeof account.id === "string" && account.id ? account.id : `account_${crypto.randomUUID()}`,
-          name: account.name.trim(),
+          name: account.name.trim() === "Conta principal" ? "Carteira do casal" : account.name.trim(),
           kind:
             account.kind === "cash" ||
             account.kind === "wallet" ||
@@ -148,7 +150,7 @@ function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccou
             account.kind === "other"
               ? account.kind
               : "checking",
-          owner: account.owner === "Pessoa 1" || account.owner === "Pessoa 2" ? account.owner : "Casal",
+          owner: normalizePerson(account.owner),
           openingBalance: Number.isFinite(account.openingBalance) ? account.openingBalance : 0,
           openingBalanceDate:
             typeof account.openingBalanceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(account.openingBalanceDate)
@@ -225,12 +227,10 @@ function normalizeBills(bills: PayableBill[] | undefined): PayableBill[] {
     .filter((bill) => bill.amount > 0 && typeof bill.title === "string" && typeof bill.dueDate === "string")
     .map((bill): PayableBill => ({
       ...bill,
+      person: normalizePerson(bill.person),
       status: bill.status === "paid" || bill.status === "overdue" ? bill.status : "pending",
       recurrence: bill.recurrence === "monthly" ? "monthly" : "none",
-      paymentMethod:
-        bill.paymentMethod === "boleto" || bill.paymentMethod === "pix" || bill.paymentMethod === "card"
-          ? bill.paymentMethod
-          : "other",
+      paymentMethod: normalizePaymentMethod(bill.paymentMethod),
       source: bill.source === "attachment" || bill.source === "import" ? bill.source : "manual"
     }));
 }
@@ -280,10 +280,16 @@ const legacyDemoGoalFingerprints = new Set([1670746555, 1374139306, 223302076]);
 const legacyDemoBudgetFingerprints = new Set([3156547588, 341645336, 3781375277]);
 
 function stripLegacyDemoTransactions(transactions: Transaction[]) {
-  return transactions.filter((transaction) => {
-    const source = (transaction as { source?: unknown }).source;
-    return source !== "seed" && !legacyDemoTransactionFingerprints.has(fingerprintLegacyText(transaction.description));
-  });
+  return transactions
+    .filter((transaction) => {
+      const source = (transaction as { source?: unknown }).source;
+      return source !== "seed" && !legacyDemoTransactionFingerprints.has(fingerprintLegacyText(transaction.description));
+    })
+    .map((transaction): Transaction => ({
+      ...transaction,
+      person: normalizePerson(transaction.person),
+      paymentMethod: transaction.paymentMethod ? normalizePaymentMethod(transaction.paymentMethod) : undefined
+    }));
 }
 
 function stripLegacyDemoGoals(goals: Goal[]) {
@@ -320,4 +326,28 @@ function isHouseholdProfile(value: unknown): value is HouseholdProfile {
     typeof value.monthlyIncomeTarget === "number" &&
     typeof value.emergencyReserveTarget === "number"
   );
+}
+
+function normalizePerson(person: unknown): Person {
+  if (person === "Deyveron" || person === "Tom" || person === "Casal") {
+    return person;
+  }
+
+  if (person === "Pessoa 1") {
+    return "Deyveron";
+  }
+
+  if (person === "Pessoa 2") {
+    return "Tom";
+  }
+
+  return "Casal";
+}
+
+function normalizePaymentMethod(method: unknown): PaymentMethod {
+  if (method === "cash" || method === "boleto" || method === "pix" || method === "card" || method === "other") {
+    return method;
+  }
+
+  return "other";
 }

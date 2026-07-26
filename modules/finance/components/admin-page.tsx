@@ -28,7 +28,6 @@ import { financialValueClass, formatCurrency, formatPercent, toInputDate } from 
 import { exportFinanceReportExcel, exportFinanceReportJson, exportFinanceReportPdf } from "../lib/report-export";
 import { createCurrentMonthReportPeriod, createMonthReportPeriod, buildFinanceReport, type FinanceReportPeriod } from "../lib/reporting";
 import { isPushAvailable, registerCurrentDeviceForPush } from "../lib/push-client";
-import { buildDataQualityReport } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 
 type AdminOverview = {
@@ -87,7 +86,6 @@ export function AdminPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [startDate, setStartDate] = useState(() => toInputDate(new Date()));
   const [endDate, setEndDate] = useState(() => toInputDate(new Date()));
-  const quality = useMemo(() => buildDataQualityReport(state), [state]);
   const reportPeriod = useMemo(() => buildSelectedPeriod(periodMode, month, startDate, endDate), [endDate, month, periodMode, startDate]);
   const report = useMemo(() => buildFinanceReport(state, reportPeriod), [reportPeriod, state]);
 
@@ -240,9 +238,9 @@ export function AdminPage() {
             </p>
           </div>
           <div className="rounded-2xl border border-neon-cyan/20 bg-neon-cyan/10 p-4">
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Qualidade da base</p>
-            <strong className="mt-2 block font-serif text-5xl text-bronze">{quality.score}/100</strong>
-            <p className="mt-2 text-sm font-bold text-cream">{quality.label}</p>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Sincronizacao</p>
+            <strong className="mt-2 block font-serif text-4xl text-bronze">{cloud.status === "online" ? "Online" : "Verificar"}</strong>
+            <p className="mt-2 text-sm font-bold text-cream">{cloud.message}</p>
           </div>
         </div>
       </LedPanel>

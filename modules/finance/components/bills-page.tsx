@@ -45,9 +45,10 @@ import { FinanceNotificationPanel } from "./finance-notification-panel";
 
 type BillPlan = "single" | "recurring" | "installment";
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: "Dinheiro",
   boleto: "Boleto",
   pix: "Pix copia e cola",
   card: "Cartao",

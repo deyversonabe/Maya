@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  CheckCircle2,
   Clock3,
   CloudOff,
   Database,
@@ -19,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { LedPanel } from "@/components/ui/led-panel";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
-import { buildDataQualityReport } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import { CloudAccountPanel } from "./cloud-account-panel";
 
@@ -42,7 +40,6 @@ export function DataCenterPage() {
   const adminAccess = useMayaAdminAccess();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [feedback, setFeedback] = useState("Central pronta para revisar dados, backups e conexoes.");
-  const quality = useMemo(() => buildDataQualityReport(state), [state]);
   const transactionCount = state.transactions.length;
   const receiptCount = state.transactions.filter((transaction) => transaction.source === "receipt").length;
   const billCount = state.bills.length;
@@ -132,9 +129,9 @@ export function DataCenterPage() {
             </p>
           </div>
           <div className="rounded-2xl border border-bronze/20 bg-bronze/10 p-4">
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Qualidade da analise</p>
-            <strong className="mt-2 block font-serif text-5xl text-bronze">{quality.score}/100</strong>
-            <p className="mt-2 text-sm font-bold text-cream">{quality.label}</p>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">Base compartilhada</p>
+            <strong className="mt-2 block font-serif text-4xl text-bronze">{transactionCount}</strong>
+            <p className="mt-2 text-sm font-bold text-cream">lancamentos salvos</p>
           </div>
         </div>
       </LedPanel>
@@ -179,19 +176,6 @@ export function DataCenterPage() {
                 <RefreshCcw className="size-4" aria-hidden="true" />
                 Limpar cadastros
               </Button>
-            </div>
-          </Card>
-
-          <Card>
-            <CardHeader
-              eyebrow="Qualidade"
-              title="Base da MAYA"
-              action={<Badge tone={quality.level === "consistent" ? "success" : quality.level === "partial" ? "warning" : "neutral"}>{quality.label}</Badge>}
-            />
-            <p className="mb-4 text-sm leading-6 text-muted">{quality.summary}</p>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <QualityList title="Ja existe" items={quality.completed} empty="Nada concluido ainda." tone="success" />
-              <QualityList title="Falta para melhorar" items={quality.missing} empty="Base suficiente para esta etapa." tone="warning" />
             </div>
           </Card>
 
@@ -283,36 +267,6 @@ function DataMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
       <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">{label}</p>
       <strong className="mt-2 block text-xl text-bronze">{value}</strong>
-    </div>
-  );
-}
-
-function QualityList({
-  title,
-  items,
-  empty,
-  tone
-}: {
-  title: string;
-  items: string[];
-  empty: string;
-  tone: "success" | "warning";
-}) {
-  const Icon = tone === "success" ? CheckCircle2 : CloudOff;
-
-  return (
-    <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-cream">
-        <Icon className={tone === "success" ? "size-4 text-emerald-200" : "size-4 text-amber-200"} aria-hidden="true" />
-        {title}
-      </h3>
-      <div className="grid gap-2">
-        {(items.length > 0 ? items : [empty]).map((item) => (
-          <p key={item} className="text-sm leading-6 text-muted">
-            {item}
-          </p>
-        ))}
-      </div>
     </div>
   );
 }

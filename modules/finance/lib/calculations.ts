@@ -3,7 +3,6 @@ import type {
   BillAlert,
   BillStatus,
   BudgetUsage,
-  DataQualityReport,
   FinancialHealthAlert,
   FinanceState,
   FinanceSummary,
@@ -238,90 +237,6 @@ export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()
   }
 
   return alerts.slice(0, 4);
-}
-
-export function buildDataQualityReport(state: FinanceState): DataQualityReport {
-  const currentMonth = getCurrentMonthKey();
-  const currentTransactions = getTransactionsByMonth(state.transactions, currentMonth);
-  const hasAnyTransaction = state.transactions.length > 0;
-  const hasCurrentIncome = currentTransactions.some((transaction) => transaction.type === "income");
-  const hasCurrentExpense = currentTransactions.some((transaction) => transaction.type === "expense");
-  const hasBudget = state.budgets.some((budget) => budget.month === currentMonth);
-  const hasBill = state.bills.length > 0;
-  const hasGoal = state.goals.length > 0;
-  const hasPlannedExpense = state.transactions.some(
-    (transaction) => transaction.recurring || Boolean(transaction.installmentGroupId)
-  );
-  const distinctMonths = new Set(state.transactions.map((transaction) => transaction.date.slice(0, 7))).size;
-  const hasHistory = distinctMonths >= 2;
-
-  const checks = [
-    {
-      passed: hasAnyTransaction,
-      completed: "Existem lancamentos financeiros cadastrados.",
-      missing: "Cadastrar pelo menos uma receita ou despesa real."
-    },
-    {
-      passed: hasCurrentIncome,
-      completed: "Receitas do mes atual cadastradas.",
-      missing: "Cadastrar as receitas do mes atual."
-    },
-    {
-      passed: hasCurrentExpense,
-      completed: "Despesas do mes atual cadastradas.",
-      missing: "Cadastrar despesas reais do mes atual."
-    },
-    {
-      passed: hasBudget,
-      completed: "Orcamento do mes atual cadastrado.",
-      missing: "Criar pelo menos um orcamento para o mes atual."
-    },
-    {
-      passed: hasBill,
-      completed: "Contas a pagar cadastradas.",
-      missing: "Cadastrar contas a pagar para ativar alertas de vencimento."
-    },
-    {
-      passed: hasGoal,
-      completed: "Metas financeiras cadastradas.",
-      missing: "Cadastrar pelo menos uma meta financeira do casal."
-    },
-    {
-      passed: hasPlannedExpense,
-      completed: "Recorrencias ou parcelas mapeadas.",
-      missing: "Mapear despesas recorrentes ou parceladas importantes."
-    },
-    {
-      passed: hasHistory,
-      completed: "Historico com mais de um mes disponivel.",
-      missing: "Registrar dados por pelo menos dois meses para comparacao real."
-    }
-  ];
-
-  const completed = checks.filter((check) => check.passed).map((check) => check.completed);
-  const missing = checks.filter((check) => !check.passed).map((check) => check.missing);
-  const score = Math.round((completed.length / checks.length) * 100);
-  const level: DataQualityReport["level"] =
-    score >= 75 ? "consistent" : score >= 35 ? "partial" : "insufficient";
-
-  return {
-    score,
-    level,
-    label:
-      level === "consistent"
-        ? "Dados consistentes"
-        : level === "partial"
-          ? "Dados parciais"
-          : "Dados insuficientes",
-    summary:
-      level === "consistent"
-        ? "A MAYA ja possui uma base razoavel para comparar meses, orcamentos, metas e fluxo atual."
-        : level === "partial"
-          ? "A MAYA consegue orientar alguns pontos, mas ainda precisa de mais dados reais para conclusoes melhores."
-          : "A MAYA ainda nao tem base suficiente para diagnosticar a vida financeira sem risco de conclusoes fracas.",
-    completed,
-    missing
-  };
 }
 
 export function buildMayaLocalAnalysis(state: FinanceState, question?: string): MayaAnalysis {

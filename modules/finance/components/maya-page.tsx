@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Bot, Database, Send, Sparkles, TrendingDown, TrendingUp, Waves } from "lucide-react";
+import { Bot, Send, Sparkles, TrendingDown, TrendingUp, Waves } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { formatCurrency, formatPercent } from "@/lib/utils";
-import { buildDataQualityReport, buildMayaLocalAnalysis, buildMonthSummaries } from "../lib/calculations";
+import { buildMayaLocalAnalysis, buildMonthSummaries } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { MayaAnalysis } from "../types";
 
@@ -23,7 +23,6 @@ type ChatMessage = {
 export function MayaPage() {
   const { state } = useFinanceStore();
   const localAnalysis = useMemo(() => buildMayaLocalAnalysis(state), [state]);
-  const quality = useMemo(() => buildDataQualityReport(state), [state]);
   const months = useMemo(() => buildMonthSummaries(state.transactions, 6), [state.transactions]);
   const [analysis, setAnalysis] = useState<MayaAnalysis>(localAnalysis);
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -105,7 +104,7 @@ export function MayaPage() {
               title="MAYA"
               action={<Badge tone="success">Pronta para orientar</Badge>}
             />
-            <div className="mb-5 grid gap-4 md:grid-cols-4">
+            <div className="mb-5 grid gap-4 md:grid-cols-3">
               <StatusTile label="Saude financeira" value={`${analysis.healthScore}/100`} />
               <StatusTile
                 label="Tendencia"
@@ -113,7 +112,6 @@ export function MayaPage() {
                 icon={analysis.trend === "drop" ? <TrendingDown /> : <TrendingUp />}
               />
               <StatusTile label="Meses analisados" value="6" />
-              <StatusTile label="Qualidade dos dados" value={`${quality.score}/100`} icon={<Database />} />
             </div>
 
             <div className="grid max-h-[28rem] gap-3 overflow-auto pr-1">

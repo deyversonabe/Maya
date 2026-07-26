@@ -5,7 +5,6 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   Bot,
-  Database,
   HeartPulse,
   ReceiptText,
   Send,
@@ -22,7 +21,6 @@ import { AppShell } from "@/components/app/app-shell";
 import { cn, financialValueClass, formatCurrency, formatPercent } from "@/lib/utils";
 import {
   buildBudgetSummary,
-  buildDataQualityReport,
   buildFinancialHealthAlerts,
   buildMayaLocalAnalysis,
   calculateSummary
@@ -35,7 +33,6 @@ export function HomeScreen() {
   const { state } = useFinanceStore();
   const summary = calculateSummary(state);
   const maya = buildMayaLocalAnalysis(state);
-  const quality = buildDataQualityReport(state);
   const budgetSummary = buildBudgetSummary(state, summary.currentMonth);
   const healthAlerts = buildFinancialHealthAlerts(state);
 
@@ -81,16 +78,16 @@ export function HomeScreen() {
 
   return (
     <AppShell>
-      <LedPanel className="p-5 md:p-8" glow="cyan">
+      <LedPanel className="p-4 md:p-8" glow="cyan">
         <motion.div
           className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-terracotta via-bronze to-cyan-300"
           animate={{ opacity: [0.45, 1, 0.45] }}
           transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
         />
 
-        <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-center">
+        <div className="relative grid gap-5 md:gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-center">
           <div>
-            <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-left">
+            <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:text-left md:gap-6">
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -104,7 +101,7 @@ export function HomeScreen() {
                   width={260}
                   height={260}
                   priority
-                  className="h-48 w-48 rounded-full border border-neon-cyan/35 object-cover object-top shadow-neon drop-shadow-[0_0_28px_rgba(85,247,255,0.18)] sm:h-64 sm:w-64"
+                  className="size-32 rounded-full border border-neon-cyan/35 object-cover object-top shadow-neon drop-shadow-[0_0_28px_rgba(85,247,255,0.18)] sm:size-56 lg:size-64"
                 />
               </motion.div>
 
@@ -114,16 +111,16 @@ export function HomeScreen() {
                 transition={{ duration: 0.7, delay: 0.1 }}
               >
                 <p className="eyebrow">Bem-vindos de volta</p>
-                <h1 className="mt-2 font-serif text-4xl font-bold leading-[1.05] text-bronze md:text-6xl">
+                <h1 className="mt-2 font-serif text-3xl font-bold leading-[1.05] text-bronze md:text-6xl">
                   Ola! Eu sou a MAYA.
                 </h1>
-                <p className="mt-3 max-w-xl text-base leading-7 text-muted">
+                <p className="mt-3 max-w-xl text-sm leading-6 text-muted md:text-base md:leading-7">
                   A assessora financeira particular do casal: precisao de dados, elegancia e um cuidado humano que acompanha cada decisao com voces.
                 </p>
               </motion.div>
             </div>
 
-            <div className="mt-7 grid gap-3 md:grid-cols-4">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <VisualMetric
                 label="Saude"
                 value={`${maya.healthScore}/100`}
@@ -145,23 +142,16 @@ export function HomeScreen() {
                 icon={<Target className="size-5" />}
                 tone={budgetSummary.exceededCount > 0 ? "warning" : "info"}
               />
-              <VisualMetric
-                label="Qualidade"
-                value={`${quality.score}/100`}
-                detail={quality.label}
-                icon={<Database className="size-5" />}
-                tone={quality.level === "consistent" ? "success" : quality.level === "partial" ? "info" : "warning"}
-              />
             </div>
 
-            <div className="mt-6 rounded-2xl border border-bronze/20 bg-cream/[0.05] p-4">
+            <div className="mt-5 rounded-2xl border border-bronze/20 bg-cream/[0.05] p-4">
               <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-muted">
                 <Bot className="size-4 text-bronze" aria-hidden="true" />
                 Fale rapido com a MAYA
               </div>
               <p className="mb-3 text-sm leading-6 text-cream/90">{isLoading ? "MAYA esta pensando..." : reply}</p>
               <form
-                className="flex gap-2"
+                className="grid gap-2 sm:flex"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void askMaya(question);
@@ -172,7 +162,7 @@ export function HomeScreen() {
                   onChange={(event) => setQuestion(event.target.value)}
                   placeholder="Pergunte algo para a MAYA..."
                 />
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
                   <Send className="size-4" aria-hidden="true" />
                   Enviar
                 </Button>
@@ -180,7 +170,7 @@ export function HomeScreen() {
             </div>
           </div>
 
-          <Card className="relative min-h-[28rem] overflow-hidden bg-moss-900/80">
+          <Card className="relative hidden min-h-[28rem] overflow-hidden bg-moss-900/80 xl:block">
             <motion.div
               className="absolute inset-x-6 top-8 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent"
               animate={{ y: [0, 280, 0], opacity: [0.2, 0.9, 0.2] }}
@@ -212,7 +202,7 @@ export function HomeScreen() {
         <FinancialHealthAlerts alerts={healthAlerts} />
       </section>
 
-      <section className="mt-4 grid gap-4 md:grid-cols-3">
+      <section className="mt-4 hidden gap-4 md:grid md:grid-cols-3">
         <Feature icon={<ReceiptText />} title="Despesas por mes" text="Filtros mensais, recorrencias e parcelas aparecem exatamente no mes correto." />
         <Feature icon={<WalletCards />} title="Orcamentos" text="Limites por categoria mostram o quanto ainda pode ser gasto com tranquilidade." />
         <Feature icon={<Target />} title="Metas do casal" text="Acompanhe reserva, viagens, patrimonio e sonhos com progresso claro." />

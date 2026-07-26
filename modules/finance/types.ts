@@ -1,6 +1,6 @@
 export type TransactionType = "income" | "expense" | "investment" | "transfer";
 
-export type Person = "Pessoa 1" | "Pessoa 2" | "Casal";
+export type Person = "Deyveron" | "Tom" | "Casal";
 
 export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 
@@ -12,7 +12,7 @@ export type BudgetStatus = "safe" | "attention" | "exceeded";
 
 export type FinancialDocumentKind = "expense" | "income" | "bill" | "statement";
 
-export type PaymentMethod = "boleto" | "pix" | "card" | "other";
+export type PaymentMethod = "cash" | "boleto" | "pix" | "card" | "other";
 
 export type FinanceAccountKind = "checking" | "cash" | "wallet" | "savings" | "other";
 
@@ -202,15 +202,6 @@ export interface MayaAnalysis {
   trend: "growth" | "drop" | "stable";
   highlights: string[];
   nextActions: string[];
-}
-
-export interface DataQualityReport {
-  score: number;
-  level: "insufficient" | "partial" | "consistent";
-  label: string;
-  summary: string;
-  completed: string[];
-  missing: string[];
 }
 
 export interface ExpenseDraft {

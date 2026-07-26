@@ -2,7 +2,7 @@ import { parseFinancialAmountInput } from "@/lib/utils";
 import type { Person, Transaction, TransactionType } from "../types";
 
 const validTypes = new Set<TransactionType>(["income", "expense", "investment", "transfer"]);
-const validPeople = new Set<Person>(["Pessoa 1", "Pessoa 2", "Casal"]);
+const validPeople = new Set<Person>(["Deyveron", "Tom", "Casal"]);
 
 export function parseTransactionsCsv(csv: string): Transaction[] {
   const [headerLine, ...lines] = csv

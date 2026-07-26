@@ -10,8 +10,9 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { DEFAULT_FINANCE_ACCOUNT_ID, incomeCategories } from "../data/defaults";
+import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { FinanceAccount, FinanceAccountKind, PayableBill, Person, Transaction, TransactionType } from "../types";
+import type { FinanceAccount, FinanceAccountKind, PayableBill, PaymentMethod, Person, Transaction, TransactionType } from "../types";
 
 type IncomePlan = "variable" | "monthly";
 
@@ -27,6 +28,10 @@ type StatementEntry = {
   accountId: string;
   accountName: string;
   source: "opening" | "transaction" | "bill";
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
+  isFuture?: boolean;
+  transaction?: Transaction;
 };
 
 type AccountSummary = {
@@ -36,7 +41,20 @@ type AccountSummary = {
   balance: number;
 };
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+type IncomeDuplicateReview = {
+  transactions: Array<Omit<Transaction, "id" | "createdAt">>;
+  matches: TransactionDuplicateMatch[];
+  editId?: string;
+};
+
+const FIXED_INCOME_MONTHS = 3;
+const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
+const incomePaymentMethods: Array<{ value: PaymentMethod; label: string }> = [
+  { value: "cash", label: "Dinheiro" },
+  { value: "pix", label: "Pix" },
+  { value: "card", label: "Cartao" },
+  { value: "other", label: "Outro" }
+];
 const accountKindOptions: Array<{ value: FinanceAccountKind; label: string }> = [
   { value: "checking", label: "Conta corrente" },
   { value: "cash", label: "Dinheiro" },
@@ -60,9 +78,12 @@ export function IncomeStatementPage() {
     person: "Casal" as Person,
     accountId: DEFAULT_FINANCE_ACCOUNT_ID,
     date: toInputDate(new Date()),
-    months: "12",
+    paymentMethod: "pix" as PaymentMethod,
+    paymentRecipient: "",
     notes: ""
   });
+  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null);
+  const [duplicateReview, setDuplicateReview] = useState<IncomeDuplicateReview | null>(null);
   const [accountForm, setAccountForm] = useState({
     id: "",
     name: "",
@@ -89,10 +110,10 @@ export function IncomeStatementPage() {
   const currentBalance = selectedSummary?.balance ?? totalBalance;
   const month = form.date.slice(0, 7);
   const monthIncome = statement
-    .filter((entry) => entry.type === "income" && entry.date.startsWith(month))
+    .filter((entry) => entry.type === "income" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + entry.amount, 0);
   const monthDebits = statement
-    .filter((entry) => entry.type === "debit" && entry.date.startsWith(month))
+    .filter((entry) => entry.type === "debit" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + Math.abs(entry.amount), 0);
   const pendingBills = state.bills
     .filter((bill) => bill.status !== "paid" && matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId))
@@ -109,6 +130,11 @@ export function IncomeStatementPage() {
       return;
     }
 
+    if (form.plan === "variable" && !form.paymentRecipient.trim()) {
+      setFeedback("Informe o nome da cliente ou de quem pagou antes de salvar a venda variavel.");
+      return;
+    }
+
     const transactions = createIncomeTransactions({
       description: form.description.trim(),
       amount,
@@ -119,23 +145,71 @@ export function IncomeStatementPage() {
       accountId: safeIncomeAccountId,
       date: form.date,
       plan: form.plan,
-      months: Number(form.months),
+      paymentMethod: form.paymentMethod,
+      paymentRecipient: form.paymentRecipient.trim() || undefined,
       notes: form.notes.trim() || undefined
     });
 
-    actions.addTransactions(transactions);
+    const comparableTransactions = editingIncomeId
+      ? state.transactions.filter((transaction) => transaction.id !== editingIncomeId)
+      : state.transactions;
+    const duplicates = findTransactionDuplicateMatches(comparableTransactions, transactions);
+
+    if (duplicates.length > 0) {
+      setDuplicateReview({ transactions, matches: duplicates, editId: editingIncomeId ?? undefined });
+      setFeedback("Encontrei uma renda parecida na mesma data ou em data proxima. Confirme se quer salvar mesmo assim.");
+      return;
+    }
+
+    saveIncomeTransactions(transactions, editingIncomeId ?? undefined);
+  }
+
+  function saveIncomeTransactions(transactions: Array<Omit<Transaction, "id" | "createdAt">>, editId?: string) {
+    if (editId) {
+      actions.updateTransaction(editId, transactions[0]);
+    } else {
+      actions.addTransactions(transactions);
+    }
+
     setForm((current) => ({
       ...current,
       description: "",
       amount: "",
       otherCategoryDescription: "",
+      paymentMethod: "pix",
+      paymentRecipient: "",
       notes: ""
     }));
+    setEditingIncomeId(null);
+    setDuplicateReview(null);
     setFeedback(
-      form.plan === "monthly"
+      editId
+        ? "Renda atualizada no extrato."
+        : form.plan === "monthly"
         ? `Renda mensal registrada por ${transactions.length} mes(es).`
-        : "Renda variavel registrada no extrato."
+        : "Venda variavel registrada no extrato."
     );
+  }
+
+  function editIncome(transaction: Transaction) {
+    setEditingIncomeId(transaction.id);
+    setDuplicateReview(null);
+    setForm((current) => ({
+      ...current,
+      plan: transaction.recurring ? "monthly" : "variable",
+      description: transaction.description.replace(/\s\(\d+\/\d+\)$/u, ""),
+      amount: String(transaction.amount),
+      category: transaction.category,
+      otherCategoryDescription: transaction.otherCategoryDescription ?? "",
+      person: transaction.person,
+      accountId: transaction.accountId ?? DEFAULT_FINANCE_ACCOUNT_ID,
+      date: transaction.date,
+      paymentMethod: transaction.paymentMethod ?? "pix",
+      paymentRecipient: transaction.paymentRecipient ?? "",
+      notes: transaction.notes ?? ""
+    }));
+    setFeedback("Editando renda existente. Ao salvar, o lancamento sera atualizado na nuvem.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function submitAccount(event: React.FormEvent<HTMLFormElement>) {
@@ -207,7 +281,7 @@ export function IncomeStatementPage() {
               <StatementMetric label="Saldo atual" value={currentBalance} icon={<WalletCards className="size-5" />} />
               <StatementMetric label="Renda do mes" value={monthIncome} icon={<ArrowUpCircle className="size-5" />} />
               <StatementMetric label="Debitos do mes" value={-monthDebits} icon={<ArrowDownCircle className="size-5" />} />
-              <StatementMetric label="Saldo projetado" value={projectedBalance} icon={<Landmark className="size-5" />} />
+              <StatementMetric label="Saldo apos contas" value={projectedBalance} icon={<Landmark className="size-5" />} />
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
               <Label>
@@ -272,13 +346,16 @@ export function IncomeStatementPage() {
                   .map((entry) => (
                     <div
                       key={entry.id}
-                      className="grid gap-3 rounded-xl border border-cream/10 bg-cream/[0.04] p-4 md:grid-cols-[120px_minmax(0,1fr)_140px_150px]"
+                      className="grid gap-3 rounded-xl border border-cream/10 bg-cream/[0.04] p-4 md:grid-cols-[120px_minmax(0,1fr)_140px_150px_auto]"
                     >
                       <span className="text-sm font-bold text-muted">{entry.date}</span>
                       <div className="min-w-0">
                         <strong className="block truncate text-cream">{entry.description}</strong>
                         <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
                           {entry.category} - {entry.accountName} - {entry.source === "bill" ? "conta paga" : entry.source === "opening" ? "saldo inicial" : "lancamento"}
+                          {entry.paymentMethod ? ` - ${formatPaymentMethod(entry.paymentMethod)}` : ""}
+                          {entry.paymentRecipient ? ` - ${entry.paymentRecipient}` : ""}
+                          {entry.isFuture ? " - futuro" : ""}
                         </span>
                       </div>
                       <strong className={cn("text-right", financialValueClass(entry.amount, "financial-positive"))}>
@@ -287,6 +364,34 @@ export function IncomeStatementPage() {
                       <span className={cn("text-right text-sm font-black", financialValueClass(entry.balanceAfter, "text-cream"))}>
                         Saldo {formatCurrency(entry.balanceAfter)}
                       </span>
+                      {entry.transaction ? (
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="min-h-9 px-3"
+                            onClick={() => {
+                              if (entry.transaction) {
+                                editIncome(entry.transaction);
+                              }
+                            }}
+                          >
+                            <Pencil className="size-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="min-h-9 px-3"
+                            onClick={() => {
+                              if (entry.transaction) {
+                                actions.removeTransaction(entry.transaction.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="size-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
               </div>
@@ -296,13 +401,17 @@ export function IncomeStatementPage() {
 
         <div className="grid gap-4">
         <Card>
-          <CardHeader eyebrow="Receitas" title="Adicionar renda" action={<Plus className="size-5 text-bronze" />} />
+          <CardHeader
+            eyebrow="Receitas"
+            title={editingIncomeId ? "Editar renda" : "Adicionar renda"}
+            action={<Plus className="size-5 text-bronze" />}
+          />
           <form className="grid gap-3" onSubmit={submitIncome}>
             <Label>
               Tipo de renda
               <Select value={form.plan} onChange={(event) => setForm((current) => ({ ...current, plan: event.target.value as IncomePlan }))}>
-                <option value="variable">Variavel ou unica</option>
-                <option value="monthly">Mensal fixa</option>
+                <option value="variable">Venda variavel do studio</option>
+                <option value="monthly">Renda fixa por 3 meses</option>
               </Select>
             </Label>
 
@@ -311,7 +420,7 @@ export function IncomeStatementPage() {
               <Input
                 value={form.description}
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                placeholder="Ex: salario, servico, venda, extra"
+                placeholder={form.plan === "variable" ? "Ex: design de sobrancelhas, henna..." : "Ex: salario fixo"}
               />
             </Label>
 
@@ -330,6 +439,35 @@ export function IncomeStatementPage() {
                 <Input type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} />
               </Label>
             </div>
+
+            {form.plan === "variable" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Label>
+                  Forma de pagamento
+                  <Select
+                    value={form.paymentMethod}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, paymentMethod: event.target.value as PaymentMethod }))
+                    }
+                  >
+                    {incomePaymentMethods.map((method) => (
+                      <option key={method.value} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Label>
+                <Label>
+                  Cliente / quem pagou
+                  <Input
+                    value={form.paymentRecipient}
+                    onChange={(event) => setForm((current) => ({ ...current, paymentRecipient: event.target.value }))}
+                    placeholder="Nome da cliente"
+                    required
+                  />
+                </Label>
+              </div>
+            ) : null}
 
             <Label>
               Carteira de entrada
@@ -380,14 +518,9 @@ export function IncomeStatementPage() {
             ) : null}
 
             {form.plan === "monthly" ? (
-              <Label>
-                Repetir por quantos meses
-                <Input
-                  inputMode="numeric"
-                  value={form.months}
-                  onChange={(event) => setForm((current) => ({ ...current, months: event.target.value }))}
-                />
-              </Label>
+              <p className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm font-bold text-cyan-50">
+                A renda fixa sera criada por 3 meses. Cada lancamento fica editavel para ajuste de aumento ou mudanca futura.
+              </p>
             ) : null}
 
             <Label>
@@ -405,10 +538,44 @@ export function IncomeStatementPage() {
               </p>
             ) : null}
 
+            {duplicateReview ? (
+              <IncomeDuplicateReview
+                matches={duplicateReview.matches}
+                onCancel={() => {
+                  setDuplicateReview(null);
+                  setFeedback("Salvamento cancelado. Revise os dados antes de tentar novamente.");
+                }}
+                onConfirm={() => saveIncomeTransactions(duplicateReview.transactions, duplicateReview.editId)}
+              />
+            ) : null}
+
             <Button type="submit" className="w-full">
               <ListChecks className="size-4" aria-hidden="true" />
-              Salvar renda no extrato
+              {editingIncomeId ? "Atualizar renda" : "Salvar renda no extrato"}
             </Button>
+            {editingIncomeId ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setEditingIncomeId(null);
+                  setDuplicateReview(null);
+                  setFeedback("Edicao cancelada. Voce pode registrar uma nova venda.");
+                  setForm((current) => ({
+                    ...current,
+                    description: "",
+                    amount: "",
+                    otherCategoryDescription: "",
+                    paymentMethod: "pix",
+                    paymentRecipient: "",
+                    notes: ""
+                  }));
+                }}
+              >
+                Cancelar edicao
+              </Button>
+            ) : null}
           </form>
         </Card>
 
@@ -550,6 +717,44 @@ function StatementMetric({ label, value, icon }: { label: string; value: number;
   );
 }
 
+function IncomeDuplicateReview({
+  matches,
+  onCancel,
+  onConfirm
+}: {
+  matches: TransactionDuplicateMatch[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-300/40 bg-amber-300/10 p-4">
+      <h3 className="font-serif text-xl font-bold text-amber-100">Possivel venda duplicada</h3>
+      <p className="mt-2 text-sm leading-6 text-amber-50">
+        Ja existe uma renda com valor igual em data igual ou proxima. Confira antes de computar para nao inflar o saldo.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {matches.slice(0, 4).map((match) => (
+          <div
+            key={`${match.existing.id}_${match.incoming.date}_${match.incoming.amount}`}
+            className="rounded-lg border border-amber-200/20 bg-moss-950/40 p-3 text-sm"
+          >
+            <strong className="text-cream">{match.existing.description}</strong>
+            <p className="mt-1 text-amber-50">
+              {match.existing.date} - {formatCurrency(match.existing.amount)} - novo: {match.incoming.description}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Nao salvar
+        </Button>
+        <Button onClick={onConfirm}>Salvar mesmo assim</Button>
+      </div>
+    </div>
+  );
+}
+
 function createIncomeTransactions({
   description,
   amount,
@@ -559,7 +764,8 @@ function createIncomeTransactions({
   accountId,
   date,
   plan,
-  months,
+  paymentMethod,
+  paymentRecipient,
   notes
 }: {
   description: string;
@@ -570,10 +776,11 @@ function createIncomeTransactions({
   accountId: string;
   date: string;
   plan: IncomePlan;
-  months: number;
+  paymentMethod?: PaymentMethod;
+  paymentRecipient?: string;
   notes?: string;
 }): Array<Omit<Transaction, "id" | "createdAt">> {
-  const count = plan === "monthly" ? clampCount(months, 1, 120) : 1;
+  const count = plan === "monthly" ? FIXED_INCOME_MONTHS : 1;
   const groupId = `income_${crypto.randomUUID()}`;
 
   return Array.from({ length: count }, (_, index) => ({
@@ -588,6 +795,8 @@ function createIncomeTransactions({
     recurring: plan === "monthly",
     recurrenceGroupId: plan === "monthly" ? groupId : undefined,
     source: "manual",
+    paymentMethod,
+    paymentRecipient,
     notes
   }));
 }
@@ -601,7 +810,9 @@ function buildAccountSummaries(accounts: FinanceAccount[], transactions: Transac
   }));
   const byId = new Map(summaries.map((summary) => [summary.account.id, summary]));
 
-  transactions.forEach((transaction) => {
+  transactions
+    .filter((transaction) => isOnOrBeforeToday(transaction.date))
+    .forEach((transaction) => {
     const summary = byId.get(getEffectiveAccountId(transaction.accountId, accounts));
 
     if (!summary) {
@@ -670,8 +881,12 @@ function buildStatementEntries(
       type: mapTransactionToStatementType(transaction.type),
       amount: getSignedTransactionAmount(transaction),
       accountId: getEffectiveAccountId(transaction.accountId, accounts),
-      accountName: accountById.get(getEffectiveAccountId(transaction.accountId, accounts))?.name ?? "Conta principal",
-      source: "transaction" as const
+      accountName: accountById.get(getEffectiveAccountId(transaction.accountId, accounts))?.name ?? "Carteira do casal",
+      source: "transaction" as const,
+      paymentMethod: transaction.paymentMethod,
+      paymentRecipient: transaction.paymentRecipient,
+      isFuture: !isOnOrBeforeToday(transaction.date),
+      transaction
     })).filter((entry) => selectedAccountId === "all" || selectedIds.has(entry.accountId)),
     ...bills
       .filter((bill) => bill.status === "paid")
@@ -684,7 +899,7 @@ function buildStatementEntries(
         type: "debit" as const,
         amount: -bill.amount,
         accountId: getEffectiveAccountId(bill.accountId, accounts),
-        accountName: accountById.get(getEffectiveAccountId(bill.accountId, accounts))?.name ?? "Conta principal",
+        accountName: accountById.get(getEffectiveAccountId(bill.accountId, accounts))?.name ?? "Carteira do casal",
         source: "bill" as const
       }))
       .filter((entry) => selectedAccountId === "all" || selectedIds.has(entry.accountId))
@@ -713,7 +928,7 @@ function normalizeAccountsForDisplay(accounts: FinanceAccount[]) {
   return [
     {
       id: DEFAULT_FINANCE_ACCOUNT_ID,
-      name: "Conta principal",
+      name: "Carteira do casal",
       kind: "checking" as FinanceAccountKind,
       owner: "Casal" as Person,
       openingBalance: 0,
@@ -754,6 +969,30 @@ function getSignedTransactionAmount(transaction: Transaction) {
   }
 
   return -transaction.amount;
+}
+
+function isOnOrBeforeToday(value: string) {
+  return value <= toInputDate(new Date());
+}
+
+function formatPaymentMethod(method: PaymentMethod) {
+  if (method === "cash") {
+    return "Dinheiro";
+  }
+
+  if (method === "pix") {
+    return "Pix";
+  }
+
+  if (method === "card") {
+    return "Cartao";
+  }
+
+  if (method === "boleto") {
+    return "Boleto";
+  }
+
+  return "Outro";
 }
 
 function addMonths(value: string, offset: number) {

@@ -27,7 +27,7 @@ export function createDefaultFinanceAccount(): FinanceAccount {
 
   return {
     id: DEFAULT_FINANCE_ACCOUNT_ID,
-    name: "Conta principal",
+    name: "Carteira do casal",
     kind: "checking",
     owner: "Casal",
     openingBalance: 0,
@@ -40,7 +40,11 @@ export function createDefaultFinanceAccount(): FinanceAccount {
 export const incomeCategories = [
   "Salario",
   "Sobrancelha",
+  "Design de sobrancelhas",
   "Henna",
+  "Brow lamination",
+  "Micropigmentacao",
+  "Manutencao",
   "Cabelo",
   "Jogos",
   "Outros"
@@ -49,9 +53,13 @@ export const incomeCategories = [
 export const expenseCategories = [
   "Moradia",
   "Alimentacao",
+  "Combustivel",
   "Transporte",
   "Saude",
   "Familia",
+  "Melhoria casa",
+  "Conforto",
+  "Manutencao",
   "Tecnologia",
   "Lazer",
   "Beleza",

@@ -21,9 +21,10 @@ const LEGACY_STORAGE_KEY = ["jun", "tos.finance.v1"].join("");
 const CLOUD_TABLE = "finance_workspace_states";
 const CLOUD_WORKSPACE_ID =
   process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
-const CLOUD_SYNC_DELAY_MS = 900;
+const CLOUD_SYNC_DELAY_MS = 150;
 const SESSION_LOCK_KEY = "maya.finance.session_locked.v1";
 const SESSION_LAST_ACTIVITY_KEY = "maya.finance.last_activity.v1";
+const BEFORE_SIGN_OUT_EVENT = "maya:before-sign-out";
 const DEFAULT_SESSION_IDLE_MINUTES = 15;
 const SESSION_IDLE_MS = getSessionIdleMilliseconds();
 
@@ -111,12 +112,30 @@ export function useFinanceStore() {
         return;
       }
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .rpc("save_finance_workspace_state_locked", {
           p_workspace_id: CLOUD_WORKSPACE_ID,
           p_state: cloudState
         })
         .maybeSingle();
+
+      if (error && isMissingWorkspaceLockRpcError(error)) {
+        const fallbackResult = await supabase
+          .from(CLOUD_TABLE)
+          .upsert(
+            {
+              workspace_id: CLOUD_WORKSPACE_ID,
+              state: cloudState,
+              updated_by: userIdRef.current
+            },
+            { onConflict: "workspace_id" }
+          )
+          .select("state, updated_at")
+          .maybeSingle();
+
+        data = fallbackResult.data;
+        error = fallbackResult.error;
+      }
 
       if (error) {
         throw new Error(formatCloudError(error));
@@ -453,6 +472,36 @@ export function useFinanceStore() {
     return () => window.clearTimeout(timeout);
   }, [cloudReady, isHydrated, saveStateToCloud, state, supabase]);
 
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    function handleBeforeSignOut(event: Event) {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const customEvent = event as CustomEvent<{ waitUntil?: (promise: Promise<unknown>) => void }>;
+      customEvent.detail?.waitUntil?.(
+        saveStateToCloud({
+          ...stateRef.current,
+          updatedAt: new Date().toISOString()
+        }).catch((error) => {
+          setCloud((current) => ({
+            ...current,
+            status: "error",
+            message: error instanceof Error ? error.message : "Nao consegui salvar online antes de sair."
+          }));
+        })
+      );
+    }
+
+    window.addEventListener(BEFORE_SIGN_OUT_EVENT, handleBeforeSignOut);
+
+    return () => window.removeEventListener(BEFORE_SIGN_OUT_EVENT, handleBeforeSignOut);
+  }, [saveStateToCloud, supabase]);
+
   const signIn = useCallback(
     async (email: string, password: string) => {
       if (!supabase) {
@@ -503,6 +552,13 @@ export function useFinanceStore() {
       return;
     }
 
+    if (userIdRef.current) {
+      await saveStateToCloud({
+        ...stateRef.current,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
     await supabase.auth.signOut();
     markSessionLocked();
     closeCloudChannel();
@@ -515,7 +571,7 @@ export function useFinanceStore() {
       email: null,
       message: "Voce saiu da conta. Os dados deste aparelho continuam disponiveis."
     }));
-  }, [closeCloudChannel, supabase]);
+  }, [closeCloudChannel, saveStateToCloud, supabase]);
 
   const syncNow = useCallback(async () => {
     if (!supabase || !userIdRef.current) {
@@ -576,6 +632,25 @@ export function useFinanceStore() {
           }),
           updatedAt: now
         }));
+      },
+      updateTransaction(id: string, patch: Partial<Omit<Transaction, "id" | "createdAt">>) {
+        setState((current) => {
+          const existing = current.transactions.find((transaction) => transaction.id === id);
+
+          return {
+            ...current,
+            transactions: current.transactions.map((transaction) =>
+              transaction.id === id ? { ...transaction, ...patch } : transaction
+            ),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Editou transacao",
+              entityType: "transaction",
+              entityLabel: existing?.description ?? patch.description ?? id,
+              details: `${patch.date ?? existing?.date ?? ""} - ${patch.type ?? existing?.type ?? ""}`
+            }),
+            updatedAt: new Date().toISOString()
+          };
+        });
       },
       removeTransaction(id: string) {
         setState((current) => ({
@@ -1079,6 +1154,12 @@ function formatCloudError(error: { message?: string; code?: string }) {
   }
 
   return "Nao consegui sincronizar seus dados agora.";
+}
+
+function isMissingWorkspaceLockRpcError(error: { message?: string; code?: string }) {
+  const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+
+  return text.includes("save_finance_workspace_state_locked") || text.includes("schema cache");
 }
 
 function formatAuthError(error: { message?: string }) {

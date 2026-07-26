@@ -63,7 +63,7 @@ const transactionTypeLabel: Record<TransactionType, string> = {
   transfer: "Transferencia"
 };
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
 const goalTypes: Array<{ value: GoalType; label: string }> = [
   { value: "reserve", label: "Reserva" },
   { value: "travel", label: "Viagem" },
@@ -677,6 +677,7 @@ export function FinanceDashboard() {
                         }
                       >
                         <option value="other">Outro</option>
+                        <option value="cash">Dinheiro</option>
                         <option value="pix">Pix</option>
                         <option value="boleto">Boleto</option>
                         <option value="card">Cartao</option>

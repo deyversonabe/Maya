@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Camera, Check, FileImage, FileText, Trash2 } from "lucide-react";
+import { Camera, Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,13 @@ import { AttachmentLink } from "./attachment-link";
 
 type ExpensePlan = "single" | "recurring" | "installment";
 
-const personOptions: Person[] = ["Pessoa 1", "Pessoa 2", "Casal"];
+const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
 
 type ExpenseDuplicateReview = {
   transactions: Array<Omit<Transaction, "id" | "createdAt">>;
   matches: TransactionDuplicateMatch[];
   origin: "expense" | "statement";
+  editId?: string;
 };
 
 export function ExpensesPage() {
@@ -49,6 +50,7 @@ export function ExpensesPage() {
   const [receiptDraft, setReceiptDraft] = useState<FinancialDocumentDraft | null>(null);
   const [statementDraft, setStatementDraft] = useState<BankStatementDraft | null>(null);
   const [duplicateReview, setDuplicateReview] = useState<ExpenseDuplicateReview | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [isReadingReceipt, setIsReadingReceipt] = useState(false);
   const [isReadingStatement, setIsReadingStatement] = useState(false);
   const [form, setForm] = useState({
@@ -305,21 +307,31 @@ export function ExpensesPage() {
       source: receiptDraft ? "receipt" : "manual"
     });
 
-    const duplicates = findTransactionDuplicateMatches(state.transactions, transactions);
+    const comparableTransactions = editingExpenseId
+      ? state.transactions.filter((transaction) => transaction.id !== editingExpenseId)
+      : state.transactions;
+    const duplicates = findTransactionDuplicateMatches(comparableTransactions, transactions);
 
     if (duplicates.length > 0) {
-      setDuplicateReview({ transactions, matches: duplicates, origin: "expense" });
+      setDuplicateReview({ transactions, matches: duplicates, origin: "expense", editId: editingExpenseId ?? undefined });
       setFeedback("Suspeita de duplicidade encontrada. Aprove para computar ou exclua a nova despesa.");
       return;
     }
 
-    saveExpenses(transactions);
+    saveExpenses(transactions, editingExpenseId ?? undefined);
   }
 
-  function saveExpenses(transactions: Array<Omit<Transaction, "id" | "createdAt">>) {
-    actions.addTransactions(transactions);
+  function saveExpenses(transactions: Array<Omit<Transaction, "id" | "createdAt">>, editId?: string) {
+    if (editId) {
+      actions.updateTransaction(editId, transactions[0]);
+    } else {
+      actions.addTransactions(transactions);
+    }
+
     setFeedback(
-      form.plan === "installment"
+      editId
+        ? "Despesa atualizada com sucesso."
+        : form.plan === "installment"
         ? `${transactions.length} parcelas foram criadas nos meses futuros.`
         : form.plan === "recurring"
           ? `${transactions.length} despesas recorrentes foram criadas.`
@@ -328,6 +340,7 @@ export function ExpensesPage() {
     setSelectedMonth(form.date.slice(0, 7));
     setReceiptDraft(null);
     setDuplicateReview(null);
+    setEditingExpenseId(null);
     setForm((current) => ({
       ...current,
       description: "",
@@ -338,6 +351,29 @@ export function ExpensesPage() {
       notes: "",
       plan: "single"
     }));
+  }
+
+  function editExpense(transaction: Transaction) {
+    setEditingExpenseId(transaction.id);
+    setReceiptDraft(null);
+    setDuplicateReview(null);
+    setStatementDraft(null);
+    setForm((current) => ({
+      ...current,
+      description: transaction.description,
+      amount: String(transaction.amount),
+      category: transaction.category,
+      otherCategoryDescription: transaction.otherCategoryDescription ?? "",
+      person: transaction.person,
+      accountId: transaction.accountId ?? DEFAULT_FINANCE_ACCOUNT_ID,
+      date: transaction.date,
+      paymentMethod: transaction.paymentMethod ?? "other",
+      paymentRecipient: transaction.paymentRecipient ?? "",
+      plan: "single",
+      notes: transaction.notes ?? ""
+    }));
+    setFeedback("Editando despesa existente. Ao confirmar, ela sera atualizada na nuvem.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -435,11 +471,11 @@ export function ExpensesPage() {
                 setDuplicateReview(null);
                 setFeedback("Salvamento cancelado. Revise os dados antes de tentar novamente.");
               }}
-              onConfirm={() =>
-                duplicateReview.origin === "statement"
-                  ? saveStatementTransactions(duplicateReview.transactions)
-                  : saveExpenses(duplicateReview.transactions)
-              }
+                  onConfirm={() =>
+                    duplicateReview.origin === "statement"
+                      ? saveStatementTransactions(duplicateReview.transactions)
+                      : saveExpenses(duplicateReview.transactions, duplicateReview.editId)
+                  }
             />
           ) : null}
 
@@ -561,6 +597,7 @@ export function ExpensesPage() {
                   }
                 >
                   <option value="other">Outro</option>
+                  <option value="cash">Dinheiro</option>
                   <option value="pix">Pix</option>
                   <option value="boleto">Boleto</option>
                   <option value="card">Cartao</option>
@@ -613,8 +650,31 @@ export function ExpensesPage() {
 
             <Button type="submit" className="w-full sm:w-auto">
               <Check className="size-4" aria-hidden="true" />
-              Confirmar despesa
+              {editingExpenseId ? "Atualizar despesa" : "Confirmar despesa"}
             </Button>
+            {editingExpenseId ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  setEditingExpenseId(null);
+                  setFeedback("Edicao cancelada. Voce pode cadastrar uma nova despesa.");
+                  setForm((current) => ({
+                    ...current,
+                    description: "",
+                    amount: "",
+                    otherCategoryDescription: "",
+                    paymentMethod: "other",
+                    paymentRecipient: "",
+                    notes: "",
+                    plan: "single"
+                  }));
+                }}
+              >
+                Cancelar edicao
+              </Button>
+            ) : null}
           </form>
         </Card>
 
@@ -660,9 +720,14 @@ export function ExpensesPage() {
                         {transaction.recurring ? " - recorrente" : ""}
                       </p>
                     </div>
-                    <Button variant="ghost" className="min-h-9 px-3" onClick={() => actions.removeTransaction(transaction.id)}>
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </Button>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="ghost" className="min-h-9 px-3" onClick={() => editExpense(transaction)}>
+                        <Pencil className="size-4" aria-hidden="true" />
+                      </Button>
+                      <Button variant="ghost" className="min-h-9 px-3" onClick={() => actions.removeTransaction(transaction.id)}>
+                        <Trash2 className="size-4" aria-hidden="true" />
+                      </Button>
+                    </div>
                   </div>
                   <strong className={cn("mt-2 block", financialValueClass(transaction.amount))}>{formatCurrency(transaction.amount)}</strong>
                   <AttachmentLink
@@ -951,6 +1016,7 @@ function StatementDraftReview({
                       onChange={(event) => onChangeLine(index, { paymentMethod: event.target.value as PaymentMethod })}
                     >
                       <option value="other">Outro</option>
+                      <option value="cash">Dinheiro</option>
                       <option value="pix">Pix</option>
                       <option value="boleto">Boleto</option>
                       <option value="card">Cartao</option>
