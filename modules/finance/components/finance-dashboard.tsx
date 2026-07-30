@@ -117,7 +117,7 @@ export function FinanceDashboard() {
   const [feedback, setFeedback] = useState("Dados salvos automaticamente.");
 
   const summary = useMemo(() => calculateSummary(state), [state]);
-  const flow = useMemo(() => buildMonthlyFlow(state.transactions), [state.transactions]);
+  const flow = useMemo(() => buildMonthlyFlow(state.transactions, state.bills), [state.bills, state.transactions]);
   const insights = useMemo(() => buildInsights(state), [state]);
   const maya = useMemo(() => buildMayaLocalAnalysis(state), [state]);
   const budgetSummary = useMemo(() => buildBudgetSummary(state, summary.currentMonth), [state, summary.currentMonth]);

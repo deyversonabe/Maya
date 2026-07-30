@@ -1,4 +1,5 @@
 import type { FinanceState, PayableBill, Transaction } from "../types";
+import { getBillEffectiveStatus } from "./calculations";
 
 export type FinanceReportPeriod = {
   start: string;
@@ -69,7 +70,9 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
 
   const income = sumTransactions(transactions, "income");
-  const expenses = sumTransactions(transactions, "expense");
+  const transactionExpenses = sumTransactions(transactions, "expense");
+  const billExpenses = sumAllBills(bills);
+  const expenses = transactionExpenses + billExpenses;
   const investments = sumTransactions(transactions, "investment");
   const transfers = sumTransactions(transactions, "transfer");
 
@@ -82,9 +85,9 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
       investments,
       transfers,
       balance: income - expenses - investments,
-      pendingBills: sumBills(bills, "pending"),
-      paidBills: sumBills(bills, "paid"),
-      overdueBills: sumBills(bills, "overdue"),
+      pendingBills: sumBillsByEffectiveStatus(bills, "pending"),
+      paidBills: sumBillsByEffectiveStatus(bills, "paid"),
+      overdueBills: sumBillsByEffectiveStatus(bills, "overdue"),
       goalsCurrent: state.goals.reduce((total, goal) => total + goal.currentAmount, 0),
       goalsTarget: state.goals.reduce((total, goal) => total + goal.targetAmount, 0)
     },
@@ -92,7 +95,10 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     bills,
     recurring: buildRecurringReport(transactions, bills),
     incomeByCategory: buildCategoryReport(transactions.filter((transaction) => transaction.type === "income")),
-    expensesByCategory: buildCategoryReport(transactions.filter((transaction) => transaction.type === "expense"))
+    expensesByCategory: buildExpenseCategoryReport(
+      transactions.filter((transaction) => transaction.type === "expense"),
+      bills
+    )
   };
 }
 
@@ -111,10 +117,14 @@ function sumTransactions(transactions: Transaction[], type: Transaction["type"])
     .reduce((total, transaction) => total + transaction.amount, 0);
 }
 
-function sumBills(bills: PayableBill[], status: PayableBill["status"]) {
+function sumBillsByEffectiveStatus(bills: PayableBill[], status: PayableBill["status"]) {
   return bills
-    .filter((bill) => bill.status === status)
+    .filter((bill) => getBillEffectiveStatus(bill) === status)
     .reduce((total, bill) => total + bill.amount, 0);
+}
+
+function sumAllBills(bills: PayableBill[]) {
+  return bills.reduce((total, bill) => total + bill.amount, 0);
 }
 
 function buildCategoryReport(transactions: Transaction[]) {
@@ -133,6 +143,38 @@ function buildCategoryReport(transactions: Transaction[]) {
     },
     {}
   );
+
+  return Object.values(grouped).sort((left, right) => right.total - left.total);
+}
+
+function buildExpenseCategoryReport(transactions: Transaction[], bills: PayableBill[]) {
+  const grouped = transactions.reduce<Record<string, { category: string; total: number; count: number }>>(
+    (groups, transaction) => {
+      const current = groups[transaction.category] ?? {
+        category: transaction.category,
+        total: 0,
+        count: 0
+      };
+
+      current.total += transaction.amount;
+      current.count += 1;
+      groups[transaction.category] = current;
+      return groups;
+    },
+    {}
+  );
+
+  bills.forEach((bill) => {
+    const current = grouped[bill.category] ?? {
+      category: bill.category,
+      total: 0,
+      count: 0
+    };
+
+    current.total += bill.amount;
+    current.count += 1;
+    grouped[bill.category] = current;
+  });
 
   return Object.values(grouped).sort((left, right) => right.total - left.total);
 }

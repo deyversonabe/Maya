@@ -146,6 +146,7 @@ export async function readReceiptWithMaya({
                   `Tipo solicitado: ${documentKind}.`,
                   "A imagem pode ser nota, DANFE NF-e, DANFE NFC-e, cupom fiscal, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
                   "Faca OCR minucioso antes de responder: leia cabecalho, emissor, CNPJ/CPF, datas, vencimento, favorecido, pagador, forma de pagamento, valor final, descontos, itens e linhas legiveis.",
+                  "Antes de classificar o documento, procure por palavras-chave brasileiras como VALOR TOTAL, VALOR PAGO, TOTAL DA NOTA, VENCIMENTO, DATA DE EMISSAO, EMITENTE, DESTINATARIO, FAVORECIDO, CHAVE DE ACESSO, LINHA DIGITAVEL, COPIA E COLA e PIX.",
                   "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, fiscalDocument, notes.",
                   "kind deve ser expense, income ou bill.",
                   "paymentMethod deve ser cash, boleto, pix, card ou other quando existir.",
@@ -154,6 +155,7 @@ export async function readReceiptWithMaya({
                   "documentType deve ser danfe_nfe, danfe_nfce, cupom_fiscal, boleto, pix, recibo, extrato ou unknown.",
                   "accessKey deve ter somente os 44 digitos da chave de acesso quando estiver legivel; nunca invente chave de acesso nem leia conteudo interno de QR Code se ele nao estiver textual.",
                   "Para DANFE/NF-e/NFC-e, amount deve ser o Valor Total da Nota ou Valor Pago quando esse for o total final; nao use impostos, desconto, troco, subtotal, base de calculo ou valor unitario como total.",
+                  "Quando a nota tiver total de produtos e total pago diferentes, use o valor efetivamente pago como amount e preserve o total de produtos em fiscalDocument.totalItemsAmount.",
                   "Para boleto ou fatura, amount deve ser valor do documento/valor a pagar, dueDate deve ser vencimento e paymentCode deve ser linha digitavel/codigo de barras textual quando legivel.",
                   "Para comprovante Pix, amount deve ser valor transferido, documentDate deve ser data do comprovante e paymentRecipient deve ser recebedor/favorecido quando legivel.",
                   "title deve ser o emissor/estabelecimento quando legivel. description deve resumir o documento sem inventar: exemplo 'Nota fiscal de mercado' ou 'Conta de energia'.",
@@ -162,7 +164,7 @@ export async function readReceiptWithMaya({
                   "Use datas no formato YYYY-MM-DD.",
                   "Para conta a pagar, dueDate e a data de vencimento. Para renda, entryDate e a data de entrada.",
                   "Use categoria em portugues apenas quando a imagem sustentar essa classificacao.",
-                  "Preserve centavos e valores exatos. Nunca arredonde valor.",
+                  "Preserve centavos e valores exatos. Nunca arredonde valor. Se o documento mostrar R$ 1.234,56, devolva 1234.56.",
                   "Nao invente titulo, descricao, valor, datas, codigo, estabelecimento ou categoria quando nao houver confianca.",
                   "Se um campo nao estiver legivel, use string vazia e inclua o nome dele em missingFields."
                 ].join(" ")
@@ -273,7 +275,7 @@ export async function readBankStatementWithMaya({
                   "Separe somente linhas financeiras reais em entradas e saidas.",
                   "Ignore saldo anterior, saldo final, limite, cabecalhos, totais, subtotais, tarifas demonstrativas sem transacao, mensagens promocionais e linhas ilegiveis.",
                   "Nunca invente valor, data, pessoa, banco, descricao ou categoria.",
-                  "Valores devem ser positivos. Use type income para credito/entrada e expense para debito/saida.",
+                  "Valores devem ser positivos. Se o extrato mostrar -35,90, devolva amount 35.90 e type expense. Use type income para credito/entrada e expense para debito/saida.",
                   "Use datas no formato YYYY-MM-DD. Se a data nao existir ou estiver ilegivel, nao inclua a linha.",
                   `Categorias de renda permitidas: ${incomeCategories.join(", ")}.`,
                   `Categorias de despesa permitidas: ${expenseCategories.join(", ")}.`,
@@ -281,6 +283,7 @@ export async function readBankStatementWithMaya({
                   "Quando a linha for Pix, use paymentMethod pix e preencha paymentRecipient com o nome legivel da pessoa/empresa quando existir.",
                   "Se uma linha tiver descricao quebrada em mais de uma linha visual, una a descricao antes de devolver.",
                   "Se o extrato usar D/C, credito/debito, entrada/saida, verde/vermelho ou sinais +/-, use isso para classificar type.",
+                  "Ignore linhas de saldo inicial, saldo anterior, saldo disponivel, saldo atual, saldo final, limite, total de creditos e total de debitos mesmo que tenham valor.",
                   "Responda apenas JSON valido com: title, periodStart, periodEnd, confidence, missingFields, lines, notes.",
                   "lines deve ser array com: type, description, amount, category, date, paymentMethod, paymentRecipient, confidence, notes."
                 ].join(" ")
@@ -513,10 +516,45 @@ function normalizeFinancialDraft(
 ): FinancialDocumentDraft {
   const kind = normalizeKind(parsed.kind, requestedKind);
   const fiscalDocument = normalizeFiscalDocument(parsed);
-  const title = toCleanString(parsed.title ?? parsed.issuerName ?? parsed.merchantName ?? parsed.establishmentName ?? parsed.beneficiaryName);
-  const description = toCleanString(parsed.description ?? parsed.descricao ?? parsed.documentDescription);
+  const fiscalSource = getObjectRecord(parsed.fiscalDocument);
+  const title = toCleanString(
+    parsed.title ??
+      parsed.issuerName ??
+      parsed.issuer ??
+      parsed.emitente ??
+      parsed.nomeEmitente ??
+      parsed.merchantName ??
+      parsed.establishmentName ??
+      parsed.nomeEstabelecimento ??
+      parsed.beneficiaryName ??
+      parsed.beneficiario ??
+      parsed.favorecido ??
+      parsed.recebedor
+  );
+  const description = toCleanString(
+    parsed.description ??
+      parsed.descricao ??
+      parsed.documentDescription ??
+      parsed.details ??
+      parsed.detalhes ??
+      parsed.historic ??
+      parsed.historico ??
+      parsed.memo
+  );
   const amount = clampNumber(
-    parsed.amount ?? parsed.totalAmount ?? parsed.valorTotal ?? parsed.valorDocumento ?? parsed.valorPago ?? parsed.value,
+    parsed.amount ??
+      parsed.totalAmount ??
+      parsed.valorTotal ??
+      parsed.total ??
+      parsed.valorDocumento ??
+      parsed.valorAPagar ??
+      parsed.valorCobranca ??
+      parsed.valorPago ??
+      parsed.totalPago ??
+      parsed.valorLiquido ??
+      parsed.valorFinal ??
+      parsed.valorTransferido ??
+      parsed.value,
     0,
     9999999,
     fiscalDocument?.paidAmount ?? fiscalDocument?.totalItemsAmount ?? 0
@@ -539,9 +577,30 @@ function normalizeFinancialDraft(
     (kind === "income" ? documentDate : "");
   const category = toCleanString(parsed.category) || fallback.category;
   const paymentMethod = normalizePaymentMethod(parsed.paymentMethod, fallback.paymentMethod);
-  const paymentCode = toCleanString(parsed.paymentCode ?? parsed.linhaDigitavel ?? parsed.barcode ?? parsed.codigoBarras);
+  const paymentCode = toCleanString(
+    parsed.paymentCode ??
+      parsed.linhaDigitavel ??
+      parsed.codigoDigitavel ??
+      parsed.barcode ??
+      parsed.codigoBarras ??
+      parsed.pixCopiaCola ??
+      parsed.codigoPix ??
+      parsed.brcode ??
+      parsed.brCode
+  );
   const missingFields = new Set<string>(
     Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String) : []
+  );
+  const items = normalizeItems(
+    parsed.items ??
+      parsed.itens ??
+      parsed.products ??
+      parsed.produtos ??
+      parsed.documentItems ??
+      fiscalSource?.items ??
+      fiscalSource?.itens ??
+      fiscalSource?.products ??
+      fiscalSource?.produtos
   );
 
   if (kind === "bill" && !title) {
@@ -584,14 +643,20 @@ function normalizeFinancialDraft(
       parsed.paymentRecipient ??
         parsed.recipient ??
         parsed.receiver ??
+        parsed.destinatario ??
+        parsed.recebedor ??
         parsed.beneficiary ??
         parsed.beneficiario ??
-        parsed.favorecido
+        parsed.favorecido ??
+        parsed.issuerName ??
+        parsed.emitente ??
+        parsed.merchantName ??
+        parsed.establishmentName
     ),
     otherCategoryDescription: category === "Outros" ? toCleanString(parsed.otherCategoryDescription) : undefined,
     confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
     missingFields: Array.from(missingFields),
-    items: normalizeItems(parsed.items),
+    items,
     fiscalDocument,
     notes: buildFinancialDocumentNotes(toCleanString(parsed.notes), fiscalDocument, fallback.notes)
   };
@@ -633,8 +698,9 @@ function normalizeBankStatementDraft(
   parsed: Record<string, unknown>,
   fallback: BankStatementDraft
 ): BankStatementDraft {
-  const lines = Array.isArray(parsed.lines)
-    ? parsed.lines
+  const rawLines = parsed.lines ?? parsed.linhas ?? parsed.transactions ?? parsed.transacoes ?? parsed.items;
+  const lines = Array.isArray(rawLines)
+    ? rawLines
         .map((line) => normalizeStatementLine(line))
         .filter((line): line is StatementTransactionDraft => Boolean(line))
     : [];
@@ -664,9 +730,19 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
   }
 
   const line = value as Record<string, unknown>;
-  const type = line.type === "income" ? "income" : line.type === "expense" ? "expense" : null;
-  const description = toCleanString(line.description ?? line.historic ?? line.history ?? line.historico ?? line.memo ?? line.name);
-  const amount = clampNumber(line.amount ?? line.value ?? line.valor, 0, 9999999, 0);
+  const amountSource = line.amount ?? line.value ?? line.valor ?? line.valorTransacao ?? line.valorLancamento;
+  const type = normalizeStatementLineType(line, amountSource);
+  const description = toCleanString(
+    line.description ??
+      line.descricao ??
+      line.historic ??
+      line.history ??
+      line.historico ??
+      line.memo ??
+      line.name ??
+      line.titulo
+  );
+  const amount = positiveAmount(amountSource);
   const date = toDateString(line.date ?? line.transactionDate ?? line.data ?? line.dataTransacao);
 
   if (!type || !description || amount <= 0 || !date) {
@@ -674,9 +750,16 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
   }
 
   const category = normalizeStatementCategory(type, line.category);
-  const paymentMethod = normalizePaymentMethod(line.paymentMethod ?? line.method ?? line.formaPagamento, undefined);
+  const paymentMethod = normalizePaymentMethod(line.paymentMethod ?? line.method ?? line.formaPagamento ?? line.meioPagamento, undefined);
   const paymentRecipient = toCleanString(
-    line.paymentRecipient ?? line.recipient ?? line.receiver ?? line.destinatario ?? line.favorecido
+    line.paymentRecipient ??
+      line.recipient ??
+      line.receiver ??
+      line.destinatario ??
+      line.recebedor ??
+      line.favorecido ??
+      line.counterparty ??
+      line.contraparte
   );
 
   return {
@@ -700,6 +783,60 @@ function normalizeStatementCategory(type: Extract<TransactionType, "income" | "e
   const allowed = type === "income" ? incomeCategories : expenseCategories;
 
   return allowed.includes(category) ? category : "Outros";
+}
+
+function normalizeStatementLineType(
+  line: Record<string, unknown>,
+  amountSource: unknown
+): Extract<TransactionType, "income" | "expense"> | null {
+  if (line.type === "income" || line.type === "expense") {
+    return line.type;
+  }
+
+  const directionText = toCleanString(
+    line.type ??
+      line.direction ??
+      line.nature ??
+      line.natureza ??
+      line.signal ??
+      line.sinal ??
+      line.dc ??
+      line.debitCredit ??
+      line.tipo
+  )
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (
+    directionText.includes("income") ||
+    directionText.includes("entrada") ||
+    directionText.includes("credito") ||
+    directionText === "c" ||
+    directionText === "cr" ||
+    directionText.includes("credit")
+  ) {
+    return "income";
+  }
+
+  if (
+    directionText.includes("expense") ||
+    directionText.includes("saida") ||
+    directionText.includes("debito") ||
+    directionText === "d" ||
+    directionText === "db" ||
+    directionText.includes("debit")
+  ) {
+    return "expense";
+  }
+
+  const numericAmount = parseNumber(amountSource);
+
+  if (Number.isFinite(numericAmount) && numericAmount < 0) {
+    return "expense";
+  }
+
+  return null;
 }
 
 function getOutputText(response: OpenAIResponse) {
@@ -935,17 +1072,19 @@ function toCleanString(value: unknown) {
 function toDateString(value: unknown) {
   const text = toCleanString(value);
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    return text;
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+
+  if (iso) {
+    return `${iso[1]}-${iso[2]}-${iso[3]}`;
   }
 
-  const isoSlash = text.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  const isoSlash = text.match(/\b(\d{4})\/(\d{2})\/(\d{2})\b/);
 
   if (isoSlash) {
     return `${isoSlash[1]}-${isoSlash[2]}-${isoSlash[3]}`;
   }
 
-  const brazilian = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+  const brazilian = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})\b/);
 
   if (!brazilian) {
     return "";
@@ -973,19 +1112,46 @@ function normalizeItems(value: unknown): FinancialDocumentItem[] {
       const source = getObjectRecord(item);
 
       return {
-        name: toCleanString(source?.name ?? source?.productName ?? source?.itemName ?? source?.description ?? source?.descricaoProduto ?? source?.descricao),
-        amount: optionalAmount(source?.amount ?? source?.total ?? source?.itemTotal ?? source?.valorTotal ?? source?.valor),
-        quantity: optionalAmount(source?.quantity ?? source?.qty ?? source?.qCom ?? source?.quantidade),
-        unit: toCleanString(source?.unit ?? source?.unidade),
-        unitPrice: optionalAmount(source?.unitPrice ?? source?.price ?? source?.vUnCom ?? source?.valorUnitario),
-        code: normalizeLooseId(source?.code ?? source?.productCode ?? source?.cProd ?? source?.codigo),
-        ean: normalizeLooseId(source?.ean ?? source?.barcode ?? source?.cEAN ?? source?.codigoDeBarras),
-        ncm: normalizeLooseId(source?.ncm),
-        date: toDateString(source?.date),
+        name: toCleanString(
+          source?.name ??
+            source?.nome ??
+            source?.productName ??
+            source?.produto ??
+            source?.itemName ??
+            source?.description ??
+            source?.descricaoProduto ??
+            source?.descricao ??
+            source?.xProd
+        ),
+        amount: optionalAmount(
+          source?.amount ??
+            source?.total ??
+            source?.itemTotal ??
+            source?.totalItem ??
+            source?.valorTotal ??
+            source?.valorItem ??
+            source?.valorProduto ??
+            source?.vProd ??
+            source?.valor
+        ),
+        quantity: optionalAmount(source?.quantity ?? source?.qty ?? source?.qCom ?? source?.quantidade ?? source?.qtd),
+        unit: toCleanString(source?.unit ?? source?.unidade ?? source?.uCom),
+        unitPrice: optionalAmount(
+          source?.unitPrice ??
+            source?.price ??
+            source?.precoUnitario ??
+            source?.valorUnitario ??
+            source?.vUnCom ??
+            source?.vUnTrib
+        ),
+        code: normalizeLooseId(source?.code ?? source?.productCode ?? source?.cProd ?? source?.codigo ?? source?.codigoProduto),
+        ean: normalizeLooseId(source?.ean ?? source?.barcode ?? source?.cEAN ?? source?.codigoDeBarras ?? source?.gtin),
+        ncm: normalizeLooseId(source?.ncm ?? source?.NCM),
+        date: toDateString(source?.date ?? source?.data),
         type: normalizeTransactionType(source?.type),
         category: toCleanString(source?.category),
-        paymentMethod: normalizePaymentMethod(source?.paymentMethod, undefined),
-        paymentRecipient: toCleanString(source?.paymentRecipient)
+        paymentMethod: normalizePaymentMethod(source?.paymentMethod ?? source?.formaPagamento, undefined),
+        paymentRecipient: toCleanString(source?.paymentRecipient ?? source?.destinatario ?? source?.recebedor)
       };
     })
     .filter((item) => item.name)
@@ -1028,6 +1194,12 @@ function optionalAmount(value: unknown) {
   const number = parseNumber(value);
 
   return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function positiveAmount(value: unknown) {
+  const number = parseNumber(value);
+
+  return Number.isFinite(number) ? Math.abs(number) : 0;
 }
 
 function parseNumber(value: unknown) {

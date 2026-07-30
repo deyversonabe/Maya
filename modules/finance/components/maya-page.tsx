@@ -23,7 +23,7 @@ type ChatMessage = {
 export function MayaPage() {
   const { state } = useFinanceStore();
   const localAnalysis = useMemo(() => buildMayaLocalAnalysis(state), [state]);
-  const months = useMemo(() => buildMonthSummaries(state.transactions, 6), [state.transactions]);
+  const months = useMemo(() => buildMonthSummaries(state.transactions, 6, state.bills), [state.bills, state.transactions]);
   const [analysis, setAnalysis] = useState<MayaAnalysis>(localAnalysis);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {

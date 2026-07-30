@@ -2,9 +2,9 @@
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
-const MAX_IMAGE_EDGE = 2600;
-const MAX_DATA_URL_LENGTH = 3_200_000;
-const JPEG_QUALITY = 0.9;
+const MAX_IMAGE_EDGE = 3000;
+const MAX_DATA_URL_LENGTH = 3_800_000;
+const JPEG_QUALITY = 0.92;
 const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
 const WORKSPACE_ID =
   process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";

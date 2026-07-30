@@ -20,19 +20,15 @@ export function getCurrentMonthKey() {
 export function calculateSummary(state: FinanceState): FinanceSummary {
   const currentMonth = getCurrentMonthKey();
   const monthTransactions = getTransactionsByMonth(state.transactions, currentMonth);
+  const monthBills = getBillsByMonth(state.bills, currentMonth);
 
   const income = sumByType(monthTransactions, "income");
-  const expenses = sumByType(monthTransactions, "expense");
+  const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
   const investments = sumByType(monthTransactions, "investment");
   const availableBalance = income - expenses - investments;
   const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
 
-  const categoryTotals = monthTransactions
-    .filter((transaction) => transaction.type === "expense")
-    .reduce<Record<string, number>>((totals, transaction) => {
-      totals[transaction.category] = (totals[transaction.category] ?? 0) + transaction.amount;
-      return totals;
-    }, {});
+  const categoryTotals = buildExpenseCategoryTotals(monthTransactions, monthBills);
 
   const biggestCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
   const goalsTotal = state.goals.reduce((total, goal) => total + goal.targetAmount, 0);
@@ -52,7 +48,7 @@ export function calculateSummary(state: FinanceState): FinanceSummary {
   };
 }
 
-export function buildMonthlyFlow(transactions: Transaction[]) {
+export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill[] = []) {
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - index));
@@ -61,16 +57,17 @@ export function buildMonthlyFlow(transactions: Transaction[]) {
 
   return months.map((month) => {
     const monthTransactions = getTransactionsByMonth(transactions, month);
+    const monthBills = getBillsByMonth(bills, month);
     return {
       month,
       income: sumByType(monthTransactions, "income"),
-      expenses: sumByType(monthTransactions, "expense"),
+      expenses: calculateMonthExpenseTotal(monthTransactions, monthBills),
       investments: sumByType(monthTransactions, "investment")
     };
   });
 }
 
-export function buildMonthSummaries(transactions: Transaction[], monthCount = 6): MonthSummary[] {
+export function buildMonthSummaries(transactions: Transaction[], monthCount = 6, bills: PayableBill[] = []): MonthSummary[] {
   const months = Array.from({ length: monthCount }, (_, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (monthCount - 1 - index));
@@ -79,8 +76,9 @@ export function buildMonthSummaries(transactions: Transaction[], monthCount = 6)
 
   return months.map((month) => {
     const monthTransactions = getTransactionsByMonth(transactions, month);
+    const monthBills = getBillsByMonth(bills, month);
     const income = sumByType(monthTransactions, "income");
-    const expenses = sumByType(monthTransactions, "expense");
+    const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
     const investments = sumByType(monthTransactions, "investment");
     const availableBalance = income - expenses - investments;
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
@@ -101,7 +99,7 @@ export function buildInsights(state: FinanceState) {
   const budgetSummary = buildBudgetSummary(state, summary.currentMonth);
   const insights: Array<{ title: string; body: string; tone: "success" | "warning" | "info" }> = [];
 
-  if (state.transactions.length === 0) {
+  if (state.transactions.length === 0 && state.bills.length === 0) {
     return [
       {
         title: "Sem dados financeiros reais",
@@ -178,9 +176,10 @@ export function buildInsights(state: FinanceState) {
 export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()): FinancialHealthAlert[] {
   const currentMonth = now.toISOString().slice(0, 7);
   const currentTransactions = getTransactionsByMonth(state.transactions, currentMonth);
-  const previousMonths = buildMonthSummaries(state.transactions, 4).filter((month) => month.month !== currentMonth);
+  const currentBills = getBillsByMonth(state.bills, currentMonth);
+  const previousMonths = buildMonthSummaries(state.transactions, 4, state.bills).filter((month) => month.month !== currentMonth);
   const currentIncome = sumByType(currentTransactions, "income");
-  const currentExpenses = sumByType(currentTransactions, "expense");
+  const currentExpenses = calculateMonthExpenseTotal(currentTransactions, currentBills);
   const averageIncome = average(previousMonths.map((month) => month.income).filter((value) => value > 0));
   const averageExpenses = average(previousMonths.map((month) => month.expenses).filter((value) => value > 0));
   const alerts: FinancialHealthAlert[] = [];
@@ -216,7 +215,7 @@ export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()
     });
   }
 
-  const categoryAverages = buildExpenseCategoryAverages(state.transactions, currentMonth);
+  const categoryAverages = buildExpenseCategoryAverages(state.transactions, state.bills, currentMonth);
   const unusualTransaction = currentTransactions
     .filter((transaction) => transaction.type === "expense")
     .map((transaction) => ({
@@ -240,7 +239,7 @@ export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()
 }
 
 export function buildMayaLocalAnalysis(state: FinanceState, question?: string): MayaAnalysis {
-  if (state.transactions.length === 0) {
+  if (state.transactions.length === 0 && state.bills.length === 0) {
     return {
       assistantName: "MAYA",
       message:
@@ -266,7 +265,7 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
     };
   }
 
-  const months = buildMonthSummaries(state.transactions, 6);
+  const months = buildMonthSummaries(state.transactions, 6, state.bills);
   const current = months.at(-1) ?? emptyMonth(getCurrentMonthKey());
   const previous = months.at(-2) ?? emptyMonth(getCurrentMonthKey());
   const budgetSummary = buildBudgetSummary(state, current.month);
@@ -275,9 +274,15 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
   const savingsDelta = current.savingsRate - previous.savingsRate;
   const healthScore = calculateHealthScore(current, state);
   const trend = savingsDelta > 5 || current.availableBalance > previous.availableBalance ? "growth" : savingsDelta < -5 ? "drop" : "stable";
-  const biggestCategory = getBiggestExpenseCategory(state.transactions, current.month);
-  const recurringCount = state.transactions.filter((transaction) => transaction.recurring).length;
-  const installmentCount = state.transactions.filter((transaction) => transaction.installmentGroupId).length;
+  const biggestCategory = getBiggestExpenseCategory(state.transactions, state.bills, current.month);
+  const currentTransactions = getTransactionsByMonth(state.transactions, current.month);
+  const currentBills = getBillsByMonth(state.bills, current.month);
+  const recurringCount =
+    currentTransactions.filter((transaction) => transaction.recurring).length +
+    currentBills.filter((bill) => bill.recurrence === "monthly").length;
+  const installmentCount =
+    currentTransactions.filter((transaction) => transaction.installmentGroupId).length +
+    currentBills.filter((bill) => bill.installmentGroupId).length;
   const hasCurrentIncome = current.income > 0;
 
   const highlights = [
@@ -288,7 +293,7 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
     biggestCategory.amount > 0
       ? `${biggestCategory.category} e a maior categoria de despesa, com ${formatCurrency(biggestCategory.amount)}.`
       : "Ainda nao ha despesas suficientes para apontar uma categoria dominante.",
-    `Existem ${recurringCount} lancamentos recorrentes e ${installmentCount} parcelas registradas no planejamento.`,
+    `No mes ${current.month}, existem ${recurringCount} lancamento(s) recorrente(s) e ${installmentCount} parcela(s) no calculo.`,
     budgetSummary.totalLimit > 0
       ? `Os orcamentos do mes somam ${formatCurrency(budgetSummary.totalLimit)} e ja consumiram ${formatPercent(budgetSummary.usedPercent)}.`
       : "Ainda nao ha orcamentos cadastrados para este mes."
@@ -438,9 +443,13 @@ export function buildBudgetUsages(state: FinanceState, month: string): BudgetUsa
   return state.budgets
     .filter((budget) => budget.month === month)
     .map((budget) => {
-      const spent = getTransactionsByMonth(state.transactions, month)
+      const transactionSpent = getTransactionsByMonth(state.transactions, month)
         .filter((transaction) => transaction.type === "expense" && transaction.category === budget.category)
         .reduce((total, transaction) => total + transaction.amount, 0);
+      const billSpent = getBillsByMonth(state.bills, month)
+        .filter((bill) => bill.category === budget.category)
+        .reduce((total, bill) => total + bill.amount, 0);
+      const spent = transactionSpent + billSpent;
       const remaining = budget.limitAmount - spent;
       const usedPercent = budget.limitAmount > 0 ? (spent / budget.limitAmount) * 100 : 0;
 
@@ -496,13 +505,8 @@ function diffCalendarDays(fromDate: string, toDate: string) {
   return Math.round((to - from) / 86_400_000);
 }
 
-function getBiggestExpenseCategory(transactions: Transaction[], month: string) {
-  const totals = getTransactionsByMonth(transactions, month)
-    .filter((transaction) => transaction.type === "expense")
-    .reduce<Record<string, number>>((accumulator, transaction) => {
-      accumulator[transaction.category] = (accumulator[transaction.category] ?? 0) + transaction.amount;
-      return accumulator;
-    }, {});
+function getBiggestExpenseCategory(transactions: Transaction[], bills: PayableBill[], month: string) {
+  const totals = buildExpenseCategoryTotals(getTransactionsByMonth(transactions, month), getBillsByMonth(bills, month));
 
   const [category, amount] = Object.entries(totals).sort((a, b) => b[1] - a[1])[0] ?? ["Sem despesas", 0];
   return { category, amount };
@@ -525,7 +529,10 @@ function calculateHealthScore(current: MonthSummary, state: FinanceState) {
         : budgetSummary.attentionCount > 0
           ? 7
           : 10;
-  const predictabilityComponent = state.transactions.some((transaction) => transaction.recurring) ? 8 : 3;
+  const hasMonthlyRecurring =
+    getTransactionsByMonth(state.transactions, current.month).some((transaction) => transaction.recurring) ||
+    getBillsByMonth(state.bills, current.month).some((bill) => bill.recurrence === "monthly");
+  const predictabilityComponent = hasMonthlyRecurring ? 8 : 3;
 
   return Math.min(
     100,
@@ -533,20 +540,14 @@ function calculateHealthScore(current: MonthSummary, state: FinanceState) {
   );
 }
 
-function buildExpenseCategoryAverages(transactions: Transaction[], currentMonth: string) {
-  const previousMonths = buildMonthSummaries(transactions, 4)
+function buildExpenseCategoryAverages(transactions: Transaction[], bills: PayableBill[], currentMonth: string) {
+  const previousMonths = buildMonthSummaries(transactions, 4, bills)
     .map((month) => month.month)
     .filter((month) => month !== currentMonth);
   const totals: Record<string, number[]> = {};
 
   previousMonths.forEach((month) => {
-    const monthTransactions = getTransactionsByMonth(transactions, month).filter(
-      (transaction) => transaction.type === "expense"
-    );
-    const monthTotals = monthTransactions.reduce<Record<string, number>>((accumulator, transaction) => {
-      accumulator[transaction.category] = (accumulator[transaction.category] ?? 0) + transaction.amount;
-      return accumulator;
-    }, {});
+    const monthTotals = buildExpenseCategoryTotals(getTransactionsByMonth(transactions, month), getBillsByMonth(bills, month));
 
     Object.entries(monthTotals).forEach(([category, amount]) => {
       totals[category] = [...(totals[category] ?? []), amount];
@@ -579,4 +580,27 @@ function sumByType(transactions: Transaction[], type: Transaction["type"]) {
   return transactions
     .filter((transaction) => transaction.type === type)
     .reduce((total, transaction) => total + transaction.amount, 0);
+}
+
+function calculateMonthExpenseTotal(transactions: Transaction[], bills: PayableBill[]) {
+  return sumByType(transactions, "expense") + sumBills(bills);
+}
+
+function sumBills(bills: PayableBill[]) {
+  return bills.reduce((total, bill) => total + bill.amount, 0);
+}
+
+function buildExpenseCategoryTotals(transactions: Transaction[], bills: PayableBill[]) {
+  const totals = transactions
+    .filter((transaction) => transaction.type === "expense")
+    .reduce<Record<string, number>>((accumulator, transaction) => {
+      accumulator[transaction.category] = (accumulator[transaction.category] ?? 0) + transaction.amount;
+      return accumulator;
+    }, {});
+
+  bills.forEach((bill) => {
+    totals[bill.category] = (totals[bill.category] ?? 0) + bill.amount;
+  });
+
+  return totals;
 }

@@ -70,9 +70,9 @@ export function MonthsPage() {
     [state.transactions, selectedMonth]
   );
   const billSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
-  const totals = useMemo(() => calculateMonthTotals(monthTransactions), [monthTransactions]);
+  const totals = useMemo(() => calculateMonthTotals(monthTransactions, billSummary.total), [billSummary.total, monthTransactions]);
   const grouped = useMemo(() => groupByType(monthTransactions), [monthTransactions]);
-  const monthlySeries = useMemo(() => buildMonthSummaries(state.transactions, 12), [state.transactions]);
+  const monthlySeries = useMemo(() => buildMonthSummaries(state.transactions, 12, state.bills), [state.bills, state.transactions]);
   const selectedPeriod = useMemo(
     () => getSelectedPeriod(periodMode, periodStart, periodEnd, periodStartMonth, periodEndMonth),
     [periodEnd, periodEndMonth, periodMode, periodStart, periodStartMonth]
@@ -85,6 +85,15 @@ export function MonthsPage() {
     () => buildIncomePeriodSummary(state.transactions, selectedPeriod.start, selectedPeriod.end, incomeFilter),
     [incomeFilter, selectedPeriod.end, selectedPeriod.start, state.transactions]
   );
+
+  function changeSelectedMonth(month: string) {
+    setSelectedMonth(month);
+    setPeriodMode("month");
+    setPeriodStartMonth(month);
+    setPeriodEndMonth(month);
+    setPeriodStart(`${month}-01`);
+    setPeriodEnd(getMonthEndDate(month));
+  }
 
   return (
     <AppShell>
@@ -104,7 +113,7 @@ export function MonthsPage() {
           <div className="rounded-2xl border border-bronze/20 bg-bronze/10 p-4">
             <Label>
               Mes em exibicao
-              <Select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
+              <Select value={selectedMonth} onChange={(event) => changeSelectedMonth(event.target.value)}>
                 {availableMonths.map((month) => (
                   <option key={month} value={month}>
                     {month}
@@ -121,7 +130,7 @@ export function MonthsPage() {
         <MonthMetric label="Saidas" value={formatCurrency(totals.expense)} tone="warning" icon={<ArrowDownCircle className="size-5" />} />
         <MonthMetric label="Investimentos" value={formatCurrency(totals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
         <MonthMetric label="Transferencias" value={formatCurrency(totals.transfer)} tone="neutral" icon={<Repeat className="size-5" />} />
-        <MonthMetric label="Contas pendentes" value={formatCurrency(billSummary.pendingTotal)} tone="warning" icon={<BellRing className="size-5" />} />
+        <MonthMetric label="Contas do mes" value={formatCurrency(billSummary.total)} tone="warning" icon={<BellRing className="size-5" />} />
         <MonthMetric label="Saldo do mes" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
       </section>
 
@@ -149,22 +158,23 @@ export function MonthsPage() {
               />
             ))
           )}
-          <BillsMonthGroup bills={billSummary.monthBills} total={billSummary.pendingTotal} />
+          <BillsMonthGroup bills={billSummary.monthBills} total={billSummary.total} />
         </div>
 
         <Card>
           <CardHeader eyebrow="Resumo" title={selectedMonth} action={<Badge tone="neutral">{monthTransactions.length} lanc.</Badge>} />
           <div className="grid gap-3">
             <SummaryRow label="Total de entradas" value={formatCurrency(totals.income)} />
+            <SummaryRow label="Despesas avulsas" value={formatCurrency(totals.expenseTransactions)} />
+            <SummaryRow label="Contas do mes" value={formatCurrency(totals.bills)} />
             <SummaryRow label="Total de saidas" value={formatCurrency(totals.expense)} />
             <SummaryRow label="Total investido" value={formatCurrency(totals.investment)} />
             <SummaryRow label="Transferencias" value={formatCurrency(totals.transfer)} />
-            <SummaryRow label="Contas pendentes" value={formatCurrency(billSummary.pendingTotal)} />
             <SummaryRow label="Saldo final" value={formatCurrency(totals.balance)} highlight />
           </div>
           <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50">
-            O saldo considera entradas menos saidas e investimentos. Transferencias aparecem separadas para nao inflar
-            o resultado do mes.
+            O saldo considera entradas menos despesas avulsas, contas do mes e investimentos. Transferencias aparecem
+            separadas para nao inflar o resultado do mes.
           </div>
         </Card>
       </section>
@@ -527,10 +537,13 @@ function SummaryRow({ label, value, highlight = false }: { label: string; value:
   );
 }
 
-function calculateMonthTotals(transactions: Transaction[]) {
+function calculateMonthTotals(transactions: Transaction[], billsTotal: number) {
+  const expenseTransactions = sumByType(transactions, "expense");
   const totals = {
     income: sumByType(transactions, "income"),
-    expense: sumByType(transactions, "expense"),
+    expenseTransactions,
+    bills: billsTotal,
+    expense: expenseTransactions + billsTotal,
     investment: sumByType(transactions, "investment"),
     transfer: sumByType(transactions, "transfer")
   };

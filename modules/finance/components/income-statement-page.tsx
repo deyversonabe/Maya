@@ -112,11 +112,21 @@ export function IncomeStatementPage() {
   const monthIncome = statement
     .filter((entry) => entry.type === "income" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + entry.amount, 0);
-  const monthDebits = statement
-    .filter((entry) => entry.type === "debit" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
+  const monthTransactionDebits = statement
+    .filter((entry) => entry.type === "debit" && entry.source !== "bill" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + Math.abs(entry.amount), 0);
+  const monthBillDebits = state.bills
+    .filter((bill) => bill.dueDate.startsWith(month) && matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId))
+    .reduce((total, bill) => total + bill.amount, 0);
+  const monthDebits = monthTransactionDebits + monthBillDebits;
+  const monthEnd = getMonthEndDate(month);
   const pendingBills = state.bills
-    .filter((bill) => bill.status !== "paid" && matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId))
+    .filter(
+      (bill) =>
+        bill.status !== "paid" &&
+        bill.dueDate <= monthEnd &&
+        matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId)
+    )
     .reduce((total, bill) => total + bill.amount, 0);
   const projectedBalance = currentBalance - pendingBills;
   const safeIncomeAccountId = getEffectiveAccountId(form.accountId, state.accounts);
@@ -973,6 +983,13 @@ function getSignedTransactionAmount(transaction: Transaction) {
 
 function isOnOrBeforeToday(value: string) {
   return value <= toInputDate(new Date());
+}
+
+function getMonthEndDate(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(year, monthNumber, 0);
+
+  return date.toISOString().slice(0, 10);
 }
 
 function formatPaymentMethod(method: PaymentMethod) {
