@@ -8,6 +8,10 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Auditoria de comunicacao entre paginas financeiras, garantindo que o filtro de pagamentos recorrentes em Meses acompanhe o mes em exibicao.
+- Relatorios passam a classificar contas por status efetivo, contando como atrasada a conta vencida que ainda estiver pendente.
+- Calculo mensal unificado: contas a pagar entram como despesa do mes de vencimento em dashboard, Meses, Maya, orcamentos, relatorios e exportacoes.
+- Projecao de saldo apos contas limitada a contas vencidas e contas do mes de referencia, evitando somar recorrencias e parcelas futuras de uma vez.
 - Categorias de despesa adicionadas: Combustivel, Melhoria casa, Conforto e Manutencao.
 - Pessoas dos lancamentos atualizadas para `Deyveron`, `Tom` e `Casal`, com migracao local de registros antigos `Pessoa 1` e `Pessoa 2`.
 - Carteira padrao renomeada para `Carteira do casal`.
@@ -110,6 +114,8 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Leitura de fotos/documentos reforcada para aproveitar datas com hora, valores em formato brasileiro, campos alternativos de DANFE/NFC-e/Pix/boleto e linhas negativas de extrato sem descartar transacoes reais.
+- Preparo de imagem de anexo passou a preservar um pouco mais de resolucao e qualidade para melhorar captura de textos pequenos em DANFE, cupons fiscais e extratos.
 - Captura fraca de anexos corrigida ao reduzir perda de qualidade na compressao de imagens e preservar centavos sem arredondamento durante a leitura por IA.
 - Botao flutuante duplicado da home removido do mobile para nao competir com a navegacao inferior.
 - Migration `20260725_finance_accounts_wallets.sql` adicionada para atualizar o JSONB compartilhado e a RPC de merge com `accounts`.

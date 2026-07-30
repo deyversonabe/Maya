@@ -88,6 +88,9 @@ Limites:
 - Quando uma imagem tiver muitos itens ou texto pequeno, a preparacao no cliente deve privilegiar resolucao suficiente para leitura, mesmo que o upload fique maior dentro do limite aceito pela API.
 - MAYA nao deve inventar linhas de extrato, destinatarios Pix ou categorias quando o documento nao sustentar a informacao.
 - Em extratos, MAYA deve ignorar saldo, limite, totais, subtotais, cabecalhos e linhas nao transacionais.
+- Em extratos, valores negativos ou marcados como debito/saida devem virar `amount` positivo com `type = expense`; valores de credito/entrada devem virar `amount` positivo com `type = income`.
+- A normalizacao deve aceitar datas com hora ou texto ao redor, desde que a data legivel possa ser validada em formato brasileiro ou ISO.
+- A normalizacao deve aceitar aliases comuns de documentos brasileiros (`itens`, `produtos`, `emitente`, `favorecido`, `linhaDigitavel`, `pixCopiaCola`, `valorPago`, `valorAPagar`) sem transformar campos ilegiveis em dados inventados.
 - Em Pix, MAYA deve preencher destinatario/remetente apenas quando estiver legivel; se nao estiver, o usuario deve completar antes de salvar.
 - Itens de nota e linhas de extrato sao informativos e devem permanecer editaveis ou revisaveis antes da persistencia.
 - Quando a leitura de comprovante falhar ou a OpenAI nao estiver configurada, o rascunho deve ficar pendente de revisao, com valor zero e categoria neutra.

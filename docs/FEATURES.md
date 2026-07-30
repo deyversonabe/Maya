@@ -127,6 +127,7 @@ Exemplos:
 Escopo:
 
 - Dashboard com saldo, receitas, despesas, taxa de economia e patrimonio planejado.
+- Saldos, despesas e graficos mensais incluem contas a pagar no mes do vencimento para manter Dashboard, Meses, MAYA, relatorios e orcamentos com o mesmo resultado.
 - Cadastro funcional de transacoes.
 - Cadastro funcional de metas.
 - Metas com saldo ja guardado, data do saldo inicial, novos aportes por data e historico de valores.
@@ -140,7 +141,7 @@ Escopo:
 - Estrutura inicial para receber comprovantes pelo WhatsApp Cloud API sem n8n.
 - Despesas recorrentes geradas automaticamente para meses futuros.
 - Despesas parceladas geradas automaticamente em todos os meses da parcela.
-- Pagina mensal dedicada com entradas, saidas, investimentos, transferencias, somas e lancamentos discriminados por mes.
+- Pagina mensal dedicada com entradas, despesas avulsas, contas do mes, saidas totais, investimentos, transferencias, somas e lancamentos discriminados por mes.
 - Pagina dedicada de metas com cadastro, historico de saldos, atualizacao de progresso e resumo geral.
 - Assistente MAYA com analise financeira mensal, comparativos e comportamento seguro quando a analise avancada nao estiver disponivel.
 - Orcamentos mensais por categoria, com limite, gasto realizado, saldo restante e alertas.
@@ -313,7 +314,7 @@ Escopo:
 - Categorizar renda em Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos ou Outros.
 - Exibir extrato tipo conta bancaria com entradas, despesas, investimentos, transferencias neutras e contas pagas.
 - Exibir saldo atual acumulado a cada movimento.
-- Exibir saldo apos contas, descontando contas pendentes/atrasadas sem tratar renda variavel como previsao.
+- Exibir saldo apos contas, descontando somente contas vencidas e contas do mes de referencia, sem somar parcelas/recorrencias de meses futuros de uma vez.
 - Criar carteiras/contas internas usando nomes claros, como Carteira do casal, Deyveron, Tom, dinheiro, bancos ou outra carteira personalizada.
 - Informar saldo inicial e data inicial de cada carteira.
 - Vincular receitas, despesas, investimentos e transferencias a uma carteira para calcular saldo por conta e saldo geral.
@@ -385,6 +386,7 @@ Escopo:
 - Permitir consultar os itens do anexo dentro do app, sem baixar o arquivo novamente.
 - Exibir grafico mensal com duas linhas: renda e despesa.
 - Somar pagamentos recorrentes, Pix nominais, boletos e contas por periodo entre dias ou meses.
+- Recorrencias e parcelas aparecem somente no periodo em que foram geradas, mantendo cada mes com seu proprio calculo positivo ou negativo.
 - Somar renda por filtro de categoria e mostrar quantidade de transacoes do periodo.
 - Exibir alertas de saude financeira quando renda ou despesa fugir da rotina recente.
 

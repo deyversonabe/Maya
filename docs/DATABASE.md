@@ -170,7 +170,9 @@ Regras de FinanceAccount:
 - `openingBalance` representa o saldo real inicial informado pelo usuario, sem depender de banco conectado.
 - Lancamentos sem `accountId` sao tratados como pertencentes a carteira padrao para compatibilidade com dados antigos.
 - Dados antigos marcados como `Pessoa 1` e `Pessoa 2` sao normalizados no cliente para `Deyveron` e `Tom`.
-- O saldo geral e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
+- O saldo geral realizado e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
+- Para calculos mensais, `PayableBill` entra como saida do mes de `dueDate`; recorrencias e parcelas devem aparecer apenas no mes em que cada registro foi gerado.
+- Projecoes de saldo apos contas nao devem descontar todos os registros futuros de uma vez; devem considerar contas vencidas e contas do mes de referencia.
 - Carteiras internas nao executam pagamentos, Pix, boletos ou conexao bancaria real.
 
 Campos essenciais de Goal:

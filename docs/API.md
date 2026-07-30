@@ -352,6 +352,8 @@ Regras:
 - A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
 - Em DANFE/NF-e/NFC-e/cupom fiscal, a IA deve usar o valor total da nota ou valor pago como `amount` e manter chave de acesso/CNPJ apenas quando legiveis.
 - A IA pode retornar itens de nota ou linhas de extrato em `items`, mas esses itens sao informativos ate que o usuario confirme o lancamento.
+- A normalizacao aceita aliases comuns de documentos brasileiros, incluindo `itens`, `produtos`, `emitente`, `favorecido`, `pixCopiaCola`, `linhaDigitavel`, `valorPago`, `valorAPagar`, `valorLiquido` e `valorFinal`.
+- Datas podem vir em ISO, formato brasileiro ou acompanhadas de hora/texto; o backend so preserva a data quando ela puder ser validada.
 - O frontend deve exigir preenchimento manual dos campos obrigatorios antes de salvar.
 - O frontend deve verificar suspeita de duplicidade por data, valor e tipo antes de persistir renda ou despesa.
 - O frontend tambem deve alertar quando houver mesmo valor no mesmo dia, mesmo que o tipo tenha sido classificado diferente.
@@ -393,6 +395,8 @@ Regras:
 - A rota aceita somente `data:image/*` e limita payload antes da chamada de IA.
 - A MAYA deve ignorar saldo, total, cabecalho, limite, subtotal e qualquer linha que nao seja transacao real.
 - Valores retornam positivos; o campo `type` indica entrada ou saida.
+- Se a IA ou o extrato retornar um valor negativo em uma linha de saida, o backend normaliza o valor como positivo e preserva `type = expense`.
+- A normalizacao aceita linhas em `lines`, `linhas`, `transactions`, `transacoes` ou `items`, desde que cada linha tenha tipo/direcao, descricao, valor e data confiaveis.
 - Quando a linha for Pix e o destinatario/remetente estiver legivel, preencher `paymentRecipient`.
 - Quando nao houver categoria confiavel, usar `Outros`.
 - O frontend deve permitir editar as linhas antes de salvar.

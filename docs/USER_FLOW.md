@@ -44,7 +44,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 7. Antes de salvar, sistema compara valor e data com rendas e despesas existentes e pede confirmacao quando houver suspeita de duplicidade.
 8. Sistema atualiza saldo da carteira, saldo geral, resumo mensal e extrato imediatamente.
 9. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
-10. Sistema mostra saldo atual acumulado e saldo apos contas pendentes e atrasadas.
+10. Sistema mostra saldo atual acumulado e saldo apos contas vencidas ou do mes de referencia, sem descontar recorrencias futuras de uma vez.
 11. Usuario pode editar ou excluir qualquer renda cadastrada.
 
 ### Cadastro de despesa com nota
@@ -87,10 +87,11 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Usuario acessa Meses.
 2. Usuario seleciona o mes que deseja analisar.
-3. Sistema mostra entradas, saidas, investimentos, transferencias e saldo final do mes.
-4. Sistema lista lancamentos discriminados por tipo.
-5. Usuario identifica descricao, categoria, pessoa, data, recorrencia e parcelas.
-6. Usuario pode editar ou remover um lancamento se identificar erro.
+3. Sistema mostra entradas, despesas avulsas, contas do mes, saidas totais, investimentos, transferencias e saldo final do mes.
+4. Sistema soma contas pelo mes de vencimento e inclui esse valor no total de saidas.
+5. Sistema lista lancamentos discriminados por tipo e contas discriminadas por vencimento.
+6. Usuario identifica descricao, categoria, pessoa, data, recorrencia e parcelas.
+7. Usuario pode editar ou remover um lancamento se identificar erro.
 
 ### Planejamento por orcamento mensal
 
@@ -98,7 +99,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Usuario escolhe mes, categoria e limite.
 3. Sistema salva o orcamento no banco local.
 4. Sistema compara limite com despesas reais daquele mes.
-5. Usuario visualiza saldo restante ou excesso.
+5. Usuario visualiza saldo restante ou excesso, considerando despesas avulsas e contas do mesmo mes/categoria.
 6. MAYA usa esse contexto para orientar ajustes.
 
 ### Cadastro de metas
@@ -217,7 +218,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 1. Usuario acessa Meses.
 2. Usuario visualiza grafico de linha com renda e despesa entre meses.
 3. Usuario escolhe filtro entre dias ou entre meses.
-4. Usuario filtra despesas por categoria e ve soma de Pix nominais, boletos, contas, recorrencias e parcelas.
+4. Usuario filtra despesas por categoria e ve soma de Pix nominais, boletos, contas, recorrencias e parcelas somente dentro do periodo selecionado.
 5. Usuario filtra rendas por Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos ou Outros.
 6. Sistema mostra total e quantidade de transacoes do periodo filtrado.
 7. MAYA exibe alertas quando a renda ou despesa do mes fugir da rotina recente.
@@ -247,7 +248,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Usuario abre Saldo inicial e contas.
 3. Usuario cria uma carteira interna ou edita a Carteira do casal.
 4. Usuario informa saldo inicial real e data do saldo.
-5. Sistema recalcula saldo da carteira somando entradas e subtraindo despesas, investimentos e contas pagas.
+5. Sistema recalcula saldo da carteira somando entradas e subtraindo despesas, investimentos e contas pagas; a projecao apos contas considera apenas pendencias vencidas ou do mes de referencia.
 6. Ao remover uma carteira que nao seja a Carteira do casal, sistema preserva os lancamentos e os move para a Carteira do casal.
 
 ### Consentimento financeiro futuro
