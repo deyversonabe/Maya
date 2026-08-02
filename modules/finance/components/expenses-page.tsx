@@ -11,13 +11,14 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
-import { addMonths, getTransactionsByMonth } from "../lib/calculations";
+import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BankStatementDraft,
   FinancialDocumentDraft,
+  PayableBill,
   PaymentMethod,
   Person,
   StatementTransactionDraft,
@@ -37,6 +38,13 @@ type ExpenseDuplicateReview = {
   matches: TransactionDuplicateMatch[];
   origin: "expense" | "statement";
   editId?: string;
+  reconciliations?: BillReconciliationMatch[];
+};
+
+type BillReconciliationMatch = {
+  bill: PayableBill;
+  transaction: Omit<Transaction, "id" | "createdAt">;
+  transactionIndex: number;
 };
 
 export function ExpensesPage() {
@@ -69,10 +77,17 @@ export function ExpensesPage() {
     notes: ""
   });
 
+  const today = toInputDate(new Date());
   const monthTransactions = getTransactionsByMonth(state.transactions, selectedMonth).filter(
     (transaction) => transaction.type === "expense"
   );
-  const monthTotal = monthTransactions.reduce((total, transaction) => total + transaction.amount, 0);
+  const realizedMonthTransactions = getTransactionsByMonthUntil(state.transactions, selectedMonth, today).filter(
+    (transaction) => transaction.type === "expense"
+  );
+  const monthTotal = realizedMonthTransactions.reduce((total, transaction) => total + transaction.amount, 0);
+  const futureMonthTotal = monthTransactions
+    .filter((transaction) => transaction.date > today)
+    .reduce((total, transaction) => total + transaction.amount, 0);
   const selectedExpenseAccountId = state.accounts.some((account) => account.id === form.accountId)
     ? form.accountId
     : DEFAULT_FINANCE_ACCOUNT_ID;
@@ -245,11 +260,14 @@ export function ExpensesPage() {
       return;
     }
 
-    const duplicates = findTransactionDuplicateMatches(state.transactions, transactions);
-    const internalDuplicates = findInternalDuplicateMatches(transactions);
+    const reconciliations = findBillReconciliationMatches(transactions, state.bills);
+    const reconciledIndexes = new Set(reconciliations.map((match) => match.transactionIndex));
+    const transactionsToImport = transactions.filter((_transaction, index) => !reconciledIndexes.has(index));
+    const duplicates = findTransactionDuplicateMatches(state.transactions, transactionsToImport);
+    const internalDuplicates = findInternalDuplicateMatches(transactionsToImport);
 
     if (duplicates.length > 0 || internalDuplicates.length > 0) {
-      setDuplicateReview({ transactions, matches: duplicates, origin: "statement" });
+      setDuplicateReview({ transactions: transactionsToImport, matches: duplicates, origin: "statement", reconciliations });
       setFeedback(
         internalDuplicates.length > 0
           ? "Suspeita de duplicidade no extrato. Aprove para computar ou exclua o lote antes de importar."
@@ -258,15 +276,33 @@ export function ExpensesPage() {
       return;
     }
 
-    saveStatementTransactions(transactions);
+    saveStatementTransactions(transactionsToImport, reconciliations);
   }
 
-  function saveStatementTransactions(transactions: Array<Omit<Transaction, "id" | "createdAt">>) {
-    actions.addTransactions(transactions);
-    setSelectedMonth(transactions[0]?.date.slice(0, 7) ?? selectedMonth);
+  function saveStatementTransactions(
+    transactions: Array<Omit<Transaction, "id" | "createdAt">>,
+    reconciliations: BillReconciliationMatch[] = []
+  ) {
+    reconciliations.forEach((match) => {
+      actions.updateBill(match.bill.id, {
+        status: "paid",
+        paidAt: `${match.transaction.date}T12:00:00.000Z`,
+        notes: mergeReconciliationNote(match.bill.notes, match.transaction)
+      });
+    });
+
+    if (transactions.length > 0) {
+      actions.addTransactions(transactions);
+    }
+
+    setSelectedMonth(transactions[0]?.date.slice(0, 7) ?? reconciliations[0]?.transaction.date.slice(0, 7) ?? selectedMonth);
     setStatementDraft(null);
     setDuplicateReview(null);
-    setFeedback(`${transactions.length} linha(s) do extrato foram salvas na nuvem.`);
+    setFeedback(
+      `${transactions.length} linha(s) do extrato foram salvas na nuvem.${
+        reconciliations.length > 0 ? ` ${reconciliations.length} conta(s) foram conciliadas automaticamente.` : ""
+      }`
+    );
   }
 
   function submitExpense(event: React.FormEvent<HTMLFormElement>) {
@@ -310,6 +346,16 @@ export function ExpensesPage() {
     const comparableTransactions = editingExpenseId
       ? state.transactions.filter((transaction) => transaction.id !== editingExpenseId)
       : state.transactions;
+    const receiptAttachmentMatch =
+      receiptDraft && !editingExpenseId && form.plan === "single"
+        ? findSameDaySameAmountExpense(comparableTransactions, transactions[0])
+        : null;
+
+    if (receiptAttachmentMatch) {
+      attachReceiptToExistingExpense(receiptAttachmentMatch, transactions[0]);
+      return;
+    }
+
     const duplicates = findTransactionDuplicateMatches(comparableTransactions, transactions);
 
     if (duplicates.length > 0) {
@@ -319,6 +365,30 @@ export function ExpensesPage() {
     }
 
     saveExpenses(transactions, editingExpenseId ?? undefined);
+  }
+
+  function attachReceiptToExistingExpense(
+    existing: Transaction,
+    incoming: Omit<Transaction, "id" | "createdAt">
+  ) {
+    actions.updateTransaction(existing.id, buildReceiptAttachmentPatch(existing, incoming));
+    setSelectedMonth(existing.date.slice(0, 7));
+    setReceiptDraft(null);
+    setDuplicateReview(null);
+    setEditingExpenseId(null);
+    setFeedback(
+      `Nota anexada a despesa existente "${existing.description}" sem gerar novo valor. Os itens lidos ficam disponiveis no detalhe do lancamento.`
+    );
+    setForm((current) => ({
+      ...current,
+      description: "",
+      amount: "",
+      otherCategoryDescription: "",
+      paymentMethod: "other",
+      paymentRecipient: "",
+      notes: "",
+      plan: "single"
+    }));
   }
 
   function saveExpenses(transactions: Array<Omit<Transaction, "id" | "createdAt">>, editId?: string) {
@@ -393,7 +463,12 @@ export function ExpensesPage() {
           <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-cyan-50">
             <p className="text-xs font-black uppercase tracking-[0.14em] opacity-80">Mes selecionado</p>
             <strong className="mt-2 block font-serif text-4xl">{selectedMonth}</strong>
-            <p className="mt-2 text-sm opacity-90">{formatCurrency(monthTotal)} em despesas registradas.</p>
+            <p className="mt-2 text-sm opacity-90">{formatCurrency(monthTotal)} em despesas realizadas.</p>
+            {futureMonthTotal > 0 ? (
+              <p className="mt-1 text-xs font-bold text-cyan-100">
+                {formatCurrency(futureMonthTotal)} futuro(s) fora do saldo realizado.
+              </p>
+            ) : null}
           </div>
         </div>
       </LedPanel>
@@ -473,7 +548,7 @@ export function ExpensesPage() {
               }}
                   onConfirm={() =>
                     duplicateReview.origin === "statement"
-                      ? saveStatementTransactions(duplicateReview.transactions)
+                      ? saveStatementTransactions(duplicateReview.transactions, duplicateReview.reconciliations ?? [])
                       : saveExpenses(duplicateReview.transactions, duplicateReview.editId)
                   }
             />
@@ -691,8 +766,13 @@ export function ExpensesPage() {
             </Select>
           </Label>
           <div className="mt-4 rounded-xl border border-terracotta/20 bg-terracotta/10 p-4">
-            <p className="text-sm font-bold text-muted">Total de despesas no mes</p>
+            <p className="text-sm font-bold text-muted">Total de despesas realizadas</p>
             <strong className={cn("mt-2 block font-serif text-4xl", financialValueClass(monthTotal))}>{formatCurrency(monthTotal)}</strong>
+            {futureMonthTotal > 0 ? (
+              <p className="mt-2 text-sm font-bold text-cyan-100">
+                Futuro previsto neste mes: {formatCurrency(futureMonthTotal)}
+              </p>
+            ) : null}
           </div>
           <div className="mt-4 grid gap-3">
             {monthTransactions.length === 0 ? (
@@ -707,7 +787,10 @@ export function ExpensesPage() {
                 <div key={transaction.id} className="rounded-lg border border-cream/10 bg-cream/[0.04] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <strong className="text-cream">{transaction.description}</strong>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong className="text-cream">{transaction.description}</strong>
+                        {transaction.date > today ? <Badge tone="neutral">Futuro</Badge> : null}
+                      </div>
                       <p className="mt-1 text-sm text-muted">
                         {transaction.category} - {transaction.date}
                         {transaction.paymentMethod === "pix" && transaction.paymentRecipient
@@ -854,6 +937,208 @@ function buildTransactionsFromStatement(draft: BankStatementDraft): Array<Omit<T
     ],
     notes: line.notes || draft.notes
   }));
+}
+
+function findSameDaySameAmountExpense(
+  existingTransactions: Transaction[],
+  incoming?: Omit<Transaction, "id" | "createdAt">
+) {
+  if (!incoming || incoming.type !== "expense") {
+    return null;
+  }
+
+  return (
+    existingTransactions.find(
+      (existing) =>
+        existing.type === "expense" &&
+        existing.date === incoming.date &&
+        areSameMoneyForReconciliation(existing.amount, incoming.amount)
+    ) ?? null
+  );
+}
+
+function buildReceiptAttachmentPatch(
+  existing: Transaction,
+  incoming: Omit<Transaction, "id" | "createdAt">
+): Partial<Omit<Transaction, "id" | "createdAt">> {
+  return {
+    description: chooseReceiptEnhancedDescription(existing.description, incoming.description),
+    category: existing.category || incoming.category,
+    otherCategoryDescription: existing.otherCategoryDescription || incoming.otherCategoryDescription,
+    paymentMethod: existing.paymentMethod || incoming.paymentMethod,
+    paymentRecipient: existing.paymentRecipient || incoming.paymentRecipient,
+    source: existing.source === "manual" || !existing.source ? "receipt" : existing.source,
+    receiptImageName: incoming.receiptImageName || existing.receiptImageName,
+    attachmentImageName: incoming.attachmentImageName || existing.attachmentImageName,
+    attachmentDataUrl: incoming.attachmentDataUrl || existing.attachmentDataUrl,
+    attachmentStoragePath: incoming.attachmentStoragePath || existing.attachmentStoragePath,
+    attachmentMimeType: incoming.attachmentMimeType || existing.attachmentMimeType,
+    attachmentSize: incoming.attachmentSize || existing.attachmentSize,
+    documentItems: mergeDocumentItems(existing.documentItems, incoming.documentItems),
+    fiscalDocument: incoming.fiscalDocument || existing.fiscalDocument,
+    notes: mergeReceiptAttachmentNotes(existing.notes, incoming)
+  };
+}
+
+function chooseReceiptEnhancedDescription(existingDescription: string, incomingDescription?: string) {
+  const candidate = incomingDescription?.trim();
+
+  if (!candidate) {
+    return existingDescription;
+  }
+
+  const normalizedExisting = normalizeReconciliationText(existingDescription);
+  const normalizedCandidate = normalizeReconciliationText(candidate);
+
+  if (!normalizedExisting || normalizedExisting === normalizedCandidate || normalizedExisting.includes(normalizedCandidate)) {
+    return existingDescription;
+  }
+
+  if (normalizedCandidate.includes(normalizedExisting)) {
+    return candidate;
+  }
+
+  const genericDescriptions = new Set(["despesa", "compra", "mercado", "pagamento", "pix", "boleto", "cartao", "nota", "sem descricao"]);
+  return genericDescriptions.has(normalizedExisting) ? candidate : existingDescription;
+}
+
+function mergeDocumentItems(
+  existingItems: Transaction["documentItems"],
+  incomingItems: Transaction["documentItems"]
+) {
+  const merged = new Map<string, NonNullable<Transaction["documentItems"]>[number]>();
+
+  [...(existingItems ?? []), ...(incomingItems ?? [])].forEach((item) => {
+    const key = [
+      normalizeReconciliationText(item.name),
+      item.amount ?? "",
+      item.quantity ?? "",
+      item.code ?? "",
+      item.ean ?? ""
+    ].join("|");
+
+    if (!merged.has(key)) {
+      merged.set(key, item);
+    }
+  });
+
+  return Array.from(merged.values());
+}
+
+function mergeReceiptAttachmentNotes(existingNotes: string | undefined, incoming: Omit<Transaction, "id" | "createdAt">) {
+  const receiptName = incoming.attachmentImageName || incoming.receiptImageName;
+  const itemCount = incoming.documentItems?.length ?? 0;
+  const note = [
+    "Nota conciliada com lancamento ja existente.",
+    receiptName ? `Anexo: ${receiptName}.` : "",
+    itemCount > 0 ? `${itemCount} item(ns) da nota foram adicionados ao lancamento.` : "",
+    incoming.fiscalDocument?.accessKey ? `Chave fiscal: ${incoming.fiscalDocument.accessKey}.` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [existingNotes, note].filter(Boolean).join("\n");
+}
+
+function findBillReconciliationMatches(
+  transactions: Array<Omit<Transaction, "id" | "createdAt">>,
+  bills: PayableBill[]
+): BillReconciliationMatch[] {
+  const usedBillIds = new Set<string>();
+  const matches: BillReconciliationMatch[] = [];
+
+  transactions.forEach((transaction, transactionIndex) => {
+    if (transaction.type !== "expense") {
+      return;
+    }
+
+    const bill = bills.find((candidate) => {
+      if (usedBillIds.has(candidate.id) || candidate.status === "paid") {
+        return false;
+      }
+
+      return isStrongBillReconciliationMatch(transaction, candidate);
+    });
+
+    if (!bill) {
+      return;
+    }
+
+    usedBillIds.add(bill.id);
+    matches.push({ bill, transaction, transactionIndex });
+  });
+
+  return matches;
+}
+
+function isStrongBillReconciliationMatch(
+  transaction: Omit<Transaction, "id" | "createdAt">,
+  bill: PayableBill
+) {
+  if (!areSameMoneyForReconciliation(transaction.amount, bill.amount)) {
+    return false;
+  }
+
+  const daysFromDueDate = Math.abs(diffDateDays(transaction.date, bill.dueDate));
+
+  if (daysFromDueDate > 3) {
+    return false;
+  }
+
+  const transactionDescription = normalizeReconciliationText(transaction.description);
+  const billTitle = normalizeReconciliationText(bill.title);
+  const transactionRecipient = normalizeReconciliationText(transaction.paymentRecipient ?? "");
+  const billRecipient = normalizeReconciliationText(bill.paymentRecipient ?? "");
+  const recipientMatch = Boolean(
+    transactionRecipient &&
+      billRecipient &&
+      (transactionRecipient.includes(billRecipient) || billRecipient.includes(transactionRecipient))
+  );
+  const titleMatch = Boolean(
+    transactionDescription &&
+      billTitle &&
+      (transactionDescription.includes(billTitle) || billTitle.includes(transactionDescription))
+  );
+  const methodMatch = Boolean(
+    transaction.paymentMethod &&
+      bill.paymentMethod &&
+      transaction.paymentMethod === bill.paymentMethod &&
+      bill.paymentMethod !== "other"
+  );
+
+  return recipientMatch || titleMatch || (methodMatch && daysFromDueDate <= 1);
+}
+
+function mergeReconciliationNote(
+  existingNotes: string | undefined,
+  transaction: Omit<Transaction, "id" | "createdAt">
+) {
+  const reconciliationNote = `Conciliada automaticamente pelo extrato em ${transaction.date}: ${transaction.description}.`;
+  return [existingNotes, reconciliationNote].filter(Boolean).join("\n");
+}
+
+function areSameMoneyForReconciliation(left: number, right: number) {
+  return Math.abs(left - right) < 0.005;
+}
+
+function diffDateDays(left: string, right: string) {
+  const leftTime = Date.parse(`${left}T12:00:00`);
+  const rightTime = Date.parse(`${right}T12:00:00`);
+
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.round((leftTime - rightTime) / 86_400_000);
+}
+
+function normalizeReconciliationText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function findInternalDuplicateMatches(transactions: Array<Omit<Transaction, "id" | "createdAt">>) {

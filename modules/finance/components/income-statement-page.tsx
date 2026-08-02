@@ -116,15 +116,20 @@ export function IncomeStatementPage() {
     .filter((entry) => entry.type === "debit" && entry.source !== "bill" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + Math.abs(entry.amount), 0);
   const monthBillDebits = state.bills
-    .filter((bill) => bill.dueDate.startsWith(month) && matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId))
+    .filter(
+      (bill) =>
+        bill.status === "paid" &&
+        getBillStatementDate(bill).startsWith(month) &&
+        isOnOrBeforeToday(getBillStatementDate(bill)) &&
+        matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId)
+    )
     .reduce((total, bill) => total + bill.amount, 0);
   const monthDebits = monthTransactionDebits + monthBillDebits;
-  const monthEnd = getMonthEndDate(month);
   const pendingBills = state.bills
     .filter(
       (bill) =>
         bill.status !== "paid" &&
-        bill.dueDate <= monthEnd &&
+        bill.dueDate <= toInputDate(new Date()) &&
         matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId)
     )
     .reduce((total, bill) => total + bill.amount, 0);
@@ -290,8 +295,8 @@ export function IncomeStatementPage() {
             <div className="grid gap-3 md:grid-cols-4">
               <StatementMetric label="Saldo atual" value={currentBalance} icon={<WalletCards className="size-5" />} />
               <StatementMetric label="Renda do mes" value={monthIncome} icon={<ArrowUpCircle className="size-5" />} />
-              <StatementMetric label="Debitos do mes" value={-monthDebits} icon={<ArrowDownCircle className="size-5" />} />
-              <StatementMetric label="Saldo apos contas" value={projectedBalance} icon={<Landmark className="size-5" />} />
+              <StatementMetric label="Debitos realizados" value={-monthDebits} icon={<ArrowDownCircle className="size-5" />} />
+              <StatementMetric label="Saldo apos vencidas" value={projectedBalance} icon={<Landmark className="size-5" />} />
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
               <Label>
@@ -921,10 +926,15 @@ function buildStatementEntries(
   let balance = 0;
 
   return rawEntries.map((entry): StatementEntry => {
-    balance += entry.amount;
+    const isFuture = "isFuture" in entry && entry.isFuture === true;
+
+    if (!isFuture) {
+      balance += entry.amount;
+    }
 
     return {
       ...entry,
+      isFuture,
       balanceAfter: balance
     };
   });
@@ -985,11 +995,8 @@ function isOnOrBeforeToday(value: string) {
   return value <= toInputDate(new Date());
 }
 
-function getMonthEndDate(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(year, monthNumber, 0);
-
-  return date.toISOString().slice(0, 10);
+function getBillStatementDate(bill: PayableBill) {
+  return bill.paidAt?.slice(0, 10) || bill.dueDate;
 }
 
 function formatPaymentMethod(method: PaymentMethod) {

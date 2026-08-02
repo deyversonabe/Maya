@@ -12,6 +12,7 @@ import type {
   MayaAnalysis,
   PaymentMethod,
   StatementTransactionDraft,
+  TimeClockDraft,
   TransactionType
 } from "@/modules/finance/types";
 
@@ -336,6 +337,104 @@ export async function readBankStatementWithMaya({
   }
 }
 
+export async function readTimeClockWithMaya({
+  imageDataUrl,
+  fileName,
+  targetDate
+}: {
+  imageDataUrl: string;
+  fileName?: string;
+  targetDate?: string;
+}): Promise<{
+  timeClockDraft: TimeClockDraft;
+  needsReview: true;
+  message: string;
+}> {
+  const fallbackDraft = buildFallbackTimeClockDraft(targetDate);
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    return {
+      timeClockDraft: fallbackDraft,
+      needsReview: true,
+      message: "MAYA preparou o rascunho do ponto, mas a leitura automatica precisa da chave de IA no servidor."
+    };
+  }
+
+  try {
+    const response = await fetchOpenAIResponse(apiKey, {
+        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: [
+                  "Voce e a MAYA. Leia esta imagem de registro de ponto ou espelho de ponto brasileiro.",
+                  "O objetivo e preencher um rascunho revisavel de horas trabalhadas, nao criar lancamento financeiro.",
+                  targetDate ? `Data alvo selecionada pelo usuario: ${targetDate}. Se essa data aparecer no documento, use somente os horarios dessa data.` : "Se houver varias datas, escolha a data mais legivel e mais completa.",
+                  "Ignore cabecalho, nome da empresa, CNPJ, matricula, assinatura, totais legais, banco de horas antigo, observacoes administrativas, linhas de escala e qualquer texto que nao seja data/horario do dia.",
+                  "Procure horarios reais de batida do ponto: entrada, inicio do intervalo, fim do intervalo e saida.",
+                  "Se houver quatro batidas no dia, use startTime como a primeira batida, endTime como a ultima batida e lunchMinutes como a diferenca entre segunda e terceira batida.",
+                  "Se houver duas batidas no dia, use primeira e ultima batida, e deixe lunchMinutes como 72 apenas se o documento nao mostrar intervalo; inclua lunchMinutes em missingFields.",
+                  "Se houver mais de quatro batidas, use a primeira e a ultima como jornada total e use as batidas intermediarias mais provaveis para intervalo; explique em notes.",
+                  "Use formato de data YYYY-MM-DD e horarios HH:mm em 24 horas.",
+                  "Preserve os horarios exatos. Nunca arredonde minutos.",
+                  "Nao invente data ou horario. Se nao enxergar com confianca, deixe vazio e inclua o campo em missingFields.",
+                  "expectedMinutes deve ser 528 para dia util comum quando a data for segunda a sexta, 0 para sabado/domingo, salvo se o documento mostrar carga esperada diferente.",
+                  "Responda apenas JSON valido com: date, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
+                  "punches deve listar todos os horarios de batida usados ou relevantes no formato HH:mm."
+                ].join(" ")
+              },
+              {
+                type: "input_image",
+                detail: "high",
+                image_url: imageDataUrl
+              }
+            ]
+          }
+        ],
+        max_output_tokens: 1200,
+        store: false,
+        text: { format: { type: "json_object" } }
+    });
+
+    if (!response.ok) {
+      const error = await parseOpenAIError(response);
+      logTimeClockReadFailure(error);
+
+      return {
+        timeClockDraft: fallbackDraft,
+        needsReview: true,
+        message: buildReceiptFailureMessage(error)
+      };
+    }
+
+    const data = (await response.json()) as OpenAIResponse;
+    const parsed = parseJsonObject(getOutputText(data));
+    const timeClockDraft = normalizeTimeClockDraft(parsed, fallbackDraft);
+
+    return {
+      timeClockDraft,
+      needsReview: true,
+      message:
+        timeClockDraft.startTime && timeClockDraft.endTime
+          ? "MAYA leu o ponto e preencheu o rascunho. Revise os horarios antes de salvar."
+          : "MAYA nao encontrou horarios suficientes no ponto. Complete manualmente antes de salvar."
+    };
+  } catch (error) {
+    const failure = normalizeCaughtFailure(error);
+    logTimeClockReadFailure(failure);
+
+    return {
+      timeClockDraft: fallbackDraft,
+      needsReview: true,
+      message: buildReceiptFailureMessage(failure)
+    };
+  }
+}
+
 interface OpenAIResponse {
   output_text?: string;
   output?: Array<{
@@ -469,6 +568,16 @@ function logReceiptReadFailure(error: OpenAIFailure, documentKind: FinancialDocu
     code: error.code,
     requestId: error.requestId,
     documentKind,
+    message: error.message
+  });
+}
+
+function logTimeClockReadFailure(error: OpenAIFailure) {
+  console.warn("maya_timecard_read_failed", {
+    category: error.category,
+    status: error.status,
+    code: error.code,
+    requestId: error.requestId,
     message: error.message
   });
 }
@@ -720,6 +829,93 @@ function normalizeBankStatementDraft(
     confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
     lines,
     missingFields: Array.from(missingFields),
+    notes: toCleanString(parsed.notes) || fallback.notes
+  };
+}
+
+function buildFallbackTimeClockDraft(targetDate?: string): TimeClockDraft {
+  const date = toDateString(targetDate) || "";
+
+  return {
+    date,
+    startTime: "",
+    endTime: "",
+    lunchMinutes: 72,
+    expectedMinutes: date ? getDefaultExpectedMinutesForDate(date) : 528,
+    confidence: 0,
+    missingFields: ["date", "startTime", "endTime"],
+    punches: [],
+    notes: "Ponto pendente de revisao manual."
+  };
+}
+
+function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: TimeClockDraft): TimeClockDraft {
+  const date = toDateString(parsed.date ?? parsed.data ?? parsed.workDate ?? parsed.referenceDate) || fallback.date;
+  const rawPunches = parsed.punches ?? parsed.batidas ?? parsed.times ?? parsed.horarios;
+  const punches = normalizeClockPunches(rawPunches);
+  const startTime =
+    normalizeClockTime(parsed.startTime ?? parsed.entrada ?? parsed.firstPunch ?? parsed.inicio) ||
+    punches[0] ||
+    fallback.startTime;
+  const endTime =
+    normalizeClockTime(parsed.endTime ?? parsed.saida ?? parsed.lastPunch ?? parsed.fim) ||
+    punches[punches.length - 1] ||
+    fallback.endTime;
+  const secondPunch = punches[1] ? timeToMinutes(punches[1]) : Number.NaN;
+  const thirdPunch = punches[2] ? timeToMinutes(punches[2]) : Number.NaN;
+  const lunchFromPunches =
+    Number.isFinite(secondPunch) && Number.isFinite(thirdPunch) && thirdPunch > secondPunch
+      ? thirdPunch - secondPunch
+      : Number.NaN;
+  const lunchMinutes = clampNumber(
+    parsed.lunchMinutes ?? parsed.intervalMinutes ?? parsed.almocoMinutos ?? parsed.intervaloMinutos,
+    0,
+    240,
+    Number.isFinite(lunchFromPunches) ? lunchFromPunches : fallback.lunchMinutes
+  );
+  const expectedMinutes = clampNumber(
+    parsed.expectedMinutes ?? parsed.cargaEsperadaMinutos ?? parsed.jornadaEsperadaMinutos,
+    0,
+    720,
+    date ? getDefaultExpectedMinutesForDate(date) : fallback.expectedMinutes ?? 528
+  );
+  const missingFields = new Set<string>(
+    Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String) : fallback.missingFields
+  );
+
+  if (date) {
+    missingFields.delete("date");
+  } else {
+    missingFields.add("date");
+  }
+
+  if (startTime) {
+    missingFields.delete("startTime");
+  } else {
+    missingFields.add("startTime");
+  }
+
+  if (endTime) {
+    missingFields.delete("endTime");
+  } else {
+    missingFields.add("endTime");
+  }
+
+  if (!Number.isFinite(lunchFromPunches) && punches.length < 4) {
+    missingFields.add("lunchMinutes");
+  } else {
+    missingFields.delete("lunchMinutes");
+  }
+
+  return {
+    date,
+    startTime,
+    endTime,
+    lunchMinutes: Math.round(lunchMinutes),
+    expectedMinutes: Math.round(expectedMinutes),
+    confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
+    missingFields: Array.from(missingFields),
+    punches,
     notes: toCleanString(parsed.notes) || fallback.notes
   };
 }
@@ -1253,6 +1449,45 @@ function normalizeTimeString(value: unknown) {
   const match = text.match(/\b([01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\b/);
 
   return match?.[0] ?? "";
+}
+
+function normalizeClockPunches(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => normalizeClockTime(item)).filter(Boolean).slice(0, 12);
+}
+
+function normalizeClockTime(value: unknown) {
+  const raw = normalizeTimeString(value);
+
+  if (!raw) {
+    return "";
+  }
+
+  const [hours = "0", minutes = "0"] = raw.split(":");
+  return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+}
+
+function timeToMinutes(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    return Number.NaN;
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function getDefaultExpectedMinutesForDate(date: string) {
+  const parsed = new Date(`${date}T12:00:00`);
+
+  if (!Number.isFinite(parsed.getTime())) {
+    return 528;
+  }
+
+  const weekday = parsed.getDay();
+  return weekday >= 1 && weekday <= 5 ? 528 : 0;
 }
 
 function toStringArray(value: unknown, fallback: string[]) {

@@ -31,7 +31,11 @@ export async function exportFinanceReportPdf(report: FinanceReport) {
       ["Contas pagas", formatCurrency(report.summary.paidBills)],
       ["Contas atrasadas", formatCurrency(report.summary.overdueBills)],
       ["Metas", `${formatCurrency(report.summary.goalsCurrent)} de ${formatCurrency(report.summary.goalsTarget)}`],
-      ["Progresso das metas", formatPercent(report.summary.goalsTarget > 0 ? (report.summary.goalsCurrent / report.summary.goalsTarget) * 100 : 0)]
+      ["Progresso das metas", formatPercent(report.summary.goalsTarget > 0 ? (report.summary.goalsCurrent / report.summary.goalsTarget) * 100 : 0)],
+      ["Documentos fiscais", String(report.taxDocuments.length)],
+      ["Registros trabalhistas", String(report.laborBenefits.length)],
+      ["Holerites", String(report.payrollRecords.length)],
+      ["Registros de horas", String(report.workTimeEntries.length)]
     ],
     theme: "grid",
     headStyles: { fillColor: [184, 121, 69], textColor: [8, 22, 15] },
@@ -122,6 +126,108 @@ export async function exportFinanceReportExcel(report: FinanceReport) {
       ]
     },
     {
+      name: "Fiscal",
+      rows: [
+        ["Ano", "Pessoa", "Tipo", "Titulo", "Fonte", "Status", "Data", "Valor", "Anexo", "Observacoes"],
+        ...report.taxDocuments.map((document) => [
+          document.year,
+          document.person,
+          translateTaxKind(document.kind),
+          document.title,
+          document.institution ?? "",
+          translateTaxStatus(document.status),
+          document.documentDate ?? "",
+          document.amount ?? "",
+          document.attachmentStoragePath || document.attachmentImageName || "",
+          document.notes ?? ""
+        ])
+      ]
+    },
+    {
+      name: "Trabalhista",
+      rows: [
+        [
+          "Mes",
+          "Pessoa",
+          "Tipo",
+          "Empresa",
+          "Valor",
+          "Saldo disponivel",
+          "Saldo vinculado",
+          "Data",
+          "Anexo",
+          "Observacoes"
+        ],
+        ...report.laborBenefits.map((benefit) => [
+          benefit.referenceMonth,
+          benefit.person,
+          translateLaborType(benefit.type),
+          benefit.employer ?? "",
+          benefit.amount,
+          benefit.availableBalance ?? "",
+          benefit.blockedBalance ?? "",
+          benefit.documentDate ?? "",
+          benefit.attachmentStoragePath || benefit.attachmentImageName || "",
+          benefit.notes ?? ""
+        ])
+      ]
+    },
+    {
+      name: "Holerites",
+      rows: [
+        [
+          "Mes",
+          "Pessoa",
+          "Empresa",
+          "Base holerite",
+          "Bonus por fora",
+          "Total real",
+          "INSS holerite",
+          "IRRF holerite",
+          "FGTS holerite",
+          "Empresa arca",
+          "Status",
+          "Anexo",
+          "Observacoes"
+        ],
+        ...report.payrollRecords.map((record) => [
+          record.referenceMonth,
+          record.person,
+          record.employer ?? "",
+          record.baseSalary,
+          record.outsideBonus,
+          record.baseSalary + record.outsideBonus,
+          record.payslipInss ?? "",
+          record.payslipIrrf ?? "",
+          record.payslipFgts ?? "",
+          record.taxesPaidByEmployer ? "Sim" : "Nao",
+          translatePayrollStatus(record.status),
+          record.attachmentStoragePath || record.attachmentImageName || "",
+          record.notes ?? ""
+        ])
+      ]
+    },
+    {
+      name: "Horas",
+      rows: [
+        ["Data", "Pessoa", "Entrada", "Saida", "Almoco min", "Esperado min", "Trabalhado min", "Saldo min", "Observacoes"],
+        ...report.workTimeEntries.map((entry) => {
+          const worked = calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes);
+          return [
+            entry.date,
+            entry.person,
+            entry.startTime,
+            entry.endTime,
+            entry.lunchMinutes,
+            entry.expectedMinutes,
+            worked,
+            worked - entry.expectedMinutes,
+            entry.notes ?? ""
+          ];
+        })
+      ]
+    },
+    {
       name: "Recorrentes",
       rows: [
         ["Descricao", "Total", "Quantidade"],
@@ -167,7 +273,11 @@ function summaryRows(report: FinanceReport) {
     { Indicador: "Contas pagas", Valor: report.summary.paidBills },
     { Indicador: "Contas atrasadas", Valor: report.summary.overdueBills },
     { Indicador: "Metas guardadas", Valor: report.summary.goalsCurrent },
-    { Indicador: "Metas planejadas", Valor: report.summary.goalsTarget }
+    { Indicador: "Metas planejadas", Valor: report.summary.goalsTarget },
+    { Indicador: "Documentos fiscais", Valor: report.taxDocuments.length },
+    { Indicador: "Registros trabalhistas", Valor: report.laborBenefits.length },
+    { Indicador: "Holerites", Valor: report.payrollRecords.length },
+    { Indicador: "Registros de horas", Valor: report.workTimeEntries.length }
   ];
 }
 
@@ -195,6 +305,75 @@ function translateBillStatus(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+function translateTaxKind(kind: string) {
+  const labels: Record<string, string> = {
+    income_report: "Informe de rendimento",
+    business_income: "Renda profissional",
+    medical_receipt: "Saude",
+    education_receipt: "Educacao",
+    bank_balance: "Saldo bancario",
+    investment: "Investimento",
+    asset: "Bem/direito",
+    property: "Imovel",
+    vehicle: "Veiculo",
+    debt: "Divida",
+    dependent: "Dependente",
+    other: "Outro"
+  };
+
+  return labels[kind] ?? kind;
+}
+
+function translateTaxStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending: "Pendente",
+    reviewed: "Conferido",
+    ready: "Pronto"
+  };
+
+  return labels[status] ?? status;
+}
+
+function translateLaborType(type: string) {
+  const labels: Record<string, string> = {
+    fgts: "FGTS",
+    inss: "INSS",
+    salary: "Salario",
+    thirteenth_salary: "13 salario",
+    vacation: "Ferias",
+    benefit: "Beneficio",
+    other: "Outro"
+  };
+
+  return labels[type] ?? type;
+}
+
+function translatePayrollStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending_review: "Pendente",
+    reviewed: "Conferido",
+    attention: "Atencao"
+  };
+
+  return labels[status] ?? status;
+}
+
+function calculateWorkedMinutes(startTime: string, endTime: string, lunchMinutes: number) {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return 0;
+  }
+
+  return Math.max(0, end - start - Math.max(0, Math.round(lunchMinutes)));
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : Number.NaN;
 }
 
 function formatDateTime(value: string) {

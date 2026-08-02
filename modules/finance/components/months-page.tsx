@@ -11,7 +11,14 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
 import { expenseCategories, incomeCategories } from "../data/defaults";
-import { buildBillSummary, buildMonthSummaries, getBillEffectiveStatus, getTransactionsByMonth } from "../lib/calculations";
+import {
+  buildBillSummary,
+  buildMonthSummaries,
+  getBillEffectiveStatus,
+  getPaidBillsByPaymentMonthUntil,
+  getTransactionsByMonth,
+  getTransactionsByMonthUntil
+} from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { MonthSummary, PayableBill, Transaction, TransactionType } from "../types";
 import { AttachmentLink } from "./attachment-link";
@@ -65,12 +72,25 @@ export function MonthsPage() {
   const [periodEndMonth, setPeriodEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [incomeFilter, setIncomeFilter] = useState("Todos");
   const [expenseFilter, setExpenseFilter] = useState("Todos");
+  const today = toInputDate(new Date());
   const monthTransactions = useMemo(
     () => getTransactionsByMonth(state.transactions, selectedMonth).sort((a, b) => b.date.localeCompare(a.date)),
     [state.transactions, selectedMonth]
   );
+  const realizedMonthTransactions = useMemo(
+    () => getTransactionsByMonthUntil(state.transactions, selectedMonth, today),
+    [selectedMonth, state.transactions, today]
+  );
   const billSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
+  const realizedBillTotal = useMemo(
+    () => getPaidBillsByPaymentMonthUntil(state.bills, selectedMonth, today).reduce((total, bill) => total + bill.amount, 0),
+    [selectedMonth, state.bills, today]
+  );
   const totals = useMemo(() => calculateMonthTotals(monthTransactions, billSummary.total), [billSummary.total, monthTransactions]);
+  const realizedTotals = useMemo(
+    () => calculateMonthTotals(realizedMonthTransactions, realizedBillTotal),
+    [realizedBillTotal, realizedMonthTransactions]
+  );
   const grouped = useMemo(() => groupByType(monthTransactions), [monthTransactions]);
   const monthlySeries = useMemo(() => buildMonthSummaries(state.transactions, 12, state.bills), [state.bills, state.transactions]);
   const selectedPeriod = useMemo(
@@ -126,12 +146,12 @@ export function MonthsPage() {
       </LedPanel>
 
       <section className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <MonthMetric label="Entradas" value={formatCurrency(totals.income)} tone="success" icon={<ArrowUpCircle className="size-5" />} />
-        <MonthMetric label="Saidas" value={formatCurrency(totals.expense)} tone="warning" icon={<ArrowDownCircle className="size-5" />} />
-        <MonthMetric label="Investimentos" value={formatCurrency(totals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
-        <MonthMetric label="Transferencias" value={formatCurrency(totals.transfer)} tone="neutral" icon={<Repeat className="size-5" />} />
-        <MonthMetric label="Contas do mes" value={formatCurrency(billSummary.total)} tone="warning" icon={<BellRing className="size-5" />} />
-        <MonthMetric label="Saldo do mes" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
+        <MonthMetric label="Entradas realizadas" value={formatCurrency(realizedTotals.income)} tone="success" icon={<ArrowUpCircle className="size-5" />} />
+        <MonthMetric label="Saidas realizadas" value={formatCurrency(realizedTotals.expense)} tone="warning" icon={<ArrowDownCircle className="size-5" />} />
+        <MonthMetric label="Investimentos realizados" value={formatCurrency(realizedTotals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
+        <MonthMetric label="Contas previstas" value={formatCurrency(billSummary.total)} tone="warning" icon={<BellRing className="size-5" />} />
+        <MonthMetric label="Saldo realizado" value={formatCurrency(realizedTotals.balance)} tone={realizedTotals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
+        <MonthMetric label="Saldo previsto" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
       </section>
 
       <MonthlyLineChart summaries={monthlySeries} />
@@ -164,17 +184,19 @@ export function MonthsPage() {
         <Card>
           <CardHeader eyebrow="Resumo" title={selectedMonth} action={<Badge tone="neutral">{monthTransactions.length} lanc.</Badge>} />
           <div className="grid gap-3">
-            <SummaryRow label="Total de entradas" value={formatCurrency(totals.income)} />
-            <SummaryRow label="Despesas avulsas" value={formatCurrency(totals.expenseTransactions)} />
-            <SummaryRow label="Contas do mes" value={formatCurrency(totals.bills)} />
-            <SummaryRow label="Total de saidas" value={formatCurrency(totals.expense)} />
-            <SummaryRow label="Total investido" value={formatCurrency(totals.investment)} />
+            <SummaryRow label="Entradas realizadas" value={formatCurrency(realizedTotals.income)} />
+            <SummaryRow label="Entradas previstas no mes" value={formatCurrency(totals.income)} />
+            <SummaryRow label="Saidas realizadas" value={formatCurrency(realizedTotals.expense)} />
+            <SummaryRow label="Saidas previstas no mes" value={formatCurrency(totals.expense)} />
+            <SummaryRow label="Contas previstas no mes" value={formatCurrency(totals.bills)} />
+            <SummaryRow label="Total investido realizado" value={formatCurrency(realizedTotals.investment)} />
             <SummaryRow label="Transferencias" value={formatCurrency(totals.transfer)} />
-            <SummaryRow label="Saldo final" value={formatCurrency(totals.balance)} highlight />
+            <SummaryRow label="Saldo realizado ate hoje" value={formatCurrency(realizedTotals.balance)} highlight />
+            <SummaryRow label="Saldo previsto do mes" value={formatCurrency(totals.balance)} />
           </div>
           <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50">
-            O saldo considera entradas menos despesas avulsas, contas do mes e investimentos. Transferencias aparecem
-            separadas para nao inflar o resultado do mes.
+            O saldo realizado considera apenas lancamentos com data ate hoje e contas pagas. O saldo previsto mostra o
+            mes inteiro, incluindo vencimentos e recorrencias futuras daquele mes.
           </div>
         </Card>
       </section>
@@ -294,6 +316,7 @@ function BillsMonthGroup({ bills, total }: { bills: PayableBill[]; total: number
                         <Badge tone={status === "paid" ? "success" : status === "overdue" ? "warning" : "info"}>
                           {status === "paid" ? "Pago" : status === "overdue" ? "Atrasado" : "Pendente"}
                         </Badge>
+                        {status !== "paid" && isFutureDate(bill.dueDate) ? <Badge tone="neutral">Futuro</Badge> : null}
                       </div>
                       <p className="text-sm leading-6 text-muted">
                         {bill.category} - {bill.person} - vencimento {bill.dueDate}
@@ -489,6 +512,7 @@ function TransactionGroup({
                     <span className="text-bronze">{config.icon}</span>
                     <strong className="text-cream">{transaction.description}</strong>
                     {transaction.recurring ? <Badge tone="info">Recorrente</Badge> : null}
+                    {isFutureDate(transaction.date) ? <Badge tone="neutral">Futuro</Badge> : null}
                     {transaction.installmentTotal ? (
                       <Badge tone="neutral">
                         Parcela {transaction.installmentNumber}/{transaction.installmentTotal}
@@ -732,6 +756,10 @@ function normalizeGroupKey(value: string) {
 
 function isDateInRange(date: string, start: string, end: string) {
   return date >= start && date <= end;
+}
+
+function isFutureDate(date: string) {
+  return date > toInputDate(new Date());
 }
 
 function getMonthEndDate(month: string) {

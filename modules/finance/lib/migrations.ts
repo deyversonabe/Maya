@@ -7,10 +7,18 @@ import type {
   Goal,
   GoalContribution,
   HouseholdProfile,
+  LaborBenefit,
+  LaborBenefitType,
   PayableBill,
   PaymentMethod,
   Person,
-  Transaction
+  PayrollRecord,
+  PayrollRecordStatus,
+  TaxDocument,
+  TaxDocumentKind,
+  TaxDocumentStatus,
+  Transaction,
+  WorkTimeEntry
 } from "../types";
 
 interface PersistedFinanceStateV1 {
@@ -41,13 +49,47 @@ interface PersistedFinanceStateV3 {
   updatedAt: string;
 }
 
-interface PersistedFinanceStateV4 extends FinanceState {
+interface PersistedFinanceStateV4 {
   schemaVersion: 4;
+  profile: HouseholdProfile;
+  accounts: FinanceAccount[];
+  transactions: Transaction[];
+  goals: Goal[];
+  budgets: Budget[];
+  bills: PayableBill[];
+  activityLogs?: FinanceActivityLog[];
+  updatedAt: string;
+}
+
+interface PersistedFinanceStateV5 {
+  schemaVersion: 5;
+  profile: HouseholdProfile;
+  accounts: FinanceAccount[];
+  transactions: Transaction[];
+  goals: Goal[];
+  budgets: Budget[];
+  bills: PayableBill[];
+  taxDocuments: TaxDocument[];
+  laborBenefits: LaborBenefit[];
+  activityLogs: FinanceActivityLog[];
+  updatedAt: string;
+}
+
+interface PersistedFinanceStateV6 extends FinanceState {
+  schemaVersion: 6;
 }
 
 export function migrateFinanceState(value: unknown): FinanceState {
   if (!isRecord(value)) {
     return createEmptyFinanceState();
+  }
+
+  if (value.schemaVersion === 6) {
+    return normalizeV6(value as unknown as PersistedFinanceStateV6);
+  }
+
+  if (value.schemaVersion === 5) {
+    return normalizeV5(value as unknown as PersistedFinanceStateV5);
   }
 
   if (value.schemaVersion === 4) {
@@ -58,8 +100,13 @@ export function migrateFinanceState(value: unknown): FinanceState {
     const state = normalizeV3(value as unknown as PersistedFinanceStateV3);
     return {
       ...state,
-      schemaVersion: 4,
-      accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts)
+      schemaVersion: 6,
+      accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts),
+      taxDocuments: [],
+      laborBenefits: [],
+      payrollRecords: [],
+      workTimeEntries: [],
+      deletedEntityIds: normalizeDeletedEntityIds((value as { deletedEntityIds?: unknown[] }).deletedEntityIds)
     };
   }
 
@@ -67,9 +114,14 @@ export function migrateFinanceState(value: unknown): FinanceState {
     const state = value as unknown as PersistedFinanceStateV2;
     return {
       ...normalizeV2(state),
-      schemaVersion: 4,
+      schemaVersion: 6,
       accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts),
       bills: normalizeBills((value as { bills?: PayableBill[] }).bills),
+      taxDocuments: [],
+      laborBenefits: [],
+      payrollRecords: [],
+      workTimeEntries: [],
+      deletedEntityIds: normalizeDeletedEntityIds((value as { deletedEntityIds?: unknown[] }).deletedEntityIds),
       activityLogs: normalizeActivityLogs((value as { activityLogs?: FinanceActivityLog[] }).activityLogs),
       updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
     };
@@ -78,13 +130,18 @@ export function migrateFinanceState(value: unknown): FinanceState {
   if (value.schemaVersion === 1) {
     const state = value as unknown as PersistedFinanceStateV1;
     return {
-      schemaVersion: 4,
+      schemaVersion: 6,
       profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
       accounts: [createDefaultFinanceAccount()],
       transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
       goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
       budgets: [],
       bills: [],
+      taxDocuments: [],
+      laborBenefits: [],
+      payrollRecords: [],
+      workTimeEntries: [],
+      deletedEntityIds: [],
       activityLogs: [],
       updatedAt: new Date().toISOString()
     };
@@ -93,18 +150,46 @@ export function migrateFinanceState(value: unknown): FinanceState {
   return createEmptyFinanceState();
 }
 
-function normalizeV4(state: PersistedFinanceStateV4): FinanceState {
+function normalizeV6(state: PersistedFinanceStateV6): FinanceState {
   return {
-    schemaVersion: 4,
+    schemaVersion: 6,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
     accounts: normalizeAccounts(state.accounts),
     transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
     budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
     bills: normalizeBills(state.bills),
+    taxDocuments: normalizeTaxDocuments((state as { taxDocuments?: TaxDocument[] }).taxDocuments),
+    laborBenefits: normalizeLaborBenefits((state as { laborBenefits?: LaborBenefit[] }).laborBenefits),
+    payrollRecords: normalizePayrollRecords((state as { payrollRecords?: PayrollRecord[] }).payrollRecords),
+    workTimeEntries: normalizeWorkTimeEntries((state as { workTimeEntries?: WorkTimeEntry[] }).workTimeEntries),
     activityLogs: normalizeActivityLogs((state as { activityLogs?: FinanceActivityLog[] }).activityLogs),
+    deletedEntityIds: normalizeDeletedEntityIds((state as { deletedEntityIds?: unknown[] }).deletedEntityIds),
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
   };
+}
+
+function normalizeV5(state: PersistedFinanceStateV5): FinanceState {
+  return normalizeV6({
+    ...state,
+    schemaVersion: 6,
+    payrollRecords: [],
+    workTimeEntries: [],
+    deletedEntityIds: []
+  });
+}
+
+function normalizeV4(state: PersistedFinanceStateV4): FinanceState {
+  return normalizeV6({
+    ...state,
+    schemaVersion: 6,
+    taxDocuments: [],
+    laborBenefits: [],
+    payrollRecords: [],
+    workTimeEntries: [],
+    deletedEntityIds: [],
+    activityLogs: state.activityLogs ?? []
+  });
 }
 
 function normalizeV3(state: PersistedFinanceStateV3) {
@@ -118,6 +203,139 @@ function normalizeV3(state: PersistedFinanceStateV3) {
     activityLogs: normalizeActivityLogs((state as { activityLogs?: FinanceActivityLog[] }).activityLogs),
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
   };
+}
+
+function normalizeDeletedEntityIds(ids: unknown[] | undefined) {
+  if (!Array.isArray(ids)) {
+    return [];
+  }
+
+  return Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))).slice(-1000);
+}
+
+function normalizeTaxDocuments(documents: TaxDocument[] | undefined): TaxDocument[] {
+  if (!Array.isArray(documents)) {
+    return [];
+  }
+
+  const currentYear = new Date().getFullYear();
+
+  return documents
+    .filter((document) => typeof document.title === "string" && document.title.trim())
+    .map((document): TaxDocument => ({
+      ...document,
+      id: typeof document.id === "string" && document.id ? document.id : `tax_${crypto.randomUUID()}`,
+      year: Number.isInteger(document.year) && document.year >= 2000 ? document.year : currentYear,
+      person: normalizePerson(document.person),
+      kind: normalizeTaxDocumentKind(document.kind),
+      title: document.title.trim(),
+      institution: typeof document.institution === "string" ? document.institution.trim() || undefined : undefined,
+      amount: Number.isFinite(document.amount) ? document.amount : undefined,
+      documentDate:
+        typeof document.documentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(document.documentDate)
+          ? document.documentDate
+          : undefined,
+      description: typeof document.description === "string" ? document.description.trim() || undefined : undefined,
+      status: normalizeTaxDocumentStatus(document.status),
+      notes: typeof document.notes === "string" ? document.notes.trim() || undefined : undefined,
+      createdAt: typeof document.createdAt === "string" ? document.createdAt : new Date().toISOString(),
+      updatedAt: typeof document.updatedAt === "string" ? document.updatedAt : undefined
+    }));
+}
+
+function normalizeLaborBenefits(benefits: LaborBenefit[] | undefined): LaborBenefit[] {
+  if (!Array.isArray(benefits)) {
+    return [];
+  }
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  return benefits
+    .filter((benefit) => Number.isFinite(benefit.amount) || Number.isFinite(benefit.blockedBalance))
+    .map((benefit): LaborBenefit => ({
+      ...benefit,
+      id: typeof benefit.id === "string" && benefit.id ? benefit.id : `labor_${crypto.randomUUID()}`,
+      person: normalizePerson(benefit.person),
+      type: normalizeLaborBenefitType(benefit.type),
+      employer: typeof benefit.employer === "string" ? benefit.employer.trim() || undefined : undefined,
+      referenceMonth:
+        typeof benefit.referenceMonth === "string" && /^\d{4}-\d{2}$/.test(benefit.referenceMonth)
+          ? benefit.referenceMonth
+          : currentMonth,
+      amount: Number.isFinite(benefit.amount) ? benefit.amount : 0,
+      availableBalance: Number.isFinite(benefit.availableBalance) ? benefit.availableBalance : undefined,
+      blockedBalance: Number.isFinite(benefit.blockedBalance) ? benefit.blockedBalance : undefined,
+      documentDate:
+        typeof benefit.documentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(benefit.documentDate)
+          ? benefit.documentDate
+          : undefined,
+      notes: typeof benefit.notes === "string" ? benefit.notes.trim() || undefined : undefined,
+      createdAt: typeof benefit.createdAt === "string" ? benefit.createdAt : new Date().toISOString(),
+      updatedAt: typeof benefit.updatedAt === "string" ? benefit.updatedAt : undefined
+    }));
+}
+
+function normalizePayrollRecords(records: PayrollRecord[] | undefined): PayrollRecord[] {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  return records
+    .filter((record) => Number.isFinite(record.baseSalary) || Number.isFinite(record.outsideBonus))
+    .map((record): PayrollRecord => ({
+      ...record,
+      id: typeof record.id === "string" && record.id ? record.id : `payroll_${crypto.randomUUID()}`,
+      person: normalizePerson(record.person),
+      referenceMonth:
+        typeof record.referenceMonth === "string" && /^\d{4}-\d{2}$/.test(record.referenceMonth)
+          ? record.referenceMonth
+          : currentMonth,
+      employer: typeof record.employer === "string" ? record.employer.trim() || undefined : undefined,
+      baseSalary: Number.isFinite(record.baseSalary) ? Math.max(0, record.baseSalary) : 0,
+      outsideBonus: Number.isFinite(record.outsideBonus) ? Math.max(0, record.outsideBonus) : 0,
+      payslipInss: normalizeOptionalPositiveNumber(record.payslipInss),
+      payslipIrrf: normalizeOptionalPositiveNumber(record.payslipIrrf),
+      payslipFgts: normalizeOptionalPositiveNumber(record.payslipFgts),
+      taxesPaidByEmployer: record.taxesPaidByEmployer === true,
+      status: normalizePayrollRecordStatus(record.status),
+      notes: typeof record.notes === "string" ? record.notes.trim() || undefined : undefined,
+      createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+      updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined
+    }));
+}
+
+function normalizeWorkTimeEntries(entries: WorkTimeEntry[] | undefined): WorkTimeEntry[] {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => typeof entry.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry.date))
+    .map((entry): WorkTimeEntry => ({
+      ...entry,
+      id: typeof entry.id === "string" && entry.id ? entry.id : `work_${crypto.randomUUID()}`,
+      person: normalizePerson(entry.person),
+      startTime: normalizeTime(entry.startTime, "08:00"),
+      endTime: normalizeTime(entry.endTime, "18:00"),
+      lunchMinutes: Number.isFinite(entry.lunchMinutes) ? Math.max(0, Math.min(240, Math.round(entry.lunchMinutes))) : 72,
+      expectedMinutes:
+        Number.isFinite(entry.expectedMinutes) && entry.expectedMinutes >= 0
+          ? Math.round(entry.expectedMinutes)
+          : getDefaultExpectedMinutesForDate(entry.date),
+      notes: typeof entry.notes === "string" ? entry.notes.trim() || undefined : undefined,
+      attachmentImageName: typeof entry.attachmentImageName === "string" ? entry.attachmentImageName : undefined,
+      attachmentDataUrl: typeof entry.attachmentDataUrl === "string" ? entry.attachmentDataUrl : undefined,
+      attachmentStoragePath: typeof entry.attachmentStoragePath === "string" ? entry.attachmentStoragePath : undefined,
+      attachmentMimeType: typeof entry.attachmentMimeType === "string" ? entry.attachmentMimeType : undefined,
+      attachmentSize:
+        typeof entry.attachmentSize === "number" && Number.isFinite(entry.attachmentSize)
+          ? Math.max(0, Math.round(entry.attachmentSize))
+          : undefined,
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : undefined
+    }));
 }
 
 function normalizeV2(state: PersistedFinanceStateV2) {
@@ -252,6 +470,10 @@ function normalizeActivityLogs(logs: FinanceActivityLog[] | undefined): FinanceA
         log.entityType === "goal" ||
         log.entityType === "budget" ||
         log.entityType === "account" ||
+        log.entityType === "tax_document" ||
+        log.entityType === "labor_benefit" ||
+        log.entityType === "payroll_record" ||
+        log.entityType === "work_time_entry" ||
         log.entityType === "sync" ||
         log.entityType === "system"
           ? log.entityType
@@ -350,4 +572,66 @@ function normalizePaymentMethod(method: unknown): PaymentMethod {
   }
 
   return "other";
+}
+
+function normalizeTaxDocumentKind(kind: unknown): TaxDocumentKind {
+  const allowed: TaxDocumentKind[] = [
+    "income_report",
+    "business_income",
+    "medical_receipt",
+    "education_receipt",
+    "bank_balance",
+    "investment",
+    "asset",
+    "property",
+    "vehicle",
+    "debt",
+    "dependent",
+    "other"
+  ];
+
+  return allowed.includes(kind as TaxDocumentKind) ? (kind as TaxDocumentKind) : "other";
+}
+
+function normalizeTaxDocumentStatus(status: unknown): TaxDocumentStatus {
+  if (status === "reviewed" || status === "ready") {
+    return status;
+  }
+
+  return "pending";
+}
+
+function normalizeLaborBenefitType(type: unknown): LaborBenefitType {
+  const allowed: LaborBenefitType[] = [
+    "fgts",
+    "inss",
+    "salary",
+    "thirteenth_salary",
+    "vacation",
+    "benefit",
+    "other"
+  ];
+
+  return allowed.includes(type as LaborBenefitType) ? (type as LaborBenefitType) : "other";
+}
+
+function normalizePayrollRecordStatus(status: unknown): PayrollRecordStatus {
+  if (status === "reviewed" || status === "attention") {
+    return status;
+  }
+
+  return "pending_review";
+}
+
+function normalizeOptionalPositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined;
+}
+
+function normalizeTime(value: unknown, fallback: string) {
+  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : fallback;
+}
+
+function getDefaultExpectedMinutesForDate(date: string) {
+  const weekday = new Date(`${date}T12:00:00`).getDay();
+  return weekday >= 1 && weekday <= 5 ? 528 : 0;
 }

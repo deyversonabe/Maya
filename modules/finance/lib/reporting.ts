@@ -1,4 +1,4 @@
-import type { FinanceState, PayableBill, Transaction } from "../types";
+import type { FinanceState, LaborBenefit, PayableBill, PayrollRecord, TaxDocument, Transaction, WorkTimeEntry } from "../types";
 import { getBillEffectiveStatus } from "./calculations";
 
 export type FinanceReportPeriod = {
@@ -24,6 +24,10 @@ export type FinanceReport = {
   };
   transactions: Transaction[];
   bills: PayableBill[];
+  taxDocuments: TaxDocument[];
+  laborBenefits: LaborBenefit[];
+  payrollRecords: PayrollRecord[];
+  workTimeEntries: WorkTimeEntry[];
   recurring: Array<{
     key: string;
     label: string;
@@ -68,6 +72,19 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
   const bills = state.bills
     .filter((bill) => isDateInsidePeriod(bill.dueDate, period))
     .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+  const fiscalYear = Number(period.start.slice(0, 4));
+  const taxDocuments = state.taxDocuments
+    .filter((document) => document.year === fiscalYear)
+    .sort((left, right) => (left.documentDate ?? "").localeCompare(right.documentDate ?? ""));
+  const laborBenefits = state.laborBenefits
+    .filter((benefit) => benefit.referenceMonth.startsWith(String(fiscalYear)))
+    .sort((left, right) => left.referenceMonth.localeCompare(right.referenceMonth));
+  const payrollRecords = state.payrollRecords
+    .filter((record) => record.referenceMonth.startsWith(String(fiscalYear)))
+    .sort((left, right) => left.referenceMonth.localeCompare(right.referenceMonth));
+  const workTimeEntries = state.workTimeEntries
+    .filter((entry) => isDateInsidePeriod(entry.date, period))
+    .sort((left, right) => left.date.localeCompare(right.date));
 
   const income = sumTransactions(transactions, "income");
   const transactionExpenses = sumTransactions(transactions, "expense");
@@ -93,6 +110,10 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     },
     transactions,
     bills,
+    taxDocuments,
+    laborBenefits,
+    payrollRecords,
+    workTimeEntries,
     recurring: buildRecurringReport(transactions, bills),
     incomeByCategory: buildCategoryReport(transactions.filter((transaction) => transaction.type === "income")),
     expensesByCategory: buildExpenseCategoryReport(

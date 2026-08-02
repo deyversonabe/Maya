@@ -12,8 +12,12 @@ import type {
   FinanceState,
   Goal,
   GoalContribution,
+  LaborBenefit,
   PayableBill,
-  Transaction
+  PayrollRecord,
+  TaxDocument,
+  Transaction,
+  WorkTimeEntry
 } from "../types";
 
 const STORAGE_KEY = "maya.finance.v1";
@@ -656,6 +660,7 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           transactions: current.transactions.filter((transaction) => transaction.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Removeu transacao",
             entityType: "transaction",
@@ -707,6 +712,7 @@ export function useFinanceStore() {
           transactions: current.transactions.map((transaction) =>
             transaction.accountId === id ? { ...transaction, accountId: DEFAULT_FINANCE_ACCOUNT_ID } : transaction
           ),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Removeu carteira",
             entityType: "account",
@@ -822,6 +828,7 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           goals: current.goals.filter((goal) => goal.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Removeu meta",
             entityType: "goal",
@@ -855,6 +862,7 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           budgets: current.budgets.filter((budget) => budget.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Removeu orcamento",
             entityType: "budget",
@@ -940,10 +948,205 @@ export function useFinanceStore() {
         setState((current) => ({
           ...current,
           bills: current.bills.filter((bill) => bill.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Removeu conta",
             entityType: "bill",
             entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addTaxDocument(document: Omit<TaxDocument, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          taxDocuments: [
+            {
+              ...document,
+              id: `tax_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.taxDocuments
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou documento fiscal",
+            entityType: "tax_document",
+            entityLabel: document.title,
+            details: `${document.year} - ${document.person}`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateTaxDocument(id: string, patch: Partial<Omit<TaxDocument, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          taxDocuments: current.taxDocuments.map((document) =>
+            document.id === id ? { ...document, ...patch, updatedAt: now } : document
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou documento fiscal",
+            entityType: "tax_document",
+            entityLabel: current.taxDocuments.find((document) => document.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeTaxDocument(id: string) {
+        setState((current) => ({
+          ...current,
+          taxDocuments: current.taxDocuments.filter((document) => document.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu documento fiscal",
+            entityType: "tax_document",
+            entityLabel: current.taxDocuments.find((document) => document.id === id)?.title ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addLaborBenefit(benefit: Omit<LaborBenefit, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          laborBenefits: [
+            {
+              ...benefit,
+              id: `labor_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.laborBenefits
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: benefit.employer ?? benefit.type,
+            details: `${benefit.referenceMonth} - ${benefit.person}`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateLaborBenefit(id: string, patch: Partial<Omit<LaborBenefit, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          laborBenefits: current.laborBenefits.map((benefit) =>
+            benefit.id === id ? { ...benefit, ...patch, updatedAt: now } : benefit
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: current.laborBenefits.find((benefit) => benefit.id === id)?.employer ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeLaborBenefit(id: string) {
+        setState((current) => ({
+          ...current,
+          laborBenefits: current.laborBenefits.filter((benefit) => benefit.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: current.laborBenefits.find((benefit) => benefit.id === id)?.employer ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addPayrollRecord(record: Omit<PayrollRecord, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          payrollRecords: [
+            {
+              ...record,
+              id: `payroll_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.payrollRecords
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou holerite",
+            entityType: "payroll_record",
+            entityLabel: `${record.referenceMonth} - ${record.person}`,
+            details: record.employer
+          }),
+          updatedAt: now
+        }));
+      },
+      updatePayrollRecord(id: string, patch: Partial<Omit<PayrollRecord, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          payrollRecords: current.payrollRecords.map((record) =>
+            record.id === id ? { ...record, ...patch, updatedAt: now } : record
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou holerite",
+            entityType: "payroll_record",
+            entityLabel: current.payrollRecords.find((record) => record.id === id)?.referenceMonth ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removePayrollRecord(id: string) {
+        setState((current) => ({
+          ...current,
+          payrollRecords: current.payrollRecords.filter((record) => record.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu holerite",
+            entityType: "payroll_record",
+            entityLabel: current.payrollRecords.find((record) => record.id === id)?.referenceMonth ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      upsertWorkTimeEntry(entry: Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const existing = current.workTimeEntries.find(
+            (item) => item.date === entry.date && item.person === entry.person
+          );
+
+          return {
+            ...current,
+            workTimeEntries: existing
+              ? current.workTimeEntries.map((item) =>
+                  item.id === existing.id ? { ...item, ...entry, updatedAt: now } : item
+                )
+              : [
+                  {
+                    ...entry,
+                    id: `work_${crypto.randomUUID()}`,
+                    createdAt: now,
+                    updatedAt: now
+                  },
+                  ...current.workTimeEntries
+                ],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: existing ? "Atualizou ponto" : "Registrou ponto",
+              entityType: "work_time_entry",
+              entityLabel: `${entry.date} - ${entry.person}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      removeWorkTimeEntry(id: string) {
+        setState((current) => ({
+          ...current,
+          workTimeEntries: current.workTimeEntries.filter((entry) => entry.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu ponto",
+            entityType: "work_time_entry",
+            entityLabel: current.workTimeEntries.find((entry) => entry.id === id)?.date ?? id
           }),
           updatedAt: new Date().toISOString()
         }));
@@ -961,9 +1164,15 @@ export function useFinanceStore() {
         }));
       },
       reset() {
-        const nextState = createEmptyFinanceState();
-        setState(nextState);
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        setState((current) => {
+          const nextState = {
+            ...createEmptyFinanceState(),
+            deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, ...collectStateEntityIds(current)),
+            updatedAt: new Date().toISOString()
+          };
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+          return nextState;
+        });
       }
     }),
     []
@@ -1025,6 +1234,10 @@ function hasFinanceContent(state: FinanceState) {
     state.goals.length > 0 ||
     state.budgets.length > 0 ||
     state.bills.length > 0 ||
+    state.taxDocuments.length > 0 ||
+    state.laborBenefits.length > 0 ||
+    state.payrollRecords.length > 0 ||
+    state.workTimeEntries.length > 0 ||
     state.accounts.some((account) => account.id !== DEFAULT_FINANCE_ACCOUNT_ID || account.openingBalance !== 0)
   );
 }
@@ -1036,20 +1249,46 @@ function hasDifferentCloudPayload(left: FinanceState, right: FinanceState) {
 function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState): FinanceState {
   const cloudTime = getTime(cloudState.updatedAt);
   const localTime = getTime(localState.updatedAt);
+  const deletedEntityIds = addDeletedEntityIds(cloudState.deletedEntityIds, ...localState.deletedEntityIds);
+  const deletedEntityIdSet = new Set(deletedEntityIds);
 
   return {
-    schemaVersion: 4,
+    schemaVersion: 6,
     profile: localTime >= cloudTime ? localState.profile : cloudState.profile,
-    accounts: mergeById(cloudState.accounts, localState.accounts).sort(sortByCreatedAtDesc),
-    transactions: mergeById(cloudState.transactions, localState.transactions).sort(sortByCreatedAtDesc),
-    goals: mergeById(cloudState.goals, localState.goals).sort(sortByCreatedAtDesc),
-    budgets: mergeById(cloudState.budgets, localState.budgets).sort(sortByCreatedAtDesc),
-    bills: mergeById(cloudState.bills, localState.bills).sort(sortByCreatedAtDesc),
-    activityLogs: mergeById(cloudState.activityLogs, localState.activityLogs)
+    accounts: ensureDefaultAccount(filterDeletedItems(mergeById(cloudState.accounts, localState.accounts), deletedEntityIdSet)).sort(sortByCreatedAtDesc),
+    transactions: filterDeletedItems(mergeById(cloudState.transactions, localState.transactions), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    goals: filterDeletedItems(mergeById(cloudState.goals, localState.goals), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    budgets: filterDeletedItems(mergeById(cloudState.budgets, localState.budgets), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    bills: filterDeletedItems(mergeById(cloudState.bills, localState.bills), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    taxDocuments: filterDeletedItems(mergeById(cloudState.taxDocuments, localState.taxDocuments), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    laborBenefits: filterDeletedItems(mergeById(cloudState.laborBenefits, localState.laborBenefits), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    payrollRecords: filterDeletedItems(mergeById(cloudState.payrollRecords, localState.payrollRecords), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    workTimeEntries: filterDeletedItems(mergeById(cloudState.workTimeEntries, localState.workTimeEntries), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    activityLogs: filterDeletedItems(mergeById(cloudState.activityLogs, localState.activityLogs), deletedEntityIdSet)
       .sort(sortByCreatedAtDesc)
       .slice(0, 200),
+    deletedEntityIds,
     updatedAt: new Date(Math.max(cloudTime, localTime, Date.now())).toISOString()
   };
+}
+
+function addDeletedEntityIds(current: string[], ...ids: string[]) {
+  const safeIds = ids.filter((id) => id && id !== DEFAULT_FINANCE_ACCOUNT_ID);
+  return Array.from(new Set([...current, ...safeIds])).slice(-1000);
+}
+
+function collectStateEntityIds(state: FinanceState) {
+  return [
+    ...state.accounts.filter((account) => account.id !== DEFAULT_FINANCE_ACCOUNT_ID).map((account) => account.id),
+    ...state.transactions.map((transaction) => transaction.id),
+    ...state.goals.map((goal) => goal.id),
+    ...state.budgets.map((budget) => budget.id),
+    ...state.bills.map((bill) => bill.id),
+    ...state.taxDocuments.map((document) => document.id),
+    ...state.laborBenefits.map((benefit) => benefit.id),
+    ...state.payrollRecords.map((record) => record.id),
+    ...state.workTimeEntries.map((entry) => entry.id)
+  ];
 }
 
 type MergeableFinanceItem = {
@@ -1074,6 +1313,16 @@ function mergeById<T extends MergeableFinanceItem>(base: T[], incoming: T[]) {
   });
 
   return Array.from(merged.values());
+}
+
+function filterDeletedItems<T extends { id: string }>(items: T[], deletedEntityIds: Set<string>) {
+  return items.filter((item) => !deletedEntityIds.has(item.id));
+}
+
+function ensureDefaultAccount(accounts: FinanceAccount[]) {
+  return accounts.some((account) => account.id === DEFAULT_FINANCE_ACCOUNT_ID)
+    ? accounts
+    : [createEmptyFinanceState().accounts[0], ...accounts];
 }
 
 function preserveDocumentFields<T extends MergeableFinanceItem>(base: T, incoming: T): T {

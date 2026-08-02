@@ -19,8 +19,9 @@ export function getCurrentMonthKey() {
 
 export function calculateSummary(state: FinanceState): FinanceSummary {
   const currentMonth = getCurrentMonthKey();
-  const monthTransactions = getTransactionsByMonth(state.transactions, currentMonth);
-  const monthBills = getBillsByMonth(state.bills, currentMonth);
+  const today = toDateKey(new Date());
+  const monthTransactions = getTransactionsByMonthUntil(state.transactions, currentMonth, today);
+  const monthBills = getPaidBillsByPaymentMonthUntil(state.bills, currentMonth, today);
 
   const income = sumByType(monthTransactions, "income");
   const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
@@ -49,6 +50,7 @@ export function calculateSummary(state: FinanceState): FinanceSummary {
 }
 
 export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill[] = []) {
+  const today = toDateKey(new Date());
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - index));
@@ -56,8 +58,8 @@ export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill
   });
 
   return months.map((month) => {
-    const monthTransactions = getTransactionsByMonth(transactions, month);
-    const monthBills = getBillsByMonth(bills, month);
+    const monthTransactions = getTransactionsByMonthUntil(transactions, month, today);
+    const monthBills = getPaidBillsByPaymentMonthUntil(bills, month, today);
     return {
       month,
       income: sumByType(monthTransactions, "income"),
@@ -68,6 +70,7 @@ export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill
 }
 
 export function buildMonthSummaries(transactions: Transaction[], monthCount = 6, bills: PayableBill[] = []): MonthSummary[] {
+  const today = toDateKey(new Date());
   const months = Array.from({ length: monthCount }, (_, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (monthCount - 1 - index));
@@ -75,8 +78,8 @@ export function buildMonthSummaries(transactions: Transaction[], monthCount = 6,
   });
 
   return months.map((month) => {
-    const monthTransactions = getTransactionsByMonth(transactions, month);
-    const monthBills = getBillsByMonth(bills, month);
+    const monthTransactions = getTransactionsByMonthUntil(transactions, month, today);
+    const monthBills = getPaidBillsByPaymentMonthUntil(bills, month, today);
     const income = sumByType(monthTransactions, "income");
     const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
     const investments = sumByType(monthTransactions, "investment");
@@ -175,8 +178,9 @@ export function buildInsights(state: FinanceState) {
 
 export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()): FinancialHealthAlert[] {
   const currentMonth = now.toISOString().slice(0, 7);
-  const currentTransactions = getTransactionsByMonth(state.transactions, currentMonth);
-  const currentBills = getBillsByMonth(state.bills, currentMonth);
+  const today = toDateKey(now);
+  const currentTransactions = getTransactionsByMonthUntil(state.transactions, currentMonth, today);
+  const currentBills = getPaidBillsByPaymentMonthUntil(state.bills, currentMonth, today);
   const previousMonths = buildMonthSummaries(state.transactions, 4, state.bills).filter((month) => month.month !== currentMonth);
   const currentIncome = sumByType(currentTransactions, "income");
   const currentExpenses = calculateMonthExpenseTotal(currentTransactions, currentBills);
@@ -275,8 +279,8 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
   const healthScore = calculateHealthScore(current, state);
   const trend = savingsDelta > 5 || current.availableBalance > previous.availableBalance ? "growth" : savingsDelta < -5 ? "drop" : "stable";
   const biggestCategory = getBiggestExpenseCategory(state.transactions, state.bills, current.month);
-  const currentTransactions = getTransactionsByMonth(state.transactions, current.month);
-  const currentBills = getBillsByMonth(state.bills, current.month);
+  const currentTransactions = getTransactionsByMonthUntil(state.transactions, current.month);
+  const currentBills = getPaidBillsByPaymentMonthUntil(state.bills, current.month);
   const recurringCount =
     currentTransactions.filter((transaction) => transaction.recurring).length +
     currentBills.filter((bill) => bill.recurrence === "monthly").length;
@@ -348,8 +352,23 @@ export function getTransactionsByMonth(transactions: Transaction[], month: strin
   return transactions.filter((transaction) => transaction.date.startsWith(month));
 }
 
+export function getTransactionsByMonthUntil(transactions: Transaction[], month: string, date = toDateKey(new Date())) {
+  return getTransactionsByMonth(transactions, month).filter((transaction) => transaction.date <= date);
+}
+
 export function getBillsByMonth(bills: PayableBill[], month: string) {
   return bills.filter((bill) => bill.dueDate.startsWith(month));
+}
+
+export function getPaidBillsByPaymentMonthUntil(bills: PayableBill[], month: string, date = toDateKey(new Date())) {
+  return bills
+    .filter((bill) => bill.status === "paid")
+    .filter((bill) => getBillPaymentDate(bill).startsWith(month))
+    .filter((bill) => getBillPaymentDate(bill) <= date);
+}
+
+export function getBillPaymentDate(bill: PayableBill) {
+  return bill.paidAt?.slice(0, 10) || bill.dueDate;
 }
 
 export function getBillEffectiveStatus(bill: PayableBill, now = new Date()): BillStatus {
@@ -440,13 +459,15 @@ export function buildBillAlerts(bills: PayableBill[], now = new Date()): BillAle
 }
 
 export function buildBudgetUsages(state: FinanceState, month: string): BudgetUsage[] {
+  const today = toDateKey(new Date());
+
   return state.budgets
     .filter((budget) => budget.month === month)
     .map((budget) => {
-      const transactionSpent = getTransactionsByMonth(state.transactions, month)
+      const transactionSpent = getTransactionsByMonthUntil(state.transactions, month, today)
         .filter((transaction) => transaction.type === "expense" && transaction.category === budget.category)
         .reduce((total, transaction) => total + transaction.amount, 0);
-      const billSpent = getBillsByMonth(state.bills, month)
+      const billSpent = getPaidBillsByPaymentMonthUntil(state.bills, month, today)
         .filter((bill) => bill.category === budget.category)
         .reduce((total, bill) => total + bill.amount, 0);
       const spent = transactionSpent + billSpent;
@@ -506,7 +527,10 @@ function diffCalendarDays(fromDate: string, toDate: string) {
 }
 
 function getBiggestExpenseCategory(transactions: Transaction[], bills: PayableBill[], month: string) {
-  const totals = buildExpenseCategoryTotals(getTransactionsByMonth(transactions, month), getBillsByMonth(bills, month));
+  const totals = buildExpenseCategoryTotals(
+    getTransactionsByMonthUntil(transactions, month),
+    getPaidBillsByPaymentMonthUntil(bills, month)
+  );
 
   const [category, amount] = Object.entries(totals).sort((a, b) => b[1] - a[1])[0] ?? ["Sem despesas", 0];
   return { category, amount };
@@ -530,8 +554,8 @@ function calculateHealthScore(current: MonthSummary, state: FinanceState) {
           ? 7
           : 10;
   const hasMonthlyRecurring =
-    getTransactionsByMonth(state.transactions, current.month).some((transaction) => transaction.recurring) ||
-    getBillsByMonth(state.bills, current.month).some((bill) => bill.recurrence === "monthly");
+    getTransactionsByMonthUntil(state.transactions, current.month).some((transaction) => transaction.recurring) ||
+    getPaidBillsByPaymentMonthUntil(state.bills, current.month).some((bill) => bill.recurrence === "monthly");
   const predictabilityComponent = hasMonthlyRecurring ? 8 : 3;
 
   return Math.min(
@@ -547,7 +571,10 @@ function buildExpenseCategoryAverages(transactions: Transaction[], bills: Payabl
   const totals: Record<string, number[]> = {};
 
   previousMonths.forEach((month) => {
-    const monthTotals = buildExpenseCategoryTotals(getTransactionsByMonth(transactions, month), getBillsByMonth(bills, month));
+    const monthTotals = buildExpenseCategoryTotals(
+      getTransactionsByMonthUntil(transactions, month),
+      getPaidBillsByPaymentMonthUntil(bills, month)
+    );
 
     Object.entries(monthTotals).forEach(([category, amount]) => {
       totals[category] = [...(totals[category] ?? []), amount];

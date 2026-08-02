@@ -16,6 +16,33 @@ export type PaymentMethod = "cash" | "boleto" | "pix" | "card" | "other";
 
 export type FinanceAccountKind = "checking" | "cash" | "wallet" | "savings" | "other";
 
+export type TaxDocumentKind =
+  | "income_report"
+  | "business_income"
+  | "medical_receipt"
+  | "education_receipt"
+  | "bank_balance"
+  | "investment"
+  | "asset"
+  | "property"
+  | "vehicle"
+  | "debt"
+  | "dependent"
+  | "other";
+
+export type TaxDocumentStatus = "pending" | "reviewed" | "ready";
+
+export type LaborBenefitType =
+  | "fgts"
+  | "inss"
+  | "salary"
+  | "thirteenth_salary"
+  | "vacation"
+  | "benefit"
+  | "other";
+
+export type PayrollRecordStatus = "pending_review" | "reviewed" | "attention";
+
 export type FiscalDocumentType =
   | "danfe_nfe"
   | "danfe_nfce"
@@ -134,6 +161,99 @@ export interface PayableBill {
   createdAt: string;
 }
 
+export interface TaxDocument {
+  id: string;
+  year: number;
+  person: Person;
+  kind: TaxDocumentKind;
+  title: string;
+  institution?: string;
+  amount?: number;
+  documentDate?: string;
+  description?: string;
+  status: TaxDocumentStatus;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface LaborBenefit {
+  id: string;
+  person: Person;
+  type: LaborBenefitType;
+  employer?: string;
+  referenceMonth: string;
+  amount: number;
+  availableBalance?: number;
+  blockedBalance?: number;
+  documentDate?: string;
+  notes?: string;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  person: Person;
+  referenceMonth: string;
+  employer?: string;
+  baseSalary: number;
+  outsideBonus: number;
+  payslipInss?: number;
+  payslipIrrf?: number;
+  payslipFgts?: number;
+  taxesPaidByEmployer: boolean;
+  status: PayrollRecordStatus;
+  notes?: string;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface WorkTimeEntry {
+  id: string;
+  person: Person;
+  date: string;
+  startTime: string;
+  endTime: string;
+  lunchMinutes: number;
+  expectedMinutes: number;
+  notes?: string;
+  attachmentImageName?: string;
+  attachmentDataUrl?: string;
+  attachmentStoragePath?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface TimeClockDraft {
+  date: string;
+  startTime: string;
+  endTime: string;
+  lunchMinutes: number;
+  expectedMinutes?: number;
+  confidence: number;
+  missingFields: string[];
+  punches: string[];
+  notes?: string;
+}
+
 export interface HouseholdProfile {
   name: string;
   slogan: string;
@@ -142,18 +262,34 @@ export interface HouseholdProfile {
 }
 
 export interface FinanceState {
-  schemaVersion: 4;
+  schemaVersion: 6;
   profile: HouseholdProfile;
   accounts: FinanceAccount[];
   transactions: Transaction[];
   goals: Goal[];
   budgets: Budget[];
   bills: PayableBill[];
+  taxDocuments: TaxDocument[];
+  laborBenefits: LaborBenefit[];
+  payrollRecords: PayrollRecord[];
+  workTimeEntries: WorkTimeEntry[];
   activityLogs: FinanceActivityLog[];
+  deletedEntityIds: string[];
   updatedAt: string;
 }
 
-export type FinanceActivityEntity = "transaction" | "bill" | "goal" | "budget" | "account" | "sync" | "system";
+export type FinanceActivityEntity =
+  | "transaction"
+  | "bill"
+  | "goal"
+  | "budget"
+  | "account"
+  | "tax_document"
+  | "labor_benefit"
+  | "payroll_record"
+  | "work_time_entry"
+  | "sync"
+  | "system";
 
 export interface FinanceActivityLog {
   id: string;
