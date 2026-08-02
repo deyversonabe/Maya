@@ -1,4 +1,4 @@
-# Implementation Report - Admin, Relatorios e Push Real
+﻿# Implementation Report - Admin, Relatorios e Push Real
 
 Data: 2026-07-21
 
@@ -69,7 +69,7 @@ Evoluir a Maya para uma ferramenta mais profissional com painel administrativo, 
 - Aplicar a migration `20260721_admin_push_relational_foundation.sql` no Supabase.
 - Gerar chaves VAPID e configurar variaveis na Vercel.
 - Testar em celular real instalado como PWA para validar push com app fechado.
-- Confirmar em ambiente real que anexos do Supabase Storage abrem entre Deyveron e Tom.
+- Confirmar em ambiente real que anexos do Supabase Storage abrem entre Deyverson e Tom.
 
 ## Proximos Passos Recomendados
 

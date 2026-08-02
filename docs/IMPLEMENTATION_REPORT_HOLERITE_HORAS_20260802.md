@@ -1,4 +1,4 @@
-# Implementation Report - Holerite e Horas Trabalhadas
+﻿# Implementation Report - Holerite e Horas Trabalhadas
 
 Data: 2026-08-02
 
@@ -61,7 +61,7 @@ Data: 2026-08-02
 
 - Aplicar `supabase/migrations/20260802_holerite_hours_state_merge.sql` no Supabase antes de validar sincronizacao em producao.
 - Testar upload real de holerite com Supabase Storage em producao.
-- Testar login com Deyveron e Tom e conferir se um registro de horas feito em um aparelho aparece no outro.
+- Testar login com Deyverson e Tom e conferir se um registro de horas feito em um aparelho aparece no outro.
 - Testar foto real de ponto com boa luz, verificando se a Maya identifica a data alvo e preserva os horarios exatos sem arredondar.
 - Testar um mes completo com registros de segunda a sexta e finais de semana sem lancamento para confirmar que sabado/domingo permanecem como folga.
 - Testar exportacao PDF mensal da aba `Horas` em desktop e celular.
@@ -71,6 +71,6 @@ Data: 2026-08-02
 ## Proximos passos recomendados
 
 - Aplicar o zip no GitHub e aguardar build da Vercel.
-- Fazer login como Deyveron, criar um registro de horas do mes atual e confirmar sincronizacao em outro aparelho.
+- Fazer login como Deyverson, criar um registro de horas do mes atual e confirmar sincronizacao em outro aparelho.
 - Criar um holerite de teste com base oficial e bonus por fora, anexar o documento e conferir a exportacao Excel.
 - Revisar periodicamente as regras de calculo trabalhista antes de usar os dados para qualquer decisao formal.

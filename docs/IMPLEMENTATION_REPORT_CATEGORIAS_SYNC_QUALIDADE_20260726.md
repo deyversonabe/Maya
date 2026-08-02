@@ -1,4 +1,4 @@
-# Implementation Report - Categorias, carteiras e sincronizacao
+﻿# Implementation Report - Categorias, carteiras e sincronizacao
 
 Data: 2026-07-26
 
@@ -34,8 +34,8 @@ Data: 2026-07-26
 
 ## Decisoes arquiteturais tomadas
 
-- Pessoas visiveis do sistema passam a ser `Deyveron`, `Tom` e `Casal`, removendo `Pessoa 1` e `Pessoa 2` da experiencia.
-- Dados antigos continuam compativeis: a migracao local converte `Pessoa 1` para `Deyveron` e `Pessoa 2` para `Tom`.
+- Pessoas visiveis do sistema passam a ser `Deyverson`, `Tom` e `Casal`, removendo `Pessoa 1` e `Pessoa 2` da experiencia.
+- Dados antigos continuam compativeis: a migracao local converte `Pessoa 1` para `Deyverson` e `Pessoa 2` para `Tom`.
 - A carteira padrao passa a se chamar `Carteira do casal` para reduzir ambiguidade.
 - Categorias de despesa foram ampliadas com Combustivel, Melhoria casa, Conforto e Manutencao.
 - O conceito visivel de `Qualidade` foi removido da interface por nao ser claro para o usuario final.

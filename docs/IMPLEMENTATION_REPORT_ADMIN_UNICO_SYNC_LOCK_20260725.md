@@ -1,4 +1,4 @@
-# Implementation Report - Admin unico e sincronizacao segura
+﻿# Implementation Report - Admin unico e sincronizacao segura
 
 Data: 2026-07-25
 
@@ -77,7 +77,7 @@ A dependencia `xlsx` foi removida porque continuava com alertas altos sem correc
 
 - Aplicar a migration nova no SQL Editor do Supabase.
 - Fazer redeploy na Vercel depois da migration.
-- Testar Deyveron e Tom em dois aparelhos adicionando lancamentos quase ao mesmo tempo.
+- Testar Deyverson e Tom em dois aparelhos adicionando lancamentos quase ao mesmo tempo.
 - Considerar migracao gradual para tabelas relacionais como fonte primaria de transacoes, contas, metas e anexos.
 - Monitorar atualizacoes futuras do Next/sharp sem aplicar downgrades forcados.
 

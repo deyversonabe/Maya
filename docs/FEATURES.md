@@ -1,4 +1,4 @@
-# Features
+﻿# Features
 
 Este documento registra o mapa funcional do produto. Como o dominio ainda nao foi definido, ele estabelece o processo para criacao de funcionalidades.
 
@@ -173,7 +173,7 @@ Objetivo: organizar informacoes que ajudam a preparar imposto de renda, patrimon
 
 Escopo:
 
-- Aba `Fiscal` com filtro por ano e pessoa (`Deyveron`, `Tom`, `Casal` ou consolidado).
+- Aba `Fiscal` com filtro por ano e pessoa (`Deyverson`, `Tom`, `Casal` ou consolidado).
 - Cadastro de documentos fiscais: informe de rendimento, renda profissional, saude, educacao, saldo bancario, investimento, bem, imovel, veiculo, divida, dependente ou outro.
 - Status de documento fiscal: pendente, conferido ou pronto.
 - Cadastro de dados trabalhistas: FGTS, INSS, salario, 13 salario, ferias, beneficios ou outro.
@@ -208,7 +208,7 @@ Escopo:
 - Cada dia exibe status claro: `Completo`, `Sobrando`, `Devendo`, `Folga`, `Aguardando` ou `Sem registro`.
 - Resumo visual mostra saldo do mes, saldo da semana selecionada e banco total acumulado por pessoa.
 - Alertas de conferencia destacam dias uteis sem registro, saldo negativo maior que 1h, jornadas acima de 10h e intervalos incoerentes.
-- Registro por pessoa (`Deyveron`, `Tom` ou `Casal`) com observacoes.
+- Registro por pessoa (`Deyverson`, `Tom` ou `Casal`) com observacoes.
 - Foto do ponto vinculada ao registro diario, com abertura dentro do app por anexo privado quando Supabase Storage estiver configurado.
 - Finais de semana nao geram debito automatico; se houver registro, entram como saldo positivo.
 - Exportacao Excel com aba `Horas` e exportacao PDF mensal direto da aba de horas.
@@ -375,7 +375,7 @@ Escopo:
 - Exibir saldo atual acumulado a cada movimento.
 - Exibir saldo apos contas, descontando somente contas vencidas e contas do mes de referencia, sem somar parcelas/recorrencias de meses futuros de uma vez.
 - Exibir debitos e saldos realizados sem descontar lancamentos futuros nao vencidos.
-- Criar carteiras/contas internas usando nomes claros, como Carteira do casal, Deyveron, Tom, dinheiro, bancos ou outra carteira personalizada.
+- Criar carteiras/contas internas usando nomes claros, como Carteira do casal, Deyverson, Tom, dinheiro, bancos ou outra carteira personalizada.
 - Informar saldo inicial e data inicial de cada carteira.
 - Vincular receitas, despesas, investimentos e transferencias a uma carteira para calcular saldo por conta e saldo geral.
 - Editar ou excluir qualquer renda ou despesa cadastrada.

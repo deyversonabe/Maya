@@ -1,4 +1,4 @@
-# Implementation Report - Usuarios iniciais e recuperacao
+﻿# Implementation Report - Usuarios iniciais e recuperacao
 
 ## Arquivos criados
 
@@ -22,7 +22,7 @@
 
 - Supabase Auth permanece como fonte de identidade.
 - O login tecnico continua baseado em e-mail e senha.
-- `Deyveron` e `Tom` foram tratados como nomes de exibicao/metadados, evitando criar um sistema paralelo de usuarios inseguro.
+- `Deyverson` e `Tom` foram tratados como nomes de exibicao/metadados, evitando criar um sistema paralelo de usuarios inseguro.
 - Senhas nao foram gravadas no codigo, na documentacao nem no `.env.example`.
 - Foi criado um script administrativo local para criar ou atualizar usuarios por Supabase Admin API usando `SUPABASE_SERVICE_ROLE_KEY` somente fora do navegador.
 - O formulario de login passou a aceitar senha definida pelo administrador, enquanto a criacao de nova conta continua exigindo 6+ caracteres.

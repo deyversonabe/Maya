@@ -1,4 +1,4 @@
-# Implementation Report - Upgrades de confiabilidade Maya - 2026-07-21
+﻿# Implementation Report - Upgrades de confiabilidade Maya - 2026-07-21
 
 ## Arquivos criados
 
@@ -65,4 +65,4 @@
 - Conferir variaveis de ambiente da Vercel.
 - Fazer redeploy de producao.
 - Testar upload de nota, boleto e extrato em celular e desktop.
-- Confirmar que Deyveron e Tom visualizam o mesmo anexo em aparelhos diferentes.
+- Confirmar que Deyverson e Tom visualizam o mesmo anexo em aparelhos diferentes.

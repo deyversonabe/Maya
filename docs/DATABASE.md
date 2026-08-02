@@ -1,4 +1,4 @@
-# Database
+﻿# Database
 
 Este documento define padroes de dados e deve ser atualizado sempre que tabelas, colecoes, entidades persistidas, migracoes ou convencoes forem alteradas.
 
@@ -50,7 +50,7 @@ Entidades provaveis:
 
 ## Sincronizacao online atual
 
-A sincronizacao online atual usa um workspace financeiro compartilhado para preservar velocidade de entrega e permitir que Deyveron, Tom e outros membros autorizados vejam a mesma base em qualquer aparelho.
+A sincronizacao online atual usa um workspace financeiro compartilhado para preservar velocidade de entrega e permitir que Deyverson, Tom e outros membros autorizados vejam a mesma base em qualquer aparelho.
 
 Tabelas:
 
@@ -127,7 +127,7 @@ Versao atual do estado local/online:
 - `schemaVersion: 6`.
 - Estados antigos sao migrados automaticamente, adicionando `taxDocuments`, `laborBenefits`, `payrollRecords` e `workTimeEntries` vazios quando necessario.
 - `deletedEntityIds` guarda ate 1000 IDs excluidos para impedir que dados removidos retornem da nuvem ou de outro aparelho.
-- Dados fiscais, trabalhistas, holerites e horas ficam no mesmo `FinanceState` compartilhado para sincronizar entre Deyveron e Tom, mas nao entram nos saldos mensais livres.
+- Dados fiscais, trabalhistas, holerites e horas ficam no mesmo `FinanceState` compartilhado para sincronizar entre Deyverson e Tom, mas nao entram nos saldos mensais livres.
 
 Campos essenciais de Transaction:
 
@@ -183,7 +183,7 @@ Regras de FinanceAccount:
 - Toda base financeira possui uma carteira padrao chamada `Carteira do casal`.
 - `openingBalance` representa o saldo real inicial informado pelo usuario, sem depender de banco conectado.
 - Lancamentos sem `accountId` sao tratados como pertencentes a carteira padrao para compatibilidade com dados antigos.
-- Dados antigos marcados como `Pessoa 1` e `Pessoa 2` sao normalizados no cliente para `Deyveron` e `Tom`.
+- Dados antigos marcados como `Pessoa 1` e `Pessoa 2` sao normalizados no cliente para `Deyverson` e `Tom`.
 - O saldo geral realizado e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
 - Para saldo realizado, `Transaction` com data futura nao entra no total e `PayableBill` so entra quando estiver `paid`, usando `paidAt` quando existir ou `dueDate` como fallback.
 - Para saldo previsto, `PayableBill` entra como saida do mes de `dueDate`; recorrencias e parcelas devem aparecer apenas no mes em que cada registro foi gerado.

@@ -1,4 +1,4 @@
-# Supabase Setup - Sincronizacao online
+﻿# Supabase Setup - Sincronizacao online
 
 Este guia ativa conta online para ver os mesmos dados no celular e no desktop.
 
@@ -77,9 +77,9 @@ Sem essa permissao de redirect, o e-mail de recuperacao pode voltar para a tela 
 
 ## Usuarios iniciais
 
-Para criar acessos como `Deyveron` e `Tom`, use Supabase Auth.
+Para criar acessos como `Deyverson` e `Tom`, use Supabase Auth.
 
-- `Deyveron` e `Tom` sao nomes de exibicao.
+- `Deyverson` e `Tom` sao nomes de exibicao.
 - O login tecnico continua sendo e-mail e senha.
 - Cadastro publico pelo app fica desativado; usuarios devem ser criados pelo administrador.
 - Os usuarios precisam existir em `finance_workspace_members` para ver a base compartilhada.

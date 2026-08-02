@@ -1,4 +1,4 @@
-# Implementation Report - Saldo realizado e conciliacao bancaria inicial
+﻿# Implementation Report - Saldo realizado e conciliacao bancaria inicial
 
 Data: 2026-08-02
 
@@ -47,4 +47,4 @@ Data: 2026-08-02
 
 - Criar uma conta pendente, importar um extrato com o mesmo valor/data e validar se ela vira paga sem duplicar despesa.
 - Testar lancamento recorrente futuro no mes atual e confirmar que aparece como `Futuro`, mas nao altera saldo realizado.
-- Validar o mesmo fluxo com usuarios Deyveron e Tom para confirmar sincronizacao na nuvem.
+- Validar o mesmo fluxo com usuarios Deyverson e Tom para confirmar sincronizacao na nuvem.

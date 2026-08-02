@@ -1,4 +1,4 @@
-# Implementation Report - Correcao de autorizacao pos-login
+﻿# Implementation Report - Correcao de autorizacao pos-login
 
 ## Arquivos criados
 
@@ -31,14 +31,14 @@ Nenhuma.
 
 ## Possiveis impactos
 
-- Deyveron e Tom podem autenticar no mesmo workspace sem provocar erro `PGRST116`.
+- Deyverson e Tom podem autenticar no mesmo workspace sem provocar erro `PGRST116`.
 - Usuarios autenticados que nao estiverem vinculados em `finance_workspace_members` continuam bloqueados corretamente.
 - Usuarios com `status = blocked` continuam impedidos de acessar a base financeira.
 
 ## Pendencias
 
 - Confirmar no Supabase que cada usuario possui uma linha em `finance_workspace_members` com a mesma `workspace_id` configurada em `NEXT_PUBLIC_MAYA_WORKSPACE_ID`.
-- Testar login real com Deyveron e Tom apos redeploy.
+- Testar login real com Deyverson e Tom apos redeploy.
 
 ## Proximos passos recomendados
 

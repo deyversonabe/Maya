@@ -1,4 +1,4 @@
-# User Flow
+﻿# User Flow
 
 Este documento descreve jornadas e fluxos de usuario. Ele deve ser atualizado sempre que uma funcionalidade alterar navegacao, etapas, permissoes ou estados de interface.
 
@@ -117,7 +117,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 ### Fiscal e trabalhista
 
 1. Usuario acessa Fiscal pelo menu principal ou pelo menu extra do celular.
-2. Usuario escolhe ano de referencia e pessoa (`Deyveron`, `Tom`, `Casal` ou consolidado).
+2. Usuario escolhe ano de referencia e pessoa (`Deyverson`, `Tom`, `Casal` ou consolidado).
 3. Usuario cadastra documento fiscal com tipo, titulo, fonte, valor, data, status e observacoes.
 4. Usuario pode anexar imagem do comprovante; quando Supabase Storage estiver configurado, o anexo fica privado e pode ser aberto dentro do app.
 5. Usuario cadastra dados trabalhistas como FGTS, INSS, salario, ferias, 13 salario ou beneficio.
@@ -176,7 +176,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Administrador cria usuarios iniciais pelo Supabase Auth seguindo `docs/AUTH_USERS_SETUP.md`.
 2. Administrador adiciona cada usuario ao workspace compartilhado.
-3. Sistema usa e-mail como login tecnico e nome de exibicao para identificar pessoas como Deyveron e Tom.
+3. Sistema usa e-mail como login tecnico e nome de exibicao para identificar pessoas como Deyverson e Tom.
 4. Senhas iniciais nao sao armazenadas no repositorio.
 5. Usuario pode alternar a senha entre oculta e visivel no formulario de login.
 6. Usuario pode clicar em `Esqueci minha senha`, informar e-mail e receber link seguro do Supabase.

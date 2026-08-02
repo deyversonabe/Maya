@@ -1,4 +1,4 @@
-# Auth Users Setup - Usuarios iniciais
+﻿# Auth Users Setup - Usuarios iniciais
 
 Este guia cria os usuarios iniciais do sistema usando Supabase Auth.
 
@@ -6,7 +6,7 @@ Este guia cria os usuarios iniciais do sistema usando Supabase Auth.
 
 O sistema nao deve salvar senhas em arquivos do projeto, GitHub, Vercel ou documentacao versionada.
 
-Os nomes `Deyveron` e `Tom` devem ser usados como nome de exibicao do usuario. O identificador tecnico do Supabase Auth continua sendo e-mail e senha.
+Os nomes `Deyverson` e `Tom` devem ser usados como nome de exibicao do usuario. O identificador tecnico do Supabase Auth continua sendo e-mail e senha.
 
 Todos os usuarios autorizados devem ser membros do workspace financeiro compartilhado. Sem esse vinculo, o Supabase RLS impede leitura e escrita dos dados.
 
@@ -18,7 +18,7 @@ O unico administrador permitido e `deyversonsilvaf@gmail.com`. Todos os demais u
 
 | Nome de exibicao | E-mail de acesso | Observacao |
 | --- | --- | --- |
-| Deyveron | `deyversonsilvaf@gmail.com` | Conta administradora inicial e e-mail de recuperacao administrativa. |
+| Deyverson | `deyversonsilvaf@gmail.com` | Conta administradora inicial e e-mail de recuperacao administrativa. |
 | Tom | informe o e-mail real do Tom | Necessario para login, recuperacao e auditoria. |
 
 ## Senhas iniciais
@@ -47,7 +47,7 @@ Depois do primeiro acesso, altere para uma senha forte.
 4. Desative cadastro publico de novos usuarios, mantendo login por e-mail/senha ativo.
 5. Va em `Authentication > Users`.
 6. Clique em `Add user` ou `Create user`.
-7. Para Deyveron:
+7. Para Deyverson:
    - E-mail: `deyversonsilvaf@gmail.com`
    - Senha: defina uma senha inicial segura.
    - Confirme o e-mail se o painel oferecer essa opcao.
@@ -55,8 +55,8 @@ Depois do primeiro acesso, altere para uma senha forte.
 
 ```json
 {
-  "username": "Deyveron",
-  "display_name": "Deyveron",
+  "username": "Deyverson",
+  "display_name": "Deyverson",
   "recovery_admin_email": "deyversonsilvaf@gmail.com"
 }
 ```
@@ -103,8 +103,8 @@ $env:SUPABASE_SERVICE_ROLE_KEY="cole_a_service_role_key_do_supabase"
 $env:MAYA_WORKSPACE_ID="00000000-0000-4000-8000-000000000001"
 $env:MAYA_RECOVERY_ADMIN_EMAIL="deyversonsilvaf@gmail.com"
 
-$env:MAYA_DEYVERON_EMAIL="deyversonsilvaf@gmail.com"
-$env:MAYA_DEYVERON_PASSWORD="cole_a_senha_inicial_fora_do_git"
+$env:MAYA_DEYVERSON_EMAIL="deyversonsilvaf@gmail.com"
+$env:MAYA_DEYVERSON_PASSWORD="cole_a_senha_inicial_fora_do_git"
 
 $env:MAYA_TOM_EMAIL="cole_o_email_real_do_tom"
 $env:MAYA_TOM_PASSWORD="cole_a_senha_inicial_fora_do_git"

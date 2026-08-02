@@ -1,4 +1,4 @@
-# Implementation Report - Fiscal e trabalhista
+﻿# Implementation Report - Fiscal e trabalhista
 
 Data: 2026-08-02
 
@@ -53,5 +53,5 @@ Data: 2026-08-02
 
 - Subir o zip completo no GitHub.
 - Rodar deploy na Vercel.
-- Entrar com Deyveron e Tom e cadastrar um documento fiscal de teste por usuario.
+- Entrar com Deyverson e Tom e cadastrar um documento fiscal de teste por usuario.
 - Exportar Excel e confirmar abas `Fiscal` e `Trabalhista`.

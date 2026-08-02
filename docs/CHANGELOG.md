@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 Todas as mudancas relevantes do projeto devem ser registradas neste arquivo.
 
@@ -8,12 +8,15 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Estrutura preparada para upload no GitHub: `supabase/migrations/` validada apenas com `.sql`, `tsconfig.tsbuildinfo` protegido no `.gitignore` e ZIP final sem artefatos de build, dependencias ou segredos locais.
+- Nome de exibicao normalizado para `Deyverson`, mantendo compatibilidade com dados antigos gravados como `Deyveron`.
 - Sincronizacao online corrigida para exclusoes: transacoes, contas, metas, orcamentos, contas a pagar, documentos fiscais, registros trabalhistas e horas removidos agora geram `deletedEntityIds`, evitando que itens apagados em um aparelho voltem ao mesclar com a nuvem.
 - RPC `merge_finance_workspace_state` reforcada pela migration `20260802_online_deletion_tombstones.sql`, mantendo lock de linha e removendo IDs marcados como excluidos durante merges concorrentes.
 - Limite do bucket privado `maya-finance-attachments` ajustado para 5 MB para reduzir falhas de upload de notas, boletos, Pix, extratos, holerites e registros de ponto otimizados.
 
 ### Added
 
+- Aba `Horas` e os cadastros de holerite/beneficios trabalhistas ficam focados no usuario `Deyverson`, enquanto documentos fiscais continuam permitindo separacao por pessoa.
 - Aba `Horas` agora trata sabado e domingo explicitamente como folga, com carga esperada zero, status visual por dia, saldo da semana, banco total acumulado e alertas de conferencia.
 - Exportacao PDF mensal adicionada na aba `Horas`, incluindo resumo, dias, status, saldos e alertas do periodo.
 - Aba `Horas` adicionada para acompanhamento mensal de jornada trabalhada, com calendario, saldo diario e saldo mensal acumulado por pessoa.
@@ -38,7 +41,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Calculo mensal unificado: contas a pagar entram como despesa do mes de vencimento em dashboard, Meses, Maya, orcamentos, relatorios e exportacoes.
 - Projecao de saldo apos contas limitada a contas vencidas e contas do mes de referencia, evitando somar recorrencias e parcelas futuras de uma vez.
 - Categorias de despesa adicionadas: Combustivel, Melhoria casa, Conforto e Manutencao.
-- Pessoas dos lancamentos atualizadas para `Deyveron`, `Tom` e `Casal`, com migracao local de registros antigos `Pessoa 1` e `Pessoa 2`.
+- Pessoas dos lancamentos atualizadas para `Deyverson`, `Tom` e `Casal`, com migracao local de registros antigos `Pessoa 1` e `Pessoa 2`.
 - Carteira padrao renomeada para `Carteira do casal`.
 - Salvamento online reforcado com sincronizacao mais rapida, tentativa de salvar antes de sair da conta e fallback para Supabase quando a RPC segura ainda nao foi aplicada.
 
@@ -180,7 +183,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 - Caixa rapida da MAYA na pagina inicial agora usa fallback local quando a rota de IA falha ou retorna resposta invalida.
 - Documentacao duplicada removida de `components/`; conteudo relevante consolidado em `docs/`, mantendo componentes apenas como arquivos de UI.
 - Link de recuperacao do Supabase passa a abrir tela de definicao de nova senha em vez de voltar para o bloqueio de login.
-- Autorizacao pos-login passa a filtrar `finance_workspace_members` por `workspace_id` e `user_id`, evitando logout indevido quando Deyveron e Tom estao no mesmo workspace.
+- Autorizacao pos-login passa a filtrar `finance_workspace_members` por `workspace_id` e `user_id`, evitando logout indevido quando Deyverson e Tom estao no mesmo workspace.
 - Pasta duplicada `supabase/migrations/migrations` removida, mantendo migrations somente em `supabase/migrations/`.
 - Login deixa de reaproveitar trava local antiga depois de uma autenticacao bem-sucedida, reduzindo bloqueios intermitentes por historico do navegador.
 - Abas `Dados` e `Admin`, painel de usuarios e rotas administrativas passam a ser exclusivas de `deyversonsilvaf@gmail.com`.
