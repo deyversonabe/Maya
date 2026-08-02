@@ -11,9 +11,9 @@ const updateExistingPasswords = process.env.MAYA_UPDATE_EXISTING_PASSWORDS === "
 
 const users = [
   {
-    username: "Deyveron",
-    email: process.env.MAYA_DEYVERON_EMAIL || recoveryAdminEmail,
-    password: process.env.MAYA_DEYVERON_PASSWORD
+    username: "Deyverson",
+    email: process.env.MAYA_DEYVERSON_EMAIL || process.env.MAYA_DEYVERON_EMAIL || recoveryAdminEmail,
+    password: process.env.MAYA_DEYVERSON_PASSWORD || process.env.MAYA_DEYVERON_PASSWORD
   },
   {
     username: "Tom",
@@ -58,16 +58,24 @@ console.log("Usuarios iniciais e acesso compartilhado processados com sucesso.")
 
 async function ensureSharedWorkspace() {
   const initialState = {
-    schemaVersion: 3,
+    schemaVersion: 6,
     profile: {
-      familyName: "MAYA",
-      people: ["Deyveron", "Tom"]
+      name: "Maya",
+      slogan: "Organizar hoje. Construir o amanha.",
+      monthlyIncomeTarget: 0,
+      emergencyReserveTarget: 0
     },
+    accounts: [],
     transactions: [],
     goals: [],
     budgets: [],
     bills: [],
+    taxDocuments: [],
+    laborBenefits: [],
+    payrollRecords: [],
+    workTimeEntries: [],
     activityLogs: [],
+    deletedEntityIds: [],
     updatedAt: new Date().toISOString()
   };
 
