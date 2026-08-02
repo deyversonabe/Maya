@@ -79,6 +79,7 @@ Regras:
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
 - Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase pela RPC `save_finance_workspace_state_locked`.
 - `save_finance_workspace_state_locked` valida membro ativo, bloqueia a linha com `SELECT ... FOR UPDATE` e mescla listas por `id` antes de gravar, evitando sobrescrita cega do JSONB em sessoes concorrentes.
+- Exclusoes usam `deletedEntityIds` como tombstones sincronizados; qualquer item removido do estado local ou online fica bloqueado de voltar em merges futuros.
 - O merge da RPC e o merge em tempo real do cliente preservam campos de anexo e itens lidos (`attachmentStoragePath`, `attachmentDataUrl`, `attachmentImageName`, `receiptImageName`, `documentItems` e equivalentes) quando outra sessao salva uma versao menos completa do mesmo registro.
 - Escritas diretas em `finance_workspace_states` por cliente autenticado devem permanecer bloqueadas por RLS; o app deve usar a RPC segura.
 - A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
@@ -102,6 +103,8 @@ Arquivo SQL:
 - `supabase/migrations/20260721_admin_push_relational_foundation.sql`.
 - `supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql`.
 - `supabase/migrations/20260725_finance_accounts_wallets.sql`.
+- `supabase/migrations/20260802_holerite_hours_state_merge.sql`.
+- `supabase/migrations/20260802_online_deletion_tombstones.sql`.
 
 ## Modelo financeiro inicial
 
@@ -113,7 +116,18 @@ Entidades funcionais do MVP:
 - Category: classificacao de receitas e despesas.
 - HouseholdProfile: configuracoes do casal.
 - FinanceAccount: carteiras/contas internas com saldo inicial.
+- TaxDocument: documentos e valores de apoio fiscal por ano e pessoa.
+- LaborBenefit: FGTS, INSS, salario, ferias, 13 salario e beneficios por usuario.
+- PayrollRecord: holerites e comparativo entre base oficial e remuneracao real informada.
+- WorkTimeEntry: registro diario de jornada mensal, separado do saldo financeiro.
 - Insight: recomendacoes calculadas a partir dos dados.
+
+Versao atual do estado local/online:
+
+- `schemaVersion: 6`.
+- Estados antigos sao migrados automaticamente, adicionando `taxDocuments`, `laborBenefits`, `payrollRecords` e `workTimeEntries` vazios quando necessario.
+- `deletedEntityIds` guarda ate 1000 IDs excluidos para impedir que dados removidos retornem da nuvem ou de outro aparelho.
+- Dados fiscais, trabalhistas, holerites e horas ficam no mesmo `FinanceState` compartilhado para sincronizar entre Deyveron e Tom, mas nao entram nos saldos mensais livres.
 
 Campos essenciais de Transaction:
 
@@ -171,8 +185,9 @@ Regras de FinanceAccount:
 - Lancamentos sem `accountId` sao tratados como pertencentes a carteira padrao para compatibilidade com dados antigos.
 - Dados antigos marcados como `Pessoa 1` e `Pessoa 2` sao normalizados no cliente para `Deyveron` e `Tom`.
 - O saldo geral realizado e a soma do saldo inicial das carteiras mais entradas confirmadas menos debitos confirmados.
-- Para calculos mensais, `PayableBill` entra como saida do mes de `dueDate`; recorrencias e parcelas devem aparecer apenas no mes em que cada registro foi gerado.
-- Projecoes de saldo apos contas nao devem descontar todos os registros futuros de uma vez; devem considerar contas vencidas e contas do mes de referencia.
+- Para saldo realizado, `Transaction` com data futura nao entra no total e `PayableBill` so entra quando estiver `paid`, usando `paidAt` quando existir ou `dueDate` como fallback.
+- Para saldo previsto, `PayableBill` entra como saida do mes de `dueDate`; recorrencias e parcelas devem aparecer apenas no mes em que cada registro foi gerado.
+- Projecoes de saldo apos contas nao devem descontar todos os registros futuros de uma vez; devem considerar somente contas vencidas ou realizadas conforme o contexto da tela.
 - Carteiras internas nao executam pagamentos, Pix, boletos ou conexao bancaria real.
 
 Campos essenciais de Goal:
@@ -216,6 +231,124 @@ Regras de GoalContribution:
 - `currentAmount` permanece como saldo total atual para calculos rapidos de progresso.
 - O historico em `contributions` explica quando o saldo foi adicionado ou ajustado.
 - Dados antigos sem historico recebem uma entrada de saldo anterior quando `currentAmount` for maior que zero.
+
+Campos essenciais de TaxDocument:
+
+- `id`.
+- `year`.
+- `person`.
+- `kind`.
+- `title`.
+- `institution`.
+- `amount`.
+- `documentDate`.
+- `description`.
+- `status`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `attachmentStoragePath`.
+- `attachmentMimeType`.
+- `attachmentSize`.
+- `notes`.
+- `createdAt`.
+- `updatedAt`.
+
+Regras de TaxDocument:
+
+- `kind` classifica informe de rendimento, renda profissional, saude, educacao, saldo bancario, investimento, bem, imovel, veiculo, divida, dependente ou outro.
+- `status` aceita `pending`, `reviewed` ou `ready`.
+- Valores fiscais sao memoria para conferencia anual e exportacao; nao alteram saldo mensal, despesas ou receitas automaticamente.
+- Documentos devem ser separados por pessoa sempre que houver impacto individual de imposto.
+- O app nao deve embutir limites, aliquotas ou regras fiscais que possam ficar desatualizadas sem revisao.
+
+Campos essenciais de LaborBenefit:
+
+- `id`.
+- `person`.
+- `type`.
+- `employer`.
+- `referenceMonth`.
+- `amount`.
+- `availableBalance`.
+- `blockedBalance`.
+- `documentDate`.
+- `notes`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `attachmentStoragePath`.
+- `attachmentMimeType`.
+- `attachmentSize`.
+- `createdAt`.
+- `updatedAt`.
+
+Regras de LaborBenefit:
+
+- `type` aceita FGTS, INSS, salario, 13 salario, ferias, beneficio ou outro.
+- FGTS deve ser tratado como patrimonio vinculado/bloqueado, nao como saldo livre de carteira.
+- Dados trabalhistas ajudam a memoria patrimonial e fiscal por pessoa, mas nao geram receita/despesa automaticamente.
+- Anexos seguem a mesma regra de Storage privado usada por comprovantes financeiros.
+
+Campos essenciais de PayrollRecord:
+
+- `id`.
+- `person`.
+- `referenceMonth`.
+- `employer`.
+- `baseSalary`.
+- `outsideBonus`.
+- `payslipInss`.
+- `payslipIrrf`.
+- `payslipFgts`.
+- `taxesPaidByEmployer`.
+- `status`.
+- `notes`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `attachmentStoragePath`.
+- `attachmentMimeType`.
+- `attachmentSize`.
+- `createdAt`.
+- `updatedAt`.
+
+Regras de PayrollRecord:
+
+- `referenceMonth` usa formato `YYYY-MM`.
+- `baseSalary` representa o valor oficial do holerite.
+- `outsideBonus` representa valor pago por fora ou bonus informado pelo usuario para conferencia interna.
+- INSS, IRRF e FGTS do holerite sao opcionais, pois podem nao aparecer no documento informado.
+- `taxesPaidByEmployer` registra a observacao operacional de que a empresa arca com encargos/descontos quando esse for o combinado informado pelo usuario.
+- Os calculos de FGTS, ferias e 13 salario exibidos pela Maya sao estimativas de conferencia, nao parecer juridico ou fiscal.
+- Holerites nao criam renda automaticamente e nao entram em saldo mensal; se o valor recebido precisar afetar o extrato, deve ser lancado tambem como renda.
+
+Campos essenciais de WorkTimeEntry:
+
+- `id`.
+- `person`.
+- `date`.
+- `startTime`.
+- `endTime`.
+- `lunchBreakMinutes`.
+- `expectedMinutes`.
+- `notes`.
+- `attachmentImageName`.
+- `attachmentDataUrl`.
+- `attachmentStoragePath`.
+- `attachmentMimeType`.
+- `attachmentSize`.
+- `createdAt`.
+- `updatedAt`.
+
+Regras de WorkTimeEntry:
+
+- `date` usa formato `YYYY-MM-DD`.
+- `startTime` e `endTime` usam formato `HH:mm`.
+- A jornada padrao e segunda a sexta, 08:00 as 18:00, com 72 minutos de almoco.
+- `expectedMinutes` padrao e 528 minutos em dias uteis e 0 em finais de semana, podendo ser editado por registro.
+- O saldo diario e calculado como minutos trabalhados menos minutos esperados.
+- O saldo mensal soma apenas registros do mes, sem gerar debito automatico para dias uteis sem registro.
+- Horas trabalhadas nao alteram receita, despesa, contas, metas, orcamentos ou saldos de carteira.
+- Foto do registro de ponto deve usar os mesmos campos de anexo e Storage privado dos demais documentos.
+- Leitura automatica do ponto gera rascunho revisavel; o usuario precisa salvar o dia para persistir o registro.
 
 Campos essenciais de Budget:
 
@@ -342,6 +475,8 @@ Regras:
 - Linhas de extrato confirmadas devem manter uma copia resumida em `documentItems`, para consulta posterior dentro do app.
 - A imagem otimizada do anexo pode ser mantida em `attachmentDataUrl` enquanto a fase MVP usa JSONB compartilhado.
 - No futuro, anexos devem migrar para storage privado com URL assinada e referencia no registro.
+- Durante a importacao, linhas de despesa podem ser conciliadas com `PayableBill` pendente quando valor for igual, data estiver proxima do vencimento e houver correspondencia forte de titulo, favorecido ou forma de pagamento.
+- Quando uma linha for conciliada, a conta deve ser marcada como `paid` com `paidAt` baseado na data do extrato, e a linha nao deve virar uma nova `Transaction` para evitar duplicidade.
 
 ## Duplicidade
 
@@ -356,6 +491,7 @@ Regras para `Transaction`:
 - Comparar valores com tolerancia de centavos.
 - Nao apagar, mesclar ou bloquear definitivamente registros duplicados.
 - Exigir decisao explicita do usuario para excluir o novo registro ou computar mesmo assim quando houver repeticao.
+- Excecao permitida: quando uma nota de despesa tiver mesma `date` e mesmo `amount` de uma `Transaction` de despesa existente, anexar `attachment*`, `documentItems`, `fiscalDocument` e observacao ao registro existente sem alterar `amount`, `date` ou criar nova transacao.
 
 Regras para `PayableBill`:
 

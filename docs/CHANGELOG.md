@@ -6,8 +6,33 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ## [Unreleased]
 
+### Fixed
+
+- Sincronizacao online corrigida para exclusoes: transacoes, contas, metas, orcamentos, contas a pagar, documentos fiscais, registros trabalhistas e horas removidos agora geram `deletedEntityIds`, evitando que itens apagados em um aparelho voltem ao mesclar com a nuvem.
+- RPC `merge_finance_workspace_state` reforcada pela migration `20260802_online_deletion_tombstones.sql`, mantendo lock de linha e removendo IDs marcados como excluidos durante merges concorrentes.
+- Limite do bucket privado `maya-finance-attachments` ajustado para 5 MB para reduzir falhas de upload de notas, boletos, Pix, extratos, holerites e registros de ponto otimizados.
+
 ### Added
 
+- Aba `Horas` agora trata sabado e domingo explicitamente como folga, com carga esperada zero, status visual por dia, saldo da semana, banco total acumulado e alertas de conferencia.
+- Exportacao PDF mensal adicionada na aba `Horas`, incluindo resumo, dias, status, saldos e alertas do periodo.
+- Aba `Horas` adicionada para acompanhamento mensal de jornada trabalhada, com calendario, saldo diario e saldo mensal acumulado por pessoa.
+- Jornada padrao configurada para segunda a sexta, 08:00 as 18:00, com 72 minutos de almoco e 528 minutos esperados por dia util, mantendo carga editavel por registro.
+- Leitura de foto de registro de ponto adicionada em `POST /api/maya/timecard`, preenchendo data, entrada, saida, intervalo e batidas como rascunho revisavel.
+- Registros de horas agora podem manter foto do ponto vinculada ao dia, usando Supabase Storage privado quando configurado.
+- Registro de holerite adicionado ao Fiscal, com base oficial, bonus por fora, INSS/IRRF/FGTS informados quando existirem, status, anexo e comparativo estimado de FGTS, ferias e 13 salario.
+- Estado financeiro evoluido para `schemaVersion: 6`, adicionando `payrollRecords` e `workTimeEntries` com migracao automatica dos dados anteriores.
+- Migration `20260802_holerite_hours_state_merge.sql` adicionada para preservar documentos fiscais, dados trabalhistas, holerites e horas na RPC de merge online.
+- Exportacao profissional Excel passa a incluir abas `Holerites` e `Horas`; PDF e resumo passam a contar esses registros.
+- Aba `Fiscal` adicionada para organizar documentos de imposto de renda, bens, dividas, FGTS, INSS e beneficios por ano e por usuario.
+- Estado financeiro evoluido para `schemaVersion: 5`, adicionando `taxDocuments` e `laborBenefits` com migracao automatica dos dados anteriores.
+- Checklist anual fiscal/trabalhista adicionado para indicar rendimentos, bens, dividas, recibos e dados de trabalho que ainda precisam de conferencia.
+- Exportacao profissional Excel passa a incluir abas `Fiscal` e `Trabalhista`; PDF e resumo passam a contar esses registros.
+- Anexos fiscais/trabalhistas por imagem usam Supabase Storage privado quando configurado, mantendo fallback local.
+- Saldo realizado separado de saldo previsto em Meses, Despesas, Receitas/Extrato, Orcamentos, Dashboard e analise da MAYA.
+- Conciliacao bancaria inicial por importacao de extrato: linhas que batem com contas pendentes por valor, data proxima e identificacao marcam a conta como paga em vez de duplicar despesa.
+- Lancamentos futuros continuam visiveis com marcador `Futuro`, mas ficam fora do saldo realizado e do gasto realizado de orcamento.
+- Notas anexadas agora podem complementar uma despesa ja existente no mesmo dia e com o mesmo valor, adicionando anexo, itens e dados fiscais sem criar novo lancamento.
 - Auditoria de comunicacao entre paginas financeiras, garantindo que o filtro de pagamentos recorrentes em Meses acompanhe o mes em exibicao.
 - Relatorios passam a classificar contas por status efetivo, contando como atrasada a conta vencida que ainda estiver pendente.
 - Calculo mensal unificado: contas a pagar entram como despesa do mes de vencimento em dashboard, Meses, Maya, orcamentos, relatorios e exportacoes.

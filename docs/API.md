@@ -33,6 +33,7 @@ Quando o backend for ativado, as primeiras APIs deverao cobrir:
 - `POST /api/maya/analyze`.
 - `POST /api/maya/receipt`.
 - `POST /api/maya/statement`.
+- `POST /api/maya/timecard`.
 - `GET /api/whatsapp/webhook`.
 - `POST /api/whatsapp/webhook`.
 - `GET /api/system/status`.
@@ -128,7 +129,7 @@ Regras:
 
 - Exige usuario autenticado e membro ativo do workspace.
 - Usa `SELECT ... FOR UPDATE` para serializar escritas sobre a mesma linha.
-- Mescla listas por `id` para preservar lancamentos, contas, metas, orcamentos e logs criados por outra sessao.
+- Mescla listas por `id` para preservar lancamentos, contas, metas, orcamentos, documentos fiscais, dados trabalhistas, holerites, horas e logs criados por outra sessao.
 - Clientes autenticados nao devem fazer `upsert` direto em `finance_workspace_states`.
 
 ### `POST /api/notifications/subscribe`
@@ -204,6 +205,31 @@ Saida:
 
 Regra: nenhuma transacao ou conta deve ser salva depois da leitura sem confirmacao do usuario.
 Fallback: se a leitura nao ocorrer, retornar rascunho pendente com valor zero, categoria neutra e `needsReview: true`, sem inferir dados da nota.
+
+### `POST /api/maya/timecard`
+
+Objetivo: ler imagem de registro de ponto ou espelho de ponto e sugerir rascunho revisavel de horas trabalhadas.
+
+Entrada:
+
+- Imagem em base64/data URL.
+- Nome do arquivo.
+- `targetDate`: data selecionada no calendario, quando existir.
+
+Validacao: a imagem deve ser `data:image/*` e respeitar limite maximo de tamanho antes de qualquer leitura por IA.
+
+Saida:
+
+- `timeClockDraft` com `date`, `startTime`, `endTime`, `lunchMinutes`, `expectedMinutes`, `confidence`, `missingFields`, `punches` e `notes`.
+- `needsReview`: sempre `true`.
+
+Regras:
+
+- A rota deve ignorar cabecalhos, matricula, empresa, CNPJ, assinatura, totais legais e textos administrativos.
+- Quando a data alvo aparecer no documento, a leitura deve priorizar essa data.
+- Quando houver quatro batidas, a primeira vira entrada, a ultima vira saida e a diferenca entre segunda e terceira vira intervalo.
+- Quando a leitura nao identificar data ou horarios confiaveis, deve manter campos pendentes em vez de inventar.
+- Nenhum registro de horas deve ser salvo sem confirmacao do usuario na tela `Horas`.
 
 ## Endpoints WhatsApp
 

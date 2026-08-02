@@ -68,6 +68,10 @@ Regras de seguranca:
 - Anexos otimizados devem usar Supabase Storage privado quando `maya-finance-attachments` estiver configurado.
 - URLs de anexo devem ser assinadas e temporarias; o bucket nao deve ser publico.
 - `attachmentDataUrl` deve ser tratado apenas como fallback temporario para ambientes sem bucket.
+- Documentos fiscais, informes, FGTS, INSS, holerites, registros de horas, bens e dividas sao dados sensiveis e devem seguir as mesmas regras de workspace, RLS, Storage privado, logs minimos e backup controlado pelo usuario.
+- Dados fiscais e trabalhistas nao devem ser enviados automaticamente a terceiros, Receita, bancos, Caixa ou INSS; qualquer uso externo futuro deve exigir consentimento explicito e escopo claro.
+- Registros de holerite, bonus por fora e horas trabalhadas sao memoria privada de conferencia; nao devem ser compartilhados automaticamente com empregador, contador, Receita, Caixa, INSS ou terceiros.
+- Fotos de ponto devem ser tratadas como documento sensivel, pois podem conter nome, matricula, empresa e rotina de trabalho; logs nunca devem registrar imagem, horarios completos ou dados de empregador.
 - Historico de atividades deve registrar acoes operacionais sem gravar segredos ou conteudo bruto de comprovantes.
 - Backups continuam disponiveis como copia manual controlada pelo usuario.
 - Painel admin deve exigir o e-mail fixo `deyversonsilvaf@gmail.com` e papel `admin` no backend, usando access token Supabase e service role apenas no servidor.
@@ -134,6 +138,13 @@ Ao enviar foto de nota ou comprovante:
 - Leituras da MAYA devem verificar possivel duplicidade por data e valor antes de salvar renda ou despesa.
 - Imagens enviadas pelo navegador devem ser otimizadas para reduzir tamanho, ficar abaixo do limite de payload da funcao e remover metadados carregados no arquivo original quando possivel.
 - Falhas do provedor de IA devem ser registradas apenas com metadados seguros, como categoria, status, codigo e request id; nunca com chave, imagem ou dados completos do comprovante.
+
+Ao enviar foto de registro de ponto:
+
+- A imagem deve seguir o mesmo fluxo server-side e Storage privado dos demais anexos.
+- A resposta da IA deve gerar rascunho de horas, nunca salvar automaticamente.
+- O app deve exibir campos para revisao humana antes de persistir data, entrada, saida e intervalo.
+- A leitura deve minimizar dados, usando apenas data e horarios necessarios ao controle de horas.
 
 ## PWA e notificacoes
 

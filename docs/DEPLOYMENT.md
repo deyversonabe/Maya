@@ -104,8 +104,8 @@ Para salvar dados online e acessar do celular e desktop:
 1. Crie um projeto no Supabase.
 2. Em Authentication, mantenha login por e-mail/senha ativo.
 3. Abra SQL Editor.
-4. Execute o conteudo de `supabase/migrations/20260719_finance_states.sql`.
-5. Execute o conteudo de `supabase/migrations/20260719_shared_finance_workspace.sql`.
+4. Execute as migrations de `supabase/migrations/` no SQL Editor do Supabase, na ordem do nome do arquivo.
+5. Confirme que `20260802_holerite_hours_state_merge.sql` foi aplicada para preservar holerites e horas na sincronizacao online.
 6. Na Vercel, configure:
 
 ```text
@@ -120,7 +120,7 @@ NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES=15
 9. No app, abra `Dados` e entre na conta.
 10. Usuarios autorizados passam a ver a mesma base financeira.
 
-Observacao: nesta etapa, os dados financeiros sincronizam online; anexos originais ainda devem migrar para storage privado em etapa futura.
+Observacao: os dados financeiros sincronizam online; anexos usam Supabase Storage privado quando a migration de Storage estiver aplicada e fallback local quando o bucket ainda nao estiver pronto.
 
 ## Build esperado
 

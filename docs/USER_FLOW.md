@@ -18,7 +18,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa a URL raiz do projeto.
 2. Sistema exibe tela inicial premium com logo, resumo do casal e acoes principais.
-3. Usuario escolhe Dashboard, Receitas, Meses, Despesas, Orcamentos, Metas, Dados ou MAYA.
+3. Usuario escolhe Dashboard, Receitas, Meses, Despesas, Orcamentos, Metas, Fiscal, Dados ou MAYA.
 4. Sistema carrega dados compartilhados da nuvem quando Supabase estiver configurado.
 5. Usuario visualiza saldo, receitas, despesas, metas e insights.
 6. Usuario cadastra transacoes, metas, recorrencias ou parcelas.
@@ -30,7 +30,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa o app em celular.
 2. Sistema exibe navegacao inferior fixa.
-3. Usuario alterna entre Inicio, Receitas, Meses, Despesas, Orcamentos, Metas, Dados e MAYA com um toque.
+3. Usuario alterna entre Inicio, Receitas, Despesas, Contas e MAYA pela barra inferior, usando o menu para Dashboard, Meses, Orcamentos, Metas, Fiscal, Dados e Admin quando permitido.
 4. O conteudo principal mantem espacamento inferior para nao ficar coberto pela barra.
 
 ### Cadastro de renda e extrato
@@ -44,7 +44,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 7. Antes de salvar, sistema compara valor e data com rendas e despesas existentes e pede confirmacao quando houver suspeita de duplicidade.
 8. Sistema atualiza saldo da carteira, saldo geral, resumo mensal e extrato imediatamente.
 9. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
-10. Sistema mostra saldo atual acumulado e saldo apos contas vencidas ou do mes de referencia, sem descontar recorrencias futuras de uma vez.
+10. Sistema mostra saldo atual acumulado e saldo apos contas vencidas ou realizadas, sem descontar recorrencias futuras de uma vez.
 11. Usuario pode editar ou excluir qualquer renda cadastrada.
 
 ### Cadastro de despesa com nota
@@ -59,7 +59,8 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 8. Usuario revisa e edita nome, descricao, valor, categoria, pessoa, data e parcelas.
 9. Usuario escolhe a carteira de saida quando houver mais de uma.
 10. Usuario confirma.
-11. Sistema salva a despesa vinculada a carteira selecionada.
+11. Se ja existir despesa no mesmo dia e com o mesmo valor, sistema anexa a nota, itens e dados fiscais ao lancamento existente sem somar novo valor.
+12. Caso nao exista despesa equivalente, sistema salva a despesa vinculada a carteira selecionada.
 
 ### Envio de nota pelo WhatsApp
 
@@ -112,6 +113,43 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 6. Sistema atualiza o saldo total da meta e registra o historico do aporte.
 7. Usuario pode revisar o historico de saldos ou remover metas.
 8. MAYA usa metas como contexto, mas nao cria previsoes sem receitas e despesas reais.
+
+### Fiscal e trabalhista
+
+1. Usuario acessa Fiscal pelo menu principal ou pelo menu extra do celular.
+2. Usuario escolhe ano de referencia e pessoa (`Deyveron`, `Tom`, `Casal` ou consolidado).
+3. Usuario cadastra documento fiscal com tipo, titulo, fonte, valor, data, status e observacoes.
+4. Usuario pode anexar imagem do comprovante; quando Supabase Storage estiver configurado, o anexo fica privado e pode ser aberto dentro do app.
+5. Usuario cadastra dados trabalhistas como FGTS, INSS, salario, ferias, 13 salario ou beneficio.
+6. Sistema separa saldo vinculado de FGTS e patrimonio trabalhista do saldo livre mensal.
+7. Usuario registra holerite mensal com base oficial, bonus por fora, INSS/IRRF/FGTS informados quando existirem, status e anexo opcional.
+8. Sistema compara base oficial e remuneracao real informada, exibindo estimativas de diferenca para FGTS, ferias e 13 salario.
+9. Sistema atualiza checklist anual de rendimentos, bens, dividas, comprovantes, dados trabalhistas e holerites.
+10. Usuario pode marcar documentos como pendente, conferido ou pronto.
+11. Usuario pode excluir registros fiscais/trabalhistas cadastrados por engano.
+12. Exportacoes Excel/JSON passam a incluir abas fiscal, trabalhista e holerites para conferencia futura.
+
+### Horas trabalhadas
+
+1. Usuario acessa Horas pelo menu principal ou pelo menu extra do celular.
+2. Usuario escolhe o mes e a pessoa acompanhada.
+3. Sistema exibe calendario mensal com dias da semana e resumo de cada dia.
+4. Usuario seleciona uma data do calendario.
+5. Sistema preenche entrada padrao 08:00, saida padrao 18:00, almoco de 72 minutos e carga esperada de 528 minutos quando for dia util.
+6. Usuario pode anexar uma foto do papel de ponto ou abrir a camera do celular.
+7. Sistema envia a imagem para `POST /api/maya/timecard`.
+8. MAYA tenta localizar a data e as batidas reais do dia, ignorando cabecalho, matricula, empresa e textos administrativos.
+9. Quando houver quatro batidas, sistema sugere entrada, saida e intervalo pelo segundo e terceiro horario; quando houver menos dados, marca campos para conferencia.
+10. Usuario revisa e ajusta entrada, saida, almoco, carga esperada ou observacoes conforme o dia real.
+11. Sistema calcula minutos trabalhados, saldo diario positivo/negativo e status do dia.
+12. Sistema salva a foto do ponto vinculada ao registro diario quando o usuario confirma.
+13. Sistema classifica cada dia como `Completo`, `Sobrando`, `Devendo`, `Folga`, `Aguardando` ou `Sem registro`.
+14. Sistema soma os saldos registrados do mes, da semana selecionada e o banco total acumulado da pessoa.
+15. Finais de semana sao folga com carga esperada zero; nao criam tempo negativo automaticamente e so entram como saldo positivo se houver registro.
+16. Sistema mostra alertas de conferencia para dias uteis sem registro, saldo negativo alto, jornada acima de 10h ou intervalo incoerente.
+17. Usuario pode exportar um PDF mensal com resumo, dias, status e alertas.
+18. Usuario pode excluir um registro de horas cadastrado por engano.
+19. Esses dados ficam separados de receitas, despesas, contas, metas e saldos financeiros.
 
 ### Central de Dados e Confianca
 
@@ -199,6 +237,7 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 3. Sistema exibe os registros possivelmente duplicados quando encontrar coincidencia.
 4. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
 5. Sistema so salva e soma a duplicidade apos aprovacao explicita.
+6. Quando a duplicidade exata vier de uma nota de despesa, sistema pode anexar somente os itens e o arquivo ao lancamento existente, sem somar novamente.
 
 ### Importacao de extrato por imagem
 
@@ -209,9 +248,11 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 5. Sistema exibe linhas editaveis com tipo, descricao, valor, data, categoria, pessoa, forma de pagamento e destinatario Pix.
 6. Usuario remove ou corrige linhas antes de importar.
 7. Se uma linha de despesa estiver marcada como Pix, sistema exige informar para quem foi feito.
-8. Sistema alerta quando houver valor repetido no mesmo dia dentro do extrato ou nos dados ja salvos.
-9. Usuario confirma importacao.
-10. Sistema salva as linhas como transacoes compartilhadas na nuvem e guarda os itens/linhas do anexo para consulta posterior.
+8. Sistema tenta conciliar despesas do extrato com contas pendentes quando houver valor igual, data proxima e identificacao forte.
+9. Sistema alerta quando houver valor repetido no mesmo dia dentro do extrato ou nos dados ja salvos.
+10. Usuario confirma importacao.
+11. Sistema marca contas conciliadas como pagas e salva somente as linhas nao conciliadas como transacoes compartilhadas na nuvem.
+12. Sistema guarda os itens/linhas do anexo para consulta posterior.
 
 ### Analise por periodo
 
@@ -237,10 +278,19 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 
 1. Usuario cadastra despesa, renda, conta ou importa extrato.
 2. Sistema compara valor, data, tipo e registros existentes.
-3. Se houver valor igual no mesmo dia, ou mesmo tipo e valor em data proxima, o salvamento fica parado.
-4. Interface mostra a suspeita de duplicidade e os registros relacionados.
-5. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
-6. Sistema so soma e sincroniza o valor quando houver aprovacao para computar.
+3. Se for nota de despesa com mesmo valor e mesmo dia de uma despesa existente, sistema atualiza o anexo/itens do lancamento existente.
+4. Se houver valor igual no mesmo dia fora da regra de nota exata, ou mesmo tipo e valor em data proxima, o salvamento fica parado.
+5. Interface mostra a suspeita de duplicidade e os registros relacionados.
+6. Usuario escolhe excluir o novo registro/lote ou computar mesmo assim.
+7. Sistema so soma e sincroniza o valor quando houver aprovacao para computar.
+
+### Saldo realizado e previsto
+
+1. Usuario acessa Meses, Despesas, Orcamentos ou Receitas.
+2. Sistema calcula saldo realizado apenas com lancamentos ate hoje e contas pagas.
+3. Sistema mantem parcelas, recorrencias e contas futuras visiveis como previstas.
+4. Lancamento marcado como futuro nao altera saldo realizado, orcamento realizado ou extrato atual.
+5. Quando o usuario chegar ao mes/data daquele lancamento, ele passa a entrar no calculo realizado automaticamente.
 
 ### Carteiras e saldo inicial
 

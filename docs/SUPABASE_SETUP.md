@@ -22,6 +22,9 @@ supabase/migrations/20260719_shared_finance_workspace.sql
 supabase/migrations/20260721_finance_attachments_storage.sql
 supabase/migrations/20260721_admin_push_relational_foundation.sql
 supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql
+supabase/migrations/20260725_finance_accounts_wallets.sql
+supabase/migrations/20260802_holerite_hours_state_merge.sql
+supabase/migrations/20260802_online_deletion_tombstones.sql
 ```
 
 8. Abra `Project Settings > API`.
@@ -97,6 +100,8 @@ docs/AUTH_USERS_SETUP.md
 - Se existirem dados nos dois lugares, ele combina listas por `id`.
 - Depois disso, cada alteracao confirmada e salva online automaticamente pela RPC `save_finance_workspace_state_locked`.
 - A RPC segura usa lock de linha no Postgres para reduzir risco de perda de lancamentos quando dois aparelhos salvam quase ao mesmo tempo.
+- A migration `20260802_holerite_hours_state_merge.sql` atualiza a RPC para preservar tambem `taxDocuments`, `laborBenefits`, `payrollRecords` e `workTimeEntries`.
+- A migration `20260802_online_deletion_tombstones.sql` adiciona tombstones de exclusao para impedir que lancamentos apagados voltem ao sincronizar celular, desktop e abas abertas.
 - Outros aparelhos autenticados recebem a atualizacao pelo Supabase Realtime.
 - Se a internet ou Supabase falhar, o app continua localmente e permite tentar sincronizar depois.
 - Ao fechar a aba ou ficar sem uso por `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES`, o app pede senha novamente.

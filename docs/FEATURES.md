@@ -39,6 +39,8 @@ Riscos:
 - Dashboard financeiro do casal.
 - Cadastro de receitas e despesas.
 - Metas financeiras.
+- Organizacao fiscal e trabalhista por usuario.
+- Controle de horas trabalhadas por mes, separado do financeiro.
 - Planejamento de viagens.
 - Resumo de patrimonio.
 - Insights inteligentes.
@@ -102,6 +104,7 @@ Funcionalidades:
 - Gerar PDF com resumo, transacoes e contas do periodo.
 - Gerar planilha Excel com abas de resumo, transacoes, contas, recorrentes, renda e despesas.
 - Exportar JSON do periodo para backup tecnico.
+- Incluir documentos fiscais e dados trabalhistas do ano nas exportacoes Excel/JSON, com contagem resumida no PDF.
 
 ### Push real
 
@@ -149,6 +152,8 @@ Escopo:
 - Conta online com Supabase Auth para sincronizar dados entre celular e desktop quando o deploy estiver configurado.
 - Comprovantes financeiros salvos em Supabase Storage privado quando configurado, com visualizacao por URL assinada dentro do app.
 - Historico de atividades compartilhado para auditar quem lancou, importou, pagou, alterou ou removeu dados importantes.
+- Registro de holerite e comparativo estimado entre base oficial, bonus por fora, FGTS, ferias e 13 salario.
+- Aba `Horas` para calendario mensal de jornada, saldo diario e saldo acumulado do mes, sem afetar saldos financeiros.
 - PWA com service worker conservador para instalacao pelo navegador e cache apenas de assets estaticos.
 - Notificacoes locais para contas vencendo, vencendo hoje, atrasadas e alertas de saude financeira quando o navegador permitir.
 - Indicador de qualidade dos dados para mostrar se a analise da MAYA esta completa, parcial ou insuficiente.
@@ -161,6 +166,58 @@ Fora de escopo nesta etapa:
 - Pagamentos, assinaturas e multi-tenant.
 - Salvamento automatico de despesas vindas do WhatsApp sem revisao humana.
 - WhatsApp ativo em producao enquanto a Meta mantiver o numero em revisao.
+
+### Fiscal e trabalhista
+
+Objetivo: organizar informacoes que ajudam a preparar imposto de renda, patrimonio e dados trabalhistas sem misturar com o saldo livre mensal.
+
+Escopo:
+
+- Aba `Fiscal` com filtro por ano e pessoa (`Deyveron`, `Tom`, `Casal` ou consolidado).
+- Cadastro de documentos fiscais: informe de rendimento, renda profissional, saude, educacao, saldo bancario, investimento, bem, imovel, veiculo, divida, dependente ou outro.
+- Status de documento fiscal: pendente, conferido ou pronto.
+- Cadastro de dados trabalhistas: FGTS, INSS, salario, 13 salario, ferias, beneficios ou outro.
+- Cadastro de holerite por mes e pessoa, com base oficial, bonus por fora, INSS/IRRF/FGTS informados quando existirem e anexo opcional.
+- Comparativo estimado entre base oficial e remuneracao real informada para apoiar conferencia de FGTS, ferias e 13 salario.
+- Separacao de `saldo vinculado` para FGTS e patrimonio que nao deve entrar no saldo disponivel.
+- Anexos de imagem enviados ao Supabase Storage privado quando configurado, com fallback local.
+- Checklist anual para indicar lacunas de rendimentos, bens, dividas, recibos e dados trabalhistas.
+- Exportacao Excel com abas `Fiscal`, `Trabalhista` e `Holerites`.
+
+Fora de escopo:
+
+- Enviar declaracao para a Receita Federal.
+- Calcular imposto devido com regras, limites ou aliquotas fixas no codigo.
+- Substituir contador, Receita Federal, Caixa, INSS ou sistemas oficiais.
+- Acessar FGTS, INSS ou bancos automaticamente sem consentimento e integracao oficial.
+- Gerar parecer juridico, fiscal ou trabalhista definitivo; os calculos exibidos sao estimativas de conferencia.
+
+### Horas trabalhadas
+
+Objetivo: acompanhar a jornada mensal de trabalho de forma independente da plataforma financeira, sem alterar renda, despesa, metas ou saldos.
+
+Escopo:
+
+- Aba `Horas` em `/hours`, acessivel pelo menu principal e pelo menu extra do celular.
+- Calendario mensal com dias da semana e registros por data.
+- Upload ou camera para enviar foto do registro de ponto e preencher data/horarios automaticamente quando legivel.
+- Jornada padrao de segunda a sexta, das 08:00 as 18:00, com 72 minutos de almoco.
+- Carga esperada diaria padrao de 528 minutos em dias uteis, editavel por registro.
+- Calculo automatico de horas trabalhadas, saldo diario positivo/negativo e saldo acumulado do mes.
+- Sabado e domingo sao tratados explicitamente como folga, com carga esperada zero e sem debito automatico.
+- Cada dia exibe status claro: `Completo`, `Sobrando`, `Devendo`, `Folga`, `Aguardando` ou `Sem registro`.
+- Resumo visual mostra saldo do mes, saldo da semana selecionada e banco total acumulado por pessoa.
+- Alertas de conferencia destacam dias uteis sem registro, saldo negativo maior que 1h, jornadas acima de 10h e intervalos incoerentes.
+- Registro por pessoa (`Deyveron`, `Tom` ou `Casal`) com observacoes.
+- Foto do ponto vinculada ao registro diario, com abertura dentro do app por anexo privado quando Supabase Storage estiver configurado.
+- Finais de semana nao geram debito automatico; se houver registro, entram como saldo positivo.
+- Exportacao Excel com aba `Horas` e exportacao PDF mensal direto da aba de horas.
+
+Fora de escopo:
+
+- Integracao com ponto eletronico oficial.
+- Calculo automatico de adicional noturno, banco de horas legal, horas extras legais ou reflexos trabalhistas.
+- Misturar horas trabalhadas com saldo financeiro mensal.
 
 ### WhatsApp para comprovantes
 
@@ -211,7 +268,8 @@ Escopo:
 
 - Selecionar mes de exibicao.
 - Exibir total de entradas, saidas, investimentos e transferencias.
-- Exibir saldo final calculado do mes.
+- Exibir saldo realizado ate hoje separado do saldo previsto do mes.
+- Manter lancamentos futuros visiveis com marcador `Futuro`, sem somar no saldo realizado.
 - Discriminar lancamentos por tipo, com descricao, categoria, pessoa, data e marcadores de recorrencia ou parcela.
 - Permitir remover lancamentos diretamente da visao mensal.
 
@@ -291,6 +349,7 @@ Escopo:
 - Bloquear salvamento quando titulo, valor ou data obrigatoria estiverem ausentes.
 - Salvar o anexo confirmado junto do lancamento ou da conta correspondente.
 - Verificar suspeita de duplicidade por data, valor e tipo antes de salvar renda ou despesa.
+- Quando uma nota de despesa tiver a mesma data e o mesmo valor de uma despesa ja existente, anexar itens, dados fiscais e imagem ao lancamento existente sem somar novo valor.
 - Alertar tambem quando houver valor igual no mesmo dia mesmo que a IA tenha classificado como tipo diferente.
 - Pedir aprovacao explicita para computar ou excluir quando o novo lancamento tiver valor repetido em data igual ou proxima.
 
@@ -299,7 +358,7 @@ Fora de escopo nesta etapa:
 - OCR local offline.
 - Garantia de leitura perfeita de documentos ilegiveis.
 - Criacao automatica sem confirmacao do usuario.
-- Conciliacao bancaria automatica.
+- Conexao bancaria real em tempo real.
 
 ### Receitas e extrato
 
@@ -315,6 +374,7 @@ Escopo:
 - Exibir extrato tipo conta bancaria com entradas, despesas, investimentos, transferencias neutras e contas pagas.
 - Exibir saldo atual acumulado a cada movimento.
 - Exibir saldo apos contas, descontando somente contas vencidas e contas do mes de referencia, sem somar parcelas/recorrencias de meses futuros de uma vez.
+- Exibir debitos e saldos realizados sem descontar lancamentos futuros nao vencidos.
 - Criar carteiras/contas internas usando nomes claros, como Carteira do casal, Deyveron, Tom, dinheiro, bancos ou outra carteira personalizada.
 - Informar saldo inicial e data inicial de cada carteira.
 - Vincular receitas, despesas, investimentos e transferencias a uma carteira para calcular saldo por conta e saldo geral.
@@ -342,11 +402,12 @@ Escopo:
 - Exibir os registros possivelmente duplicados antes de salvar.
 - Permitir excluir o novo lancamento ou computar mesmo assim.
 - Aplicar a regra em cadastros manuais, anexos lidos pela MAYA, recorrencias e parcelas.
+- Permitir conciliacao de anexo quando a nota tiver mesma data e mesmo valor de uma despesa ja existente, sem alterar o valor financeiro.
 
 Fora de escopo nesta etapa:
 
 - Remover duplicidades automaticamente.
-- Mesclar registros automaticamente.
+- Mesclar registros automaticamente quando houver diferenca de valor, data ou tipo.
 - Usar banco conectado para conciliacao com transacoes reais.
 
 ### MAYA especialista em calculos e negociacao
@@ -378,6 +439,8 @@ Escopo:
 - Usar a MAYA para separar linhas em renda e despesa, sem inventar linhas ilegiveis.
 - Ignorar saldo, total, cabecalho e linhas que nao sejam transacoes financeiras reais.
 - Revisar cada linha antes de importar, com tipo, descricao, valor, data, categoria, pessoa, forma de pagamento e destinatario Pix.
+- Conciliar automaticamente linhas de despesa do extrato com contas pendentes quando houver correspondencia forte por valor, data proxima e identificacao.
+- Marcar a conta conciliada como paga em vez de criar despesa duplicada.
 - Alertar quando houver valor repetido no mesmo dia dentro do extrato ou contra dados ja salvos.
 - Exigir destinatario quando uma despesa for marcada como Pix.
 - Diferenciar categorias de renda: Salario, Sobrancelha, Design de sobrancelhas, Henna, Brow lamination, Micropigmentacao, Manutencao, Cabelo, Jogos e Outros.
@@ -393,6 +456,6 @@ Escopo:
 Fora de escopo nesta etapa:
 
 - Leitura de PDF bancario nativo sem converter para imagem.
-- Conexao bancaria real ou conciliacao automatica com Open Finance.
+- Conexao bancaria real ou conciliacao automatica com Open Finance em tempo real.
 - Pagamento, agendamento ou iniciacao de Pix/boleto dentro do app.
 - Notificacao push nativa com navegador fechado.
