@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import {
@@ -26,7 +26,7 @@ import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/im
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { Person, TimeClockDraft, WorkTimeEntry } from "../types";
 
-const people: Person[] = ["Deyveron", "Tom", "Casal"];
+const people: Person[] = ["Deyverson"];
 const DEFAULT_START = "08:00";
 const DEFAULT_END = "18:00";
 const DEFAULT_LUNCH_MINUTES = 72;
@@ -38,7 +38,7 @@ export function WorkHoursPage() {
   const pointFileRef = useRef<HTMLInputElement>(null);
   const today = toInputDate(new Date());
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
-  const [selectedPerson, setSelectedPerson] = useState<Person>("Deyveron");
+  const [selectedPerson, setSelectedPerson] = useState<Person>("Deyverson");
   const [selectedDate, setSelectedDate] = useState(today);
   const [feedback, setFeedback] = useState("Registre apenas horas trabalhadas. Esta aba nao altera saldos financeiros.");
   const [isReadingTimecard, setIsReadingTimecard] = useState(false);

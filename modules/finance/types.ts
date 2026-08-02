@@ -1,6 +1,6 @@
-export type TransactionType = "income" | "expense" | "investment" | "transfer";
+﻿export type TransactionType = "income" | "expense" | "investment" | "transfer";
 
-export type Person = "Deyveron" | "Tom" | "Casal";
+export type Person = "Deyverson" | "Tom" | "Casal";
 
 export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 

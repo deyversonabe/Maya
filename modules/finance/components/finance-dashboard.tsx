@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -63,7 +63,7 @@ const transactionTypeLabel: Record<TransactionType, string> = {
   transfer: "Transferencia"
 };
 
-const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
+const personOptions: Person[] = ["Deyverson", "Tom", "Casal"];
 const goalTypes: Array<{ value: GoalType; label: string }> = [
   { value: "reserve", label: "Reserva" },
   { value: "travel", label: "Viagem" },

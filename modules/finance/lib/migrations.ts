@@ -1,4 +1,4 @@
-import { DEFAULT_FINANCE_ACCOUNT_ID, createDefaultFinanceAccount, createEmptyFinanceState } from "../data/defaults";
+﻿import { DEFAULT_FINANCE_ACCOUNT_ID, createDefaultFinanceAccount, createEmptyFinanceState } from "../data/defaults";
 import type {
   Budget,
   FinanceActivityLog,
@@ -551,12 +551,12 @@ function isHouseholdProfile(value: unknown): value is HouseholdProfile {
 }
 
 function normalizePerson(person: unknown): Person {
-  if (person === "Deyveron" || person === "Tom" || person === "Casal") {
+  if (person === "Deyverson" || person === "Tom" || person === "Casal") {
     return person;
   }
 
-  if (person === "Pessoa 1") {
-    return "Deyveron";
+  if (person === "Deyveron" || person === "Pessoa 1") {
+    return "Deyverson";
   }
 
   if (person === "Pessoa 2") {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -48,7 +48,7 @@ type IncomeDuplicateReview = {
 };
 
 const FIXED_INCOME_MONTHS = 3;
-const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
+const personOptions: Person[] = ["Deyverson", "Tom", "Casal"];
 const incomePaymentMethods: Array<{ value: PaymentMethod; label: string }> = [
   { value: "cash", label: "Dinheiro" },
   { value: "pix", label: "Pix" },

@@ -1,8 +1,8 @@
-import { parseFinancialAmountInput } from "@/lib/utils";
+﻿import { parseFinancialAmountInput } from "@/lib/utils";
 import type { Person, Transaction, TransactionType } from "../types";
 
 const validTypes = new Set<TransactionType>(["income", "expense", "investment", "transfer"]);
-const validPeople = new Set<Person>(["Deyveron", "Tom", "Casal"]);
+const validPeople = new Set<Person>(["Deyverson", "Tom", "Casal"]);
 
 export function parseTransactionsCsv(csv: string): Transaction[] {
   const [headerLine, ...lines] = csv
@@ -26,7 +26,7 @@ function rowToTransaction(headers: string[], columns: string[]): Transaction | n
   const value = (name: string) => columns[headers.indexOf(name)]?.trim();
   const type = value("type") as TransactionType;
   const amount = parseFinancialAmountInput(value("amount") ?? "");
-  const personValue = value("person") as Person;
+  const personValue = normalizeImportedPerson(value("person"));
   const date = value("date");
   const description = value("description");
 
@@ -40,12 +40,24 @@ function rowToTransaction(headers: string[], columns: string[]): Transaction | n
     description,
     amount,
     category: value("category") || "Outros",
-    person: validPeople.has(personValue) ? personValue : "Casal",
+    person: personValue,
     date,
     recurring: value("recurring") === "true",
     notes: value("notes") || undefined,
     createdAt: new Date().toISOString()
   };
+}
+
+function normalizeImportedPerson(person: string | undefined): Person {
+  if (person === "Deyveron" || person === "Pessoa 1") {
+    return "Deyverson";
+  }
+
+  if (person === "Pessoa 2") {
+    return "Tom";
+  }
+
+  return validPeople.has(person as Person) ? (person as Person) : "Casal";
 }
 
 function splitCsvLine(line: string) {

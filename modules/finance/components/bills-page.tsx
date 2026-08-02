@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import {
@@ -45,7 +45,7 @@ import { FinanceNotificationPanel } from "./finance-notification-panel";
 
 type BillPlan = "single" | "recurring" | "installment";
 
-const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
+const personOptions: Person[] = ["Deyverson", "Tom", "Casal"];
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: "Dinheiro",

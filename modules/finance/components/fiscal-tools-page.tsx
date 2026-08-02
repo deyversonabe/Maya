@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import {
@@ -65,7 +65,8 @@ const payrollStatuses: Array<{ value: PayrollRecordStatus; label: string }> = [
   { value: "attention", label: "Atencao" }
 ];
 
-const people: Person[] = ["Deyveron", "Tom", "Casal"];
+const people: Person[] = ["Deyverson", "Tom", "Casal"];
+const cltPeople: Person[] = ["Deyverson"];
 
 const taxKindLabels = Object.fromEntries(taxDocumentKinds.map((kind) => [kind.value, kind.label])) as Record<
   TaxDocumentKind,
@@ -95,7 +96,7 @@ export function FiscalToolsPage() {
   const [payrollAttachment, setPayrollAttachment] = useState<FinanceAttachmentUpload | null>(null);
   const [taxForm, setTaxForm] = useState({
     year: String(currentYear),
-    person: "Deyveron" as Person,
+    person: "Deyverson" as Person,
     kind: "income_report" as TaxDocumentKind,
     title: "",
     institution: "",
@@ -105,7 +106,7 @@ export function FiscalToolsPage() {
     notes: ""
   });
   const [laborForm, setLaborForm] = useState({
-    person: "Deyveron" as Person,
+    person: "Deyverson" as Person,
     type: "fgts" as LaborBenefitType,
     employer: "",
     referenceMonth: currentMonth,
@@ -116,7 +117,7 @@ export function FiscalToolsPage() {
     notes: ""
   });
   const [payrollForm, setPayrollForm] = useState({
-    person: "Deyveron" as Person,
+    person: "Deyverson" as Person,
     referenceMonth: currentMonth,
     employer: "",
     baseSalary: "",
@@ -647,7 +648,7 @@ export function FiscalToolsPage() {
                     setLaborForm((current) => ({ ...current, person: event.target.value as Person }))
                   }
                 >
-                  {people.map((person) => (
+                  {cltPeople.map((person) => (
                     <option key={person} value={person}>
                       {person}
                     </option>
@@ -778,7 +779,7 @@ export function FiscalToolsPage() {
                     setPayrollForm((current) => ({ ...current, person: event.target.value as Person }))
                   }
                 >
-                  {people.map((person) => (
+                  {cltPeople.map((person) => (
                     <option key={person} value={person}>
                       {person}
                     </option>
@@ -1187,7 +1188,7 @@ function buildChecklist(
   benefits: Array<{ type: LaborBenefitType; person: Person }>,
   payrollRecords: Array<{ person: Person }>
 ) {
-  const targetPeople = person === "Todos" ? ["Deyveron", "Tom"] : person === "Casal" ? ["Deyveron", "Tom"] : [person];
+  const targetPeople = person === "Todos" ? ["Deyverson", "Tom"] : person === "Casal" ? ["Deyverson", "Tom"] : [person];
   const hasForPerson = (target: Person, kinds: TaxDocumentKind[]) =>
     documents.some((document) => document.person === target && kinds.includes(document.kind));
   const hasLaborForPerson = (target: Person) => benefits.some((benefit) => benefit.person === target);

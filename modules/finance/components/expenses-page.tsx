@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { Camera, Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
@@ -31,7 +31,7 @@ import { AttachmentLink } from "./attachment-link";
 
 type ExpensePlan = "single" | "recurring" | "installment";
 
-const personOptions: Person[] = ["Deyveron", "Tom", "Casal"];
+const personOptions: Person[] = ["Deyverson", "Tom", "Casal"];
 
 type ExpenseDuplicateReview = {
   transactions: Array<Omit<Transaction, "id" | "createdAt">>;
