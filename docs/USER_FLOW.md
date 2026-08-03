@@ -18,7 +18,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa a URL raiz do projeto.
 2. Sistema exibe tela inicial premium com logo, resumo do casal e acoes principais.
-3. Usuario escolhe Dashboard, Receitas, Meses, Despesas, Orcamentos, Metas, Fiscal, Dados ou MAYA.
+3. Usuario escolhe Dashboard, Receitas, Salao, Meses, Despesas, Orcamentos, Metas, Fiscal, Dados ou MAYA.
 4. Sistema carrega dados compartilhados da nuvem quando Supabase estiver configurado.
 5. Usuario visualiza saldo, receitas, despesas, metas e insights.
 6. Usuario cadastra transacoes, metas, recorrencias ou parcelas.
@@ -30,7 +30,7 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 
 1. Usuario acessa o app em celular.
 2. Sistema exibe navegacao inferior fixa.
-3. Usuario alterna entre Inicio, Receitas, Despesas, Contas e MAYA pela barra inferior, usando o menu para Dashboard, Meses, Orcamentos, Metas, Fiscal, Dados e Admin quando permitido.
+3. Usuario alterna entre Inicio, Receitas, Despesas, Contas e MAYA pela barra inferior, usando o menu para Dashboard, Salao, Meses, Orcamentos, Metas, Fiscal, Dados e Admin quando permitido.
 4. O conteudo principal mantem espacamento inferior para nao ficar coberto pela barra.
 
 ### Cadastro de renda e extrato
@@ -46,6 +46,27 @@ Como o produto ainda nao tem dominio definido, os fluxos abaixo representam uma 
 9. Usuario consulta a visao tipo conta bancaria com entradas, debitos, contas pagas e saldo apos cada movimento.
 10. Sistema mostra saldo atual acumulado e saldo apos contas vencidas ou realizadas, sem descontar recorrencias futuras de uma vez.
 11. Usuario pode editar ou excluir qualquer renda cadastrada.
+
+### Gestao de materiais e vendas do salao
+
+1. Usuario acessa Salao pelo menu principal ou pelo menu extra do celular.
+2. Usuario cadastra materiais por unidade ou ml, informando quantidade por pacote, custo do pacote, estoque atual, estoque minimo, lote e validade quando existirem.
+3. Sistema calcula o custo individual por unidade ou ml sem gerar lancamento financeiro.
+4. Usuario pode anexar foto da nota de compra para a MAYA sugerir itens de estoque em rascunho revisavel.
+5. Usuario confirma cada item da nota como entrada de estoque ou usa o item lido para preencher um novo material.
+6. Usuario registra entrada, ajuste positivo, inventario fisico ou perda manual de estoque quando fizer uma contagem ou compra de material.
+7. Sistema atualiza somente o estoque e o historico interno de movimentos, sem criar receita ou despesa.
+8. Usuario cria uma ficha de servico, por exemplo `Design de sobrancelha`, vinculando materiais e quantidades usadas.
+9. Usuario pode combinar fichas existentes para montar servicos compostos.
+10. Sistema calcula custo de material, preco sugerido, preco minimo por margem desejada e margem estimada da ficha.
+11. Usuario registra um atendimento vendido escolhendo ficha, cliente, valor recebido, data, pessoa, carteira e forma de pagamento.
+12. Antes de salvar, sistema procura renda com mesmo valor no mesmo dia e pede confirmacao quando houver possivel duplicidade.
+13. Ao confirmar, sistema cria uma transacao de renda no extrato pelo valor cheio recebido.
+14. Ao mesmo tempo, sistema baixa do estoque os materiais definidos na ficha de servico.
+15. Se a venda for excluida, sistema devolve ao estoque o consumo vinculado e remove os movimentos internos daquela baixa.
+16. Estoque baixo e validade proxima ficam destacados.
+17. Usuario consulta dashboard mensal do salao com vendas, receita, custo de material, margem, servicos mais vendidos e materiais mais consumidos.
+18. Usuario usa a lista de compras planejadas para decidir reposicao sem transformar estoque em saldo financeiro.
 
 ### Cadastro de despesa com nota
 

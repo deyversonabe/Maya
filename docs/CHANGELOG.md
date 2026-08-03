@@ -9,6 +9,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 ### Fixed
 
 - Estrutura preparada para upload no GitHub: `supabase/migrations/` validada apenas com `.sql`, `tsconfig.tsbuildinfo` protegido no `.gitignore` e ZIP final sem artefatos de build, dependencias ou segredos locais.
+- Assets antigos com nome `juntos-*` removidos/renomeados para manter a marca publica focada em Maya.
 - Nome de exibicao normalizado para `Deyverson`, mantendo compatibilidade com dados antigos gravados como `Deyveron`.
 - Dependencia e schema Prisma removidos por nao haver uso real no codigo; Supabase permanece como camada ativa de dados.
 - Sincronizacao online corrigida para exclusoes: transacoes, contas, metas, orcamentos, contas a pagar, documentos fiscais, registros trabalhistas e horas removidos agora geram `deletedEntityIds`, evitando que itens apagados em um aparelho voltem ao mesclar com a nuvem.
@@ -17,6 +18,17 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Aba `Salao` adicionada para gestao profissional de materiais do studio, com estoque por unidade/ml, custo individual, estoque minimo e movimentos internos sem impacto financeiro automatico.
+- Controle profissional do salao expandido com lote, validade, inventario fisico, alertas de vencimento, compras planejadas e sugestao de reposicao por consumo.
+- Leitura de nota de compra de material adicionada na aba `Salao`, criando rascunhos revisaveis para entrada de estoque sem gerar despesa automatica.
+- Dashboard mensal do salao adicionado com vendas, receita, custo de material, margem bruta, ranking de servicos e materiais mais consumidos.
+- Calculadora de preco minimo por margem desejada adicionada para fichas de servico.
+- Fichas tecnicas agora possuem versao e vendas do salao preservam snapshot dos materiais usados para manter historico de margem.
+- Fichas combinadas adicionadas para montar servicos compostos a partir de receitas ja cadastradas.
+- Fichas de servico adicionadas para calcular custo de material por atendimento e margem estimada.
+- Registro de venda do salao cria renda no extrato pelo valor cheio recebido, exige cliente/quem pagou, baixa estoque pela ficha e alerta possivel duplicidade por data e valor.
+- Estado financeiro evoluido para `schemaVersion: 7`, adicionando `salonMaterials`, `salonServiceRecipes` e `salonStockMovements`.
+- Migration `20260803_salon_materials_state_merge.sql` adicionada para preservar dados do salao na sincronizacao online e na RPC de merge.
 - Aba `Horas` e os cadastros de holerite/beneficios trabalhistas ficam focados no usuario `Deyverson`, enquanto documentos fiscais continuam permitindo separacao por pessoa.
 - Aba `Horas` agora trata sabado e domingo explicitamente como folga, com carga esperada zero, status visual por dia, saldo da semana, banco total acumulado e alertas de conferencia.
 - Exportacao PDF mensal adicionada na aba `Horas`, incluindo resumo, dias, status, saldos e alertas do periodo.

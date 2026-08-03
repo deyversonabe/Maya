@@ -38,6 +38,7 @@ Riscos:
 
 - Dashboard financeiro do casal.
 - Cadastro de receitas e despesas.
+- Gestao de materiais, fichas de servico e custo operacional do studio de beleza.
 - Metas financeiras.
 - Organizacao fiscal e trabalhista por usuario.
 - Controle de horas trabalhadas por mes, separado do financeiro.
@@ -81,6 +82,38 @@ Prioridade deve considerar:
 ### MVP financeiro funcional
 
 Objetivo: transformar a demonstracao visual em um aplicativo utilizavel para organizacao financeira do casal.
+
+### Gestao de materiais do salao
+
+Objetivo: acompanhar estoque, custo individual de materiais e margem operacional dos atendimentos do studio sem transformar estoque em saldo financeiro.
+
+Escopo:
+
+- Aba `Salao` em `/salon`, acessivel pelo menu principal e pelo menu extra do celular.
+- Cadastro de material por unidade ou ml, com quantidade por pacote, custo do pacote, estoque atual, estoque minimo, lote, validade, categoria, fornecedor e observacoes.
+- Calculo automatico de custo individual por unidade ou por ml.
+- Registro de entrada, ajuste positivo e perda/baixa manual de estoque sem gerar receita ou despesa.
+- Inventario fisico para ajustar a quantidade real contada sem criar lancamento financeiro.
+- Leitura de foto de nota de compra de material pela MAYA, gerando rascunhos revisaveis para entrada de estoque.
+- Criacao de ficha de servico com materiais consumidos e quantidade usada por atendimento.
+- Composicao de fichas combinadas, permitindo montar servicos compostos a partir de receitas existentes.
+- Versionamento de ficha tecnica para registrar qual composicao estava vigente na venda.
+- Calculo de custo de material, preco sugerido, preco minimo por margem desejada e margem estimada por servico.
+- Registro de venda de servico usando ficha ativa, nome da cliente, valor recebido, data, pessoa, carteira e forma de pagamento.
+- Venda do salao gera uma transacao de renda `salon_sale` no extrato financeiro pelo valor cheio recebido.
+- Venda do salao baixa automaticamente o estoque dos materiais da ficha.
+- Exclusao de venda do salao devolve ao estoque o consumo vinculado e remove os movimentos internos da baixa.
+- Confirmacao de possivel duplicidade quando existir renda com mesmo valor no mesmo dia.
+- Estoque baixo destacado quando quantidade atual fica menor ou igual ao estoque minimo.
+- Alertas de validade para materiais vencendo em ate 30 dias.
+- Compras planejadas com sugestao de reposicao baseada em estoque minimo, consumo dos ultimos 30 dias e historico de uso.
+- Dashboard mensal do studio com vendas, receita, custo de material, margem bruta, servicos mais vendidos e materiais mais consumidos.
+
+Fora de escopo:
+
+- Transformar estoque em saldo financeiro.
+- Criar despesa automatica ao registrar entrada de estoque.
+- Controle fiscal de venda, emissao de nota ou integracao com maquininha.
 
 ### Painel admin
 

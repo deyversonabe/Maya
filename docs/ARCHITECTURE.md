@@ -32,6 +32,7 @@ app/
   dashboard/
   expenses/
   budgets/
+  salon/
   maya/
   goals/
   api/
@@ -80,6 +81,7 @@ Dependencias devem apontar para dentro sempre que a stack permitir. Regras de do
 Modulos iniciais provaveis:
 
 - `finance`: transacoes, receitas, despesas, cartoes, categorias e fluxo de caixa.
+- `salon`: estoque operacional, fichas de servico, custo de material e baixas por venda do studio.
 - `budgets`: planejamento mensal por categoria e alertas de consumo.
 - `goals`: metas financeiras, viagens, reserva e patrimonio planejado.
 - `travel`: planejamento de viagens e custos.
@@ -157,6 +159,23 @@ Diretrizes:
 - Pagamentos reais e agendamentos continuam fora do escopo da arquitetura atual.
 - Carteiras internas representam saldos informados pelo usuario e agrupamento de lancamentos; nao representam conta bancaria conectada nem saldo consultado em banco.
 - O saldo operacional deve ser calculado por `FinanceAccount.openingBalance` mais transacoes vinculadas por `accountId`, mantendo lancamentos antigos na Carteira do casal quando `accountId` estiver ausente.
+
+## Gestao operacional do salao
+
+A gestao de materiais do studio fica dentro do dominio financeiro por enquanto, mas deve manter fronteira clara entre controle operacional e fluxo de caixa.
+
+Diretrizes:
+
+- Materiais e estoque nao geram saldo financeiro automaticamente.
+- Compras de material so viram despesa se o usuario registrar uma despesa real na aba Despesas ou Contas.
+- Venda de servico cria uma transacao de renda pelo valor cheio recebido e referencia a ficha usada.
+- Baixa de estoque e registrada como movimento interno `usage`, ligado a transacao da venda.
+- Custo de material e margem sao analiticos operacionais, nao lancamentos contabeis.
+- Exclusao de venda do salao deve desfazer a baixa de estoque vinculada para manter consistencia.
+- Fichas tecnicas sao versionadas; a venda guarda snapshot dos itens para preservar a margem historica quando a ficha for editada depois.
+- Leitura de nota de compra no salao deve gerar somente rascunhos para estoque, sem lancar despesa automaticamente.
+- Reposicao planejada, validade e inventario fisico sao calculos operacionais derivados dos movimentos de estoque.
+- A estrutura atual usa `FinanceState` JSONB versionado; futura evolucao SaaS pode separar `salon_materials`, `salon_service_recipes` e `salon_stock_movements` em tabelas relacionais.
 
 ## Multi-tenancy
 

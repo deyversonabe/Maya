@@ -105,6 +105,7 @@ Arquivo SQL:
 - `supabase/migrations/20260725_finance_accounts_wallets.sql`.
 - `supabase/migrations/20260802_holerite_hours_state_merge.sql`.
 - `supabase/migrations/20260802_online_deletion_tombstones.sql`.
+- `supabase/migrations/20260803_salon_materials_state_merge.sql`.
 
 ## Modelo financeiro inicial
 
@@ -120,14 +121,18 @@ Entidades funcionais do MVP:
 - LaborBenefit: FGTS, INSS, salario, ferias, 13 salario e beneficios por usuario.
 - PayrollRecord: holerites e comparativo entre base oficial e remuneracao real informada.
 - WorkTimeEntry: registro diario de jornada mensal, separado do saldo financeiro.
+- SalonMaterial: materiais do studio com unidade, ml, custo por pacote e estoque atual.
+- SalonServiceRecipe: ficha de servico com materiais e quantidade consumida por atendimento.
+- SalonStockMovement: entradas, ajustes, perdas e baixas internas de estoque.
 - Insight: recomendacoes calculadas a partir dos dados.
 
 Versao atual do estado local/online:
 
-- `schemaVersion: 6`.
-- Estados antigos sao migrados automaticamente, adicionando `taxDocuments`, `laborBenefits`, `payrollRecords` e `workTimeEntries` vazios quando necessario.
+- `schemaVersion: 7`.
+- Estados antigos sao migrados automaticamente, adicionando `taxDocuments`, `laborBenefits`, `payrollRecords`, `workTimeEntries`, `salonMaterials`, `salonServiceRecipes` e `salonStockMovements` vazios quando necessario.
 - `deletedEntityIds` guarda ate 1000 IDs excluidos para impedir que dados removidos retornem da nuvem ou de outro aparelho.
 - Dados fiscais, trabalhistas, holerites e horas ficam no mesmo `FinanceState` compartilhado para sincronizar entre Deyverson e Tom, mas nao entram nos saldos mensais livres.
+- Dados de estoque do salao ficam no mesmo `FinanceState` compartilhado para sincronizar entre aparelhos, mas nao entram como saldo financeiro.
 
 Campos essenciais de Transaction:
 
@@ -157,6 +162,11 @@ Campos essenciais de Transaction:
 - `fiscalDocument`.
 - `notes`.
 - `accountId`.
+- `salonServiceRecipeId`.
+- `salonServiceName`.
+- `salonRecipeVersion`.
+- `salonMaterialCost`.
+- `salonRecipeItemsSnapshot`.
 
 Regras atuais de Transaction:
 
@@ -166,6 +176,66 @@ Regras atuais de Transaction:
 - Em despesa Pix, `paymentRecipient` registra a pessoa ou empresa que recebeu o Pix.
 - Renda fixa criada manualmente deve gerar somente 3 meses por padrao; renda variavel nao deve ser projetada.
 - Toda renda ou despesa confirmada deve ser editavel e removivel pelo usuario autorizado.
+- Vendas do salao usam `source: salon_sale`, entram como renda pelo valor cheio recebido e baixam estoque por movimento interno separado.
+- `salonMaterialCost` serve para margem operacional; nao deve ser somado como despesa automatica.
+
+Campos essenciais de SalonMaterial:
+
+- `id`.
+- `name`.
+- `category`.
+- `unit` (`unit` ou `ml`).
+- `packageQuantity`.
+- `packageCost`.
+- `stockQuantity`.
+- `minStockQuantity`.
+- `lotNumber`.
+- `expirationDate`.
+- `supplier`.
+- `notes`.
+- `createdAt`.
+- `updatedAt`.
+
+Campos essenciais de SalonServiceRecipe:
+
+- `id`.
+- `name`.
+- `category`.
+- `price`.
+- `version`.
+- `items` com `materialId` e `quantity`.
+- `active`.
+- `notes`.
+- `createdAt`.
+- `updatedAt`.
+
+Campos essenciais de SalonStockMovement:
+
+- `id`.
+- `materialId`.
+- `type` (`purchase`, `adjustment`, `usage` ou `waste`).
+- `quantity`.
+- `unitCost`.
+- `reason`.
+- `date`.
+- `serviceRecipeId`.
+- `transactionId`.
+- `notes`.
+- `createdAt`.
+
+Regras de estoque do salao:
+
+- Entrada, ajuste e perda de estoque nao criam receita, despesa ou saldo bancario.
+- O custo individual e calculado por `packageCost / packageQuantity`, preservando casas decimais.
+- Ficha de servico calcula custo de material pela soma do custo individual de cada item vezes a quantidade usada.
+- Cada alteracao de ficha incrementa `version`; vendas gravam `salonRecipeVersion` e `salonRecipeItemsSnapshot` para manter historico de margem mesmo se a ficha mudar depois.
+- Venda de servico cria uma transacao de renda e movimentos `usage` para baixar estoque.
+- Ao remover uma venda de servico, os movimentos `usage` vinculados sao removidos e as quantidades retornam ao estoque.
+- Estoque baixo e calculado quando `stockQuantity <= minStockQuantity`.
+- Inventario fisico usa movimento `adjustment` quando a contagem real aumenta e `waste` quando diminui, sempre sem lancar valor financeiro.
+- Validade operacional e calculada por `expirationDate`; materiais com vencimento em ate 30 dias devem aparecer como alerta.
+- Leitura de nota de compra de material pela MAYA deve gerar rascunhos de entrada de estoque, sem criar despesa automatica.
+- Reposicao planejada usa consumo `usage` dos ultimos 30 dias como estimativa operacional; ela e orientativa e nao substitui contagem fisica.
 
 Campos essenciais de FinanceAccount:
 

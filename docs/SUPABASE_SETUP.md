@@ -25,6 +25,7 @@ supabase/migrations/20260725_admin_unique_and_safe_workspace_state.sql
 supabase/migrations/20260725_finance_accounts_wallets.sql
 supabase/migrations/20260802_holerite_hours_state_merge.sql
 supabase/migrations/20260802_online_deletion_tombstones.sql
+supabase/migrations/20260803_salon_materials_state_merge.sql
 ```
 
 8. Abra `Project Settings > API`.
@@ -102,6 +103,8 @@ docs/AUTH_USERS_SETUP.md
 - A RPC segura usa lock de linha no Postgres para reduzir risco de perda de lancamentos quando dois aparelhos salvam quase ao mesmo tempo.
 - A migration `20260802_holerite_hours_state_merge.sql` atualiza a RPC para preservar tambem `taxDocuments`, `laborBenefits`, `payrollRecords` e `workTimeEntries`.
 - A migration `20260802_online_deletion_tombstones.sql` adiciona tombstones de exclusao para impedir que lancamentos apagados voltem ao sincronizar celular, desktop e abas abertas.
+- A migration `20260803_salon_materials_state_merge.sql` evolui o estado para `schemaVersion: 7` e preserva materiais, fichas de servico e movimentos de estoque do salao na sincronizacao online.
+- Lote, validade, versao de ficha, snapshot de materiais da venda, inventario e leitura de nota de compra usam campos opcionais dentro do mesmo `FinanceState`; nao exigem nova tabela nem nova variavel de ambiente.
 - Outros aparelhos autenticados recebem a atualizacao pelo Supabase Realtime.
 - Se a internet ou Supabase falhar, o app continua localmente e permite tentar sincronizar depois.
 - Ao fechar a aba ou ficar sem uso por `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES`, o app pede senha novamente.

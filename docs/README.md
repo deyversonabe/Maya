@@ -46,7 +46,7 @@ Para ativar acesso aos mesmos dados em aparelhos diferentes:
 
 1. Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Vercel.
 2. Execute todas as migrations em `supabase/migrations/` no SQL Editor do Supabase, na ordem do nome do arquivo.
-3. Confirme especialmente `20260802_holerite_hours_state_merge.sql`, que atualiza o merge online para holerites e horas.
+3. Confirme especialmente `20260802_holerite_hours_state_merge.sql`, `20260802_online_deletion_tombstones.sql` e `20260803_salon_materials_state_merge.sql`, que atualizam o merge online para holerites, horas, exclusoes sincronizadas e dados do salao.
 4. Configure `NEXT_PUBLIC_MAYA_WORKSPACE_ID` e `NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES` na Vercel.
 5. Faca redeploy.
 6. Crie os usuarios iniciais seguindo `AUTH_USERS_SETUP.md`.

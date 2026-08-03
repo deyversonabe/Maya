@@ -104,7 +104,7 @@ Para salvar dados online e acessar do celular e desktop:
 2. Em Authentication, mantenha login por e-mail/senha ativo.
 3. Abra SQL Editor.
 4. Execute as migrations de `supabase/migrations/` no SQL Editor do Supabase, na ordem do nome do arquivo.
-5. Confirme que `20260802_holerite_hours_state_merge.sql` foi aplicada para preservar holerites e horas na sincronizacao online.
+5. Confirme que `20260802_holerite_hours_state_merge.sql`, `20260802_online_deletion_tombstones.sql` e `20260803_salon_materials_state_merge.sql` foram aplicadas para preservar holerites, horas, exclusoes sincronizadas e dados do salao na sincronizacao online.
 6. Na Vercel, configure:
 
 ```text
