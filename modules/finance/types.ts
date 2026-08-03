@@ -6,7 +6,7 @@ export type GoalType = "reserve" | "travel" | "asset" | "retirement" | "dream";
 
 export type GoalPriority = "low" | "medium" | "high";
 
-export type TransactionSource = "manual" | "receipt" | "import" | "statement";
+export type TransactionSource = "manual" | "receipt" | "import" | "statement" | "salon_sale";
 
 export type BudgetStatus = "safe" | "attention" | "exceeded";
 
@@ -15,6 +15,18 @@ export type FinancialDocumentKind = "expense" | "income" | "bill" | "statement";
 export type PaymentMethod = "cash" | "boleto" | "pix" | "card" | "other";
 
 export type FinanceAccountKind = "checking" | "cash" | "wallet" | "savings" | "other";
+
+export type SalonMaterialUnit = "unit" | "ml";
+
+export type SalonStockMovementType = "purchase" | "adjustment" | "usage" | "waste";
+
+export interface SalonSaleMaterialSnapshot {
+  materialId: string;
+  materialName: string;
+  quantity: number;
+  unit: SalonMaterialUnit;
+  unitCost: number;
+}
 
 export type TaxDocumentKind =
   | "income_report"
@@ -86,7 +98,73 @@ export interface Transaction {
   fiscalDocument?: FiscalDocumentMetadata;
   notes?: string;
   accountId?: string;
+  salonServiceRecipeId?: string;
+  salonServiceName?: string;
+  salonRecipeVersion?: number;
+  salonMaterialCost?: number;
+  salonRecipeItemsSnapshot?: SalonSaleMaterialSnapshot[];
   createdAt: string;
+}
+
+export interface SalonMaterial {
+  id: string;
+  name: string;
+  category: string;
+  unit: SalonMaterialUnit;
+  packageQuantity: number;
+  packageCost: number;
+  stockQuantity: number;
+  minStockQuantity: number;
+  lotNumber?: string;
+  expirationDate?: string;
+  supplier?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SalonRecipeItem {
+  id: string;
+  materialId: string;
+  quantity: number;
+}
+
+export interface SalonServiceRecipe {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  version: number;
+  items: SalonRecipeItem[];
+  active: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SalonStockMovement {
+  id: string;
+  materialId: string;
+  type: SalonStockMovementType;
+  quantity: number;
+  unitCost: number;
+  reason: string;
+  date: string;
+  serviceRecipeId?: string;
+  transactionId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SalonSaleInput {
+  recipeId: string;
+  clientName: string;
+  amount: number;
+  date: string;
+  person: Person;
+  paymentMethod: PaymentMethod;
+  accountId?: string;
+  notes?: string;
 }
 
 export interface FinanceAccount {
@@ -262,13 +340,16 @@ export interface HouseholdProfile {
 }
 
 export interface FinanceState {
-  schemaVersion: 6;
+  schemaVersion: 7;
   profile: HouseholdProfile;
   accounts: FinanceAccount[];
   transactions: Transaction[];
   goals: Goal[];
   budgets: Budget[];
   bills: PayableBill[];
+  salonMaterials: SalonMaterial[];
+  salonServiceRecipes: SalonServiceRecipe[];
+  salonStockMovements: SalonStockMovement[];
   taxDocuments: TaxDocument[];
   laborBenefits: LaborBenefit[];
   payrollRecords: PayrollRecord[];
@@ -288,6 +369,9 @@ export type FinanceActivityEntity =
   | "labor_benefit"
   | "payroll_record"
   | "work_time_entry"
+  | "salon_material"
+  | "salon_recipe"
+  | "salon_stock_movement"
   | "sync"
   | "system";
 

@@ -14,6 +14,12 @@ import type {
   Person,
   PayrollRecord,
   PayrollRecordStatus,
+  SalonMaterial,
+  SalonMaterialUnit,
+  SalonRecipeItem,
+  SalonServiceRecipe,
+  SalonStockMovement,
+  SalonStockMovementType,
   TaxDocument,
   TaxDocumentKind,
   TaxDocumentStatus,
@@ -75,13 +81,21 @@ interface PersistedFinanceStateV5 {
   updatedAt: string;
 }
 
-interface PersistedFinanceStateV6 extends FinanceState {
+interface PersistedFinanceStateV6 extends Omit<FinanceState, "schemaVersion" | "salonMaterials" | "salonServiceRecipes" | "salonStockMovements"> {
   schemaVersion: 6;
+}
+
+interface PersistedFinanceStateV7 extends FinanceState {
+  schemaVersion: 7;
 }
 
 export function migrateFinanceState(value: unknown): FinanceState {
   if (!isRecord(value)) {
     return createEmptyFinanceState();
+  }
+
+  if (value.schemaVersion === 7) {
+    return normalizeV7(value as unknown as PersistedFinanceStateV7);
   }
 
   if (value.schemaVersion === 6) {
@@ -100,8 +114,11 @@ export function migrateFinanceState(value: unknown): FinanceState {
     const state = normalizeV3(value as unknown as PersistedFinanceStateV3);
     return {
       ...state,
-      schemaVersion: 6,
+      schemaVersion: 7,
       accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts),
+      salonMaterials: [],
+      salonServiceRecipes: [],
+      salonStockMovements: [],
       taxDocuments: [],
       laborBenefits: [],
       payrollRecords: [],
@@ -114,9 +131,12 @@ export function migrateFinanceState(value: unknown): FinanceState {
     const state = value as unknown as PersistedFinanceStateV2;
     return {
       ...normalizeV2(state),
-      schemaVersion: 6,
+      schemaVersion: 7,
       accounts: normalizeAccounts((value as { accounts?: FinanceAccount[] }).accounts),
       bills: normalizeBills((value as { bills?: PayableBill[] }).bills),
+      salonMaterials: [],
+      salonServiceRecipes: [],
+      salonStockMovements: [],
       taxDocuments: [],
       laborBenefits: [],
       payrollRecords: [],
@@ -130,13 +150,16 @@ export function migrateFinanceState(value: unknown): FinanceState {
   if (value.schemaVersion === 1) {
     const state = value as unknown as PersistedFinanceStateV1;
     return {
-      schemaVersion: 6,
+      schemaVersion: 7,
       profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
       accounts: [createDefaultFinanceAccount()],
       transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
       goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
       budgets: [],
       bills: [],
+      salonMaterials: [],
+      salonServiceRecipes: [],
+      salonStockMovements: [],
       taxDocuments: [],
       laborBenefits: [],
       payrollRecords: [],
@@ -150,15 +173,18 @@ export function migrateFinanceState(value: unknown): FinanceState {
   return createEmptyFinanceState();
 }
 
-function normalizeV6(state: PersistedFinanceStateV6): FinanceState {
+function normalizeV7(state: PersistedFinanceStateV7): FinanceState {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
     accounts: normalizeAccounts(state.accounts),
     transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
     budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
     bills: normalizeBills(state.bills),
+    salonMaterials: normalizeSalonMaterials((state as { salonMaterials?: SalonMaterial[] }).salonMaterials),
+    salonServiceRecipes: normalizeSalonServiceRecipes((state as { salonServiceRecipes?: SalonServiceRecipe[] }).salonServiceRecipes),
+    salonStockMovements: normalizeSalonStockMovements((state as { salonStockMovements?: SalonStockMovement[] }).salonStockMovements),
     taxDocuments: normalizeTaxDocuments((state as { taxDocuments?: TaxDocument[] }).taxDocuments),
     laborBenefits: normalizeLaborBenefits((state as { laborBenefits?: LaborBenefit[] }).laborBenefits),
     payrollRecords: normalizePayrollRecords((state as { payrollRecords?: PayrollRecord[] }).payrollRecords),
@@ -167,6 +193,16 @@ function normalizeV6(state: PersistedFinanceStateV6): FinanceState {
     deletedEntityIds: normalizeDeletedEntityIds((state as { deletedEntityIds?: unknown[] }).deletedEntityIds),
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
   };
+}
+
+function normalizeV6(state: PersistedFinanceStateV6): FinanceState {
+  return normalizeV7({
+    ...state,
+    schemaVersion: 7,
+    salonMaterials: [],
+    salonServiceRecipes: [],
+    salonStockMovements: []
+  });
 }
 
 function normalizeV5(state: PersistedFinanceStateV5): FinanceState {
@@ -211,6 +247,97 @@ function normalizeDeletedEntityIds(ids: unknown[] | undefined) {
   }
 
   return Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))).slice(-1000);
+}
+
+function normalizeSalonMaterials(materials: SalonMaterial[] | undefined): SalonMaterial[] {
+  if (!Array.isArray(materials)) {
+    return [];
+  }
+
+  return materials
+    .filter((material) => typeof material.name === "string" && material.name.trim())
+    .map((material): SalonMaterial => ({
+      ...material,
+      id: typeof material.id === "string" && material.id ? material.id : `salon_material_${crypto.randomUUID()}`,
+      name: material.name.trim(),
+      category: typeof material.category === "string" && material.category.trim() ? material.category.trim() : "Material",
+      unit: normalizeSalonMaterialUnit(material.unit),
+      packageQuantity: normalizePositiveNumber(material.packageQuantity),
+      packageCost: normalizePositiveNumber(material.packageCost),
+      stockQuantity: normalizePositiveNumber(material.stockQuantity),
+      minStockQuantity: normalizePositiveNumber(material.minStockQuantity),
+      lotNumber: typeof material.lotNumber === "string" ? material.lotNumber.trim() || undefined : undefined,
+      expirationDate:
+        typeof material.expirationDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(material.expirationDate)
+          ? material.expirationDate
+          : undefined,
+      supplier: typeof material.supplier === "string" ? material.supplier.trim() || undefined : undefined,
+      notes: typeof material.notes === "string" ? material.notes.trim() || undefined : undefined,
+      createdAt: typeof material.createdAt === "string" ? material.createdAt : new Date().toISOString(),
+      updatedAt: typeof material.updatedAt === "string" ? material.updatedAt : undefined
+    }));
+}
+
+function normalizeSalonServiceRecipes(recipes: SalonServiceRecipe[] | undefined): SalonServiceRecipe[] {
+  if (!Array.isArray(recipes)) {
+    return [];
+  }
+
+  return recipes
+    .filter((recipe) => typeof recipe.name === "string" && recipe.name.trim())
+    .map((recipe): SalonServiceRecipe => ({
+      ...recipe,
+      id: typeof recipe.id === "string" && recipe.id ? recipe.id : `salon_recipe_${crypto.randomUUID()}`,
+      name: recipe.name.trim(),
+      category: typeof recipe.category === "string" && recipe.category.trim() ? recipe.category.trim() : "Sobrancelha",
+      price: normalizePositiveNumber(recipe.price),
+      version: Number.isInteger(recipe.version) && recipe.version > 0 ? recipe.version : 1,
+      items: normalizeSalonRecipeItems(recipe.items),
+      active: recipe.active !== false,
+      notes: typeof recipe.notes === "string" ? recipe.notes.trim() || undefined : undefined,
+      createdAt: typeof recipe.createdAt === "string" ? recipe.createdAt : new Date().toISOString(),
+      updatedAt: typeof recipe.updatedAt === "string" ? recipe.updatedAt : undefined
+    }));
+}
+
+function normalizeSalonRecipeItems(items: SalonRecipeItem[] | undefined): SalonRecipeItem[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => typeof item.materialId === "string" && item.materialId.trim() && Number.isFinite(item.quantity) && item.quantity > 0)
+    .map((item): SalonRecipeItem => ({
+      id: typeof item.id === "string" && item.id ? item.id : `salon_recipe_item_${crypto.randomUUID()}`,
+      materialId: item.materialId.trim(),
+      quantity: normalizePositiveNumber(item.quantity)
+    }));
+}
+
+function normalizeSalonStockMovements(movements: SalonStockMovement[] | undefined): SalonStockMovement[] {
+  if (!Array.isArray(movements)) {
+    return [];
+  }
+
+  return movements
+    .filter((movement) => typeof movement.materialId === "string" && movement.materialId.trim())
+    .map((movement): SalonStockMovement => ({
+      ...movement,
+      id: typeof movement.id === "string" && movement.id ? movement.id : `salon_stock_${crypto.randomUUID()}`,
+      materialId: movement.materialId.trim(),
+      type: normalizeSalonStockMovementType(movement.type),
+      quantity: normalizePositiveNumber(movement.quantity),
+      unitCost: normalizePositiveNumber(movement.unitCost),
+      reason: typeof movement.reason === "string" && movement.reason.trim() ? movement.reason.trim() : "Movimento de estoque",
+      date:
+        typeof movement.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(movement.date)
+          ? movement.date
+          : new Date().toISOString().slice(0, 10),
+      serviceRecipeId: typeof movement.serviceRecipeId === "string" ? movement.serviceRecipeId : undefined,
+      transactionId: typeof movement.transactionId === "string" ? movement.transactionId : undefined,
+      notes: typeof movement.notes === "string" ? movement.notes.trim() || undefined : undefined,
+      createdAt: typeof movement.createdAt === "string" ? movement.createdAt : new Date().toISOString()
+    }));
 }
 
 function normalizeTaxDocuments(documents: TaxDocument[] | undefined): TaxDocument[] {
@@ -474,6 +601,9 @@ function normalizeActivityLogs(logs: FinanceActivityLog[] | undefined): FinanceA
         log.entityType === "labor_benefit" ||
         log.entityType === "payroll_record" ||
         log.entityType === "work_time_entry" ||
+        log.entityType === "salon_material" ||
+        log.entityType === "salon_recipe" ||
+        log.entityType === "salon_stock_movement" ||
         log.entityType === "sync" ||
         log.entityType === "system"
           ? log.entityType
@@ -625,6 +755,22 @@ function normalizePayrollRecordStatus(status: unknown): PayrollRecordStatus {
 
 function normalizeOptionalPositiveNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined;
+}
+
+function normalizePositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function normalizeSalonMaterialUnit(unit: unknown): SalonMaterialUnit {
+  return unit === "ml" ? "ml" : "unit";
+}
+
+function normalizeSalonStockMovementType(type: unknown): SalonStockMovementType {
+  if (type === "purchase" || type === "adjustment" || type === "usage" || type === "waste") {
+    return type;
+  }
+
+  return "adjustment";
 }
 
 function normalizeTime(value: unknown, fallback: string) {

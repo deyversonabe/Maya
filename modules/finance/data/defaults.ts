@@ -5,7 +5,7 @@ export const DEFAULT_FINANCE_ACCOUNT_ID = "account_main";
 
 export function createEmptyFinanceState(): FinanceState {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     profile: {
       name: "Maya",
       slogan: "Organizar hoje. Construir o amanha.",
@@ -17,6 +17,9 @@ export function createEmptyFinanceState(): FinanceState {
     goals: [],
     budgets: [],
     bills: [],
+    salonMaterials: [],
+    salonServiceRecipes: [],
+    salonStockMovements: [],
     taxDocuments: [],
     laborBenefits: [],
     payrollRecords: [],

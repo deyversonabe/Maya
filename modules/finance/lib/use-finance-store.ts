@@ -15,6 +15,10 @@ import type {
   LaborBenefit,
   PayableBill,
   PayrollRecord,
+  SalonMaterial,
+  SalonSaleInput,
+  SalonServiceRecipe,
+  SalonStockMovement,
   TaxDocument,
   Transaction,
   WorkTimeEntry
@@ -657,17 +661,44 @@ export function useFinanceStore() {
         });
       },
       removeTransaction(id: string) {
-        setState((current) => ({
-          ...current,
-          transactions: current.transactions.filter((transaction) => transaction.id !== id),
-          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
-          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
-            action: "Removeu transacao",
-            entityType: "transaction",
-            entityLabel: current.transactions.find((transaction) => transaction.id === id)?.description ?? id
-          }),
-          updatedAt: new Date().toISOString()
-        }));
+        setState((current) => {
+          const transaction = current.transactions.find((item) => item.id === id);
+          const stockMovementsToRemove = current.salonStockMovements.filter(
+            (movement) => movement.transactionId === id && movement.type === "usage"
+          );
+          const returnedByMaterial = stockMovementsToRemove.reduce<Record<string, number>>((totals, movement) => {
+            totals[movement.materialId] = (totals[movement.materialId] ?? 0) + movement.quantity;
+            return totals;
+          }, {});
+
+          return {
+            ...current,
+            transactions: current.transactions.filter((item) => item.id !== id),
+            salonMaterials: current.salonMaterials.map((material) =>
+              returnedByMaterial[material.id]
+                ? {
+                    ...material,
+                    stockQuantity: material.stockQuantity + returnedByMaterial[material.id],
+                    updatedAt: new Date().toISOString()
+                  }
+                : material
+            ),
+            salonStockMovements: current.salonStockMovements.filter(
+              (movement) => !stockMovementsToRemove.some((removed) => removed.id === movement.id)
+            ),
+            deletedEntityIds: addDeletedEntityIds(
+              current.deletedEntityIds,
+              id,
+              ...stockMovementsToRemove.map((movement) => movement.id)
+            ),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Removeu transacao",
+              entityType: "transaction",
+              entityLabel: transaction?.description ?? id
+            }),
+            updatedAt: new Date().toISOString()
+          };
+        });
       },
       addAccount(account: Omit<FinanceAccount, "id" | "createdAt">) {
         const now = new Date().toISOString();
@@ -1151,6 +1182,335 @@ export function useFinanceStore() {
           updatedAt: new Date().toISOString()
         }));
       },
+      addSalonMaterial(material: Omit<SalonMaterial, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonMaterials: [
+            {
+              ...material,
+              id: `salon_material_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.salonMaterials
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou material do salao",
+            entityType: "salon_material",
+            entityLabel: material.name,
+            details: material.category
+          }),
+          updatedAt: now
+        }));
+      },
+      updateSalonMaterial(id: string, patch: Partial<Omit<SalonMaterial, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonMaterials: current.salonMaterials.map((material) =>
+            material.id === id ? { ...material, ...patch, updatedAt: now } : material
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou material do salao",
+            entityType: "salon_material",
+            entityLabel: current.salonMaterials.find((material) => material.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeSalonMaterial(id: string) {
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === id);
+          const affectedRecipes = current.salonServiceRecipes.map((recipe) => ({
+            ...recipe,
+            items: recipe.items.filter((item) => item.materialId !== id),
+            updatedAt: recipe.items.some((item) => item.materialId === id) ? new Date().toISOString() : recipe.updatedAt
+          }));
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.filter((item) => item.id !== id),
+            salonServiceRecipes: affectedRecipes,
+            deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Removeu material do salao",
+              entityType: "salon_material",
+              entityLabel: material?.name ?? id
+            }),
+            updatedAt: new Date().toISOString()
+          };
+        });
+      },
+      addSalonServiceRecipe(recipe: Omit<SalonServiceRecipe, "id" | "createdAt" | "updatedAt" | "version">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: [
+            {
+              ...recipe,
+              id: `salon_recipe_${crypto.randomUUID()}`,
+              version: 1,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.salonServiceRecipes
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: recipe.name,
+            details: `${recipe.items.length} material(is)`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateSalonServiceRecipe(id: string, patch: Partial<Omit<SalonServiceRecipe, "id" | "createdAt" | "version">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: current.salonServiceRecipes.map((recipe) =>
+            recipe.id === id ? { ...recipe, ...patch, version: (recipe.version ?? 1) + 1, updatedAt: now } : recipe
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: current.salonServiceRecipes.find((recipe) => recipe.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeSalonServiceRecipe(id: string) {
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: current.salonServiceRecipes.filter((recipe) => recipe.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: current.salonServiceRecipes.find((recipe) => recipe.id === id)?.name ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      registerSalonStockMovement(
+        movement: Omit<SalonStockMovement, "id" | "createdAt" | "unitCost" | "transactionId" | "serviceRecipeId">
+      ) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === movement.materialId);
+
+          if (!material) {
+            return current;
+          }
+
+          const quantity = Math.max(0, movement.quantity);
+          const delta = movement.type === "purchase" || movement.type === "adjustment" ? quantity : -quantity;
+          const stockMovement: SalonStockMovement = {
+            ...movement,
+            quantity,
+            unitCost: getSalonMaterialUnitCost(material),
+            id: `salon_stock_${crypto.randomUUID()}`,
+            createdAt: now
+          };
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.map((item) =>
+              item.id === movement.materialId
+                ? {
+                    ...item,
+                    stockQuantity: Math.max(0, item.stockQuantity + delta),
+                    updatedAt: now
+                  }
+                : item
+            ),
+            salonStockMovements: [stockMovement, ...current.salonStockMovements],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: movement.type === "purchase" ? "Registrou entrada de material" : "Ajustou estoque do salao",
+              entityType: "salon_stock_movement",
+              entityLabel: material.name,
+              details: movement.reason
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      setSalonInventoryCount(input: { materialId: string; countedQuantity: number; date: string; notes?: string }) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === input.materialId);
+
+          if (!material || !Number.isFinite(input.countedQuantity) || input.countedQuantity < 0) {
+            return current;
+          }
+
+          const difference = input.countedQuantity - material.stockQuantity;
+
+          if (Math.abs(difference) < 0.000001) {
+            return {
+              ...current,
+              activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+                action: "Conferiu inventario do salao",
+                entityType: "salon_stock_movement",
+                entityLabel: material.name,
+                details: "Sem diferenca de estoque"
+              }),
+              updatedAt: now
+            };
+          }
+
+          const movement: SalonStockMovement = {
+            id: `salon_stock_${crypto.randomUUID()}`,
+            materialId: material.id,
+            type: difference > 0 ? "adjustment" : "waste",
+            quantity: Math.abs(difference),
+            unitCost: getSalonMaterialUnitCost(material),
+            reason: "Inventario",
+            date: input.date,
+            notes: input.notes?.trim() || undefined,
+            createdAt: now
+          };
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.map((item) =>
+              item.id === material.id
+                ? {
+                    ...item,
+                    stockQuantity: input.countedQuantity,
+                    updatedAt: now
+                  }
+                : item
+            ),
+            salonStockMovements: [movement, ...current.salonStockMovements],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Ajustou inventario do salao",
+              entityType: "salon_stock_movement",
+              entityLabel: material.name,
+              details: `${difference > 0 ? "+" : "-"}${Math.abs(difference)}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      registerSalonSale(input: SalonSaleInput) {
+        const current = stateRef.current;
+        const recipe = current.salonServiceRecipes.find((item) => item.id === input.recipeId && item.active);
+
+        if (!recipe) {
+          throw new Error("Selecione uma ficha de servico ativa para registrar a venda.");
+        }
+
+        if (!input.clientName.trim()) {
+          throw new Error("Informe o nome da cliente antes de salvar a venda.");
+        }
+
+        if (!Number.isFinite(input.amount) || input.amount <= 0) {
+          throw new Error("Informe um valor de venda valido.");
+        }
+
+        const insufficientMaterials = getInsufficientSalonMaterials(current.salonMaterials, recipe);
+
+        if (insufficientMaterials.length > 0) {
+          throw new Error(`Estoque insuficiente para: ${insufficientMaterials.join(", ")}.`);
+        }
+
+        const now = new Date().toISOString();
+        const transactionId = `txn_${crypto.randomUUID()}`;
+
+        setState((stateNow) => {
+          const freshRecipe = stateNow.salonServiceRecipes.find((item) => item.id === input.recipeId && item.active);
+
+          if (!freshRecipe) {
+            return stateNow;
+          }
+
+          const freshInsufficientMaterials = getInsufficientSalonMaterials(stateNow.salonMaterials, freshRecipe);
+
+          if (freshInsufficientMaterials.length > 0) {
+            return stateNow;
+          }
+
+          const materialCost = calculateSalonRecipeCost(freshRecipe, stateNow.salonMaterials);
+          const materialsById = new Map(stateNow.salonMaterials.map((material) => [material.id, material]));
+          const materialSnapshot = freshRecipe.items.map((item) => {
+            const material = materialsById.get(item.materialId);
+
+            return {
+              materialId: item.materialId,
+              materialName: material?.name ?? "Material removido",
+              quantity: item.quantity,
+              unit: material?.unit ?? "unit",
+              unitCost: material ? getSalonMaterialUnitCost(material) : 0
+            };
+          });
+          const transaction: Transaction = {
+            id: transactionId,
+            type: "income",
+            description: freshRecipe.name,
+            amount: input.amount,
+            category: freshRecipe.category || "Sobrancelha",
+            person: input.person,
+            date: input.date,
+            recurring: false,
+            source: "salon_sale",
+            paymentMethod: input.paymentMethod,
+            paymentRecipient: input.clientName.trim(),
+            notes: input.notes?.trim() || undefined,
+            accountId: input.accountId || DEFAULT_FINANCE_ACCOUNT_ID,
+            salonServiceRecipeId: freshRecipe.id,
+            salonServiceName: freshRecipe.name,
+            salonRecipeVersion: freshRecipe.version ?? 1,
+            salonMaterialCost: materialCost,
+            salonRecipeItemsSnapshot: materialSnapshot,
+            createdAt: now
+          };
+          const usageMovements = freshRecipe.items.map((item): SalonStockMovement => {
+            const material = materialsById.get(item.materialId);
+
+            return {
+              id: `salon_stock_${crypto.randomUUID()}`,
+              materialId: item.materialId,
+              type: "usage",
+              quantity: item.quantity,
+              unitCost: material ? getSalonMaterialUnitCost(material) : 0,
+              reason: `Venda: ${freshRecipe.name}`,
+              date: input.date,
+              serviceRecipeId: freshRecipe.id,
+              transactionId,
+              notes: input.clientName.trim(),
+              createdAt: now
+            };
+          });
+          const consumedByMaterial = freshRecipe.items.reduce<Record<string, number>>((totals, item) => {
+            totals[item.materialId] = (totals[item.materialId] ?? 0) + item.quantity;
+            return totals;
+          }, {});
+
+          return {
+            ...stateNow,
+            transactions: [transaction, ...stateNow.transactions],
+            salonMaterials: stateNow.salonMaterials.map((material) =>
+              consumedByMaterial[material.id]
+                ? {
+                    ...material,
+                    stockQuantity: Math.max(0, material.stockQuantity - consumedByMaterial[material.id]),
+                    updatedAt: now
+                  }
+                : material
+            ),
+            salonStockMovements: [...usageMovements, ...stateNow.salonStockMovements],
+            activityLogs: addFinanceActivity(stateNow.activityLogs, userEmailRef.current, {
+              action: "Registrou venda do salao",
+              entityType: "transaction",
+              entityLabel: freshRecipe.name,
+              details: input.clientName.trim()
+            }),
+            updatedAt: now
+          };
+        });
+      },
       importTransactions(transactions: Transaction[]) {
         setState((current) => ({
           ...current,
@@ -1234,6 +1594,9 @@ function hasFinanceContent(state: FinanceState) {
     state.goals.length > 0 ||
     state.budgets.length > 0 ||
     state.bills.length > 0 ||
+    state.salonMaterials.length > 0 ||
+    state.salonServiceRecipes.length > 0 ||
+    state.salonStockMovements.length > 0 ||
     state.taxDocuments.length > 0 ||
     state.laborBenefits.length > 0 ||
     state.payrollRecords.length > 0 ||
@@ -1253,13 +1616,16 @@ function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState):
   const deletedEntityIdSet = new Set(deletedEntityIds);
 
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     profile: localTime >= cloudTime ? localState.profile : cloudState.profile,
     accounts: ensureDefaultAccount(filterDeletedItems(mergeById(cloudState.accounts, localState.accounts), deletedEntityIdSet)).sort(sortByCreatedAtDesc),
     transactions: filterDeletedItems(mergeById(cloudState.transactions, localState.transactions), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     goals: filterDeletedItems(mergeById(cloudState.goals, localState.goals), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     budgets: filterDeletedItems(mergeById(cloudState.budgets, localState.budgets), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     bills: filterDeletedItems(mergeById(cloudState.bills, localState.bills), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    salonMaterials: filterDeletedItems(mergeById(cloudState.salonMaterials, localState.salonMaterials), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    salonServiceRecipes: filterDeletedItems(mergeById(cloudState.salonServiceRecipes, localState.salonServiceRecipes), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    salonStockMovements: filterDeletedItems(mergeById(cloudState.salonStockMovements, localState.salonStockMovements), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     taxDocuments: filterDeletedItems(mergeById(cloudState.taxDocuments, localState.taxDocuments), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     laborBenefits: filterDeletedItems(mergeById(cloudState.laborBenefits, localState.laborBenefits), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     payrollRecords: filterDeletedItems(mergeById(cloudState.payrollRecords, localState.payrollRecords), deletedEntityIdSet).sort(sortByCreatedAtDesc),
@@ -1284,11 +1650,36 @@ function collectStateEntityIds(state: FinanceState) {
     ...state.goals.map((goal) => goal.id),
     ...state.budgets.map((budget) => budget.id),
     ...state.bills.map((bill) => bill.id),
+    ...state.salonMaterials.map((material) => material.id),
+    ...state.salonServiceRecipes.map((recipe) => recipe.id),
+    ...state.salonStockMovements.map((movement) => movement.id),
     ...state.taxDocuments.map((document) => document.id),
     ...state.laborBenefits.map((benefit) => benefit.id),
     ...state.payrollRecords.map((record) => record.id),
     ...state.workTimeEntries.map((entry) => entry.id)
   ];
+}
+
+function getSalonMaterialUnitCost(material: SalonMaterial) {
+  return material.packageQuantity > 0 ? material.packageCost / material.packageQuantity : 0;
+}
+
+function calculateSalonRecipeCost(recipe: SalonServiceRecipe, materials: SalonMaterial[]) {
+  const materialsById = new Map(materials.map((material) => [material.id, material]));
+
+  return recipe.items.reduce((total, item) => {
+    const material = materialsById.get(item.materialId);
+    return total + (material ? getSalonMaterialUnitCost(material) * item.quantity : 0);
+  }, 0);
+}
+
+function getInsufficientSalonMaterials(materials: SalonMaterial[], recipe: SalonServiceRecipe) {
+  const materialsById = new Map(materials.map((material) => [material.id, material]));
+
+  return recipe.items
+    .map((item) => ({ item, material: materialsById.get(item.materialId) }))
+    .filter(({ item, material }) => !material || material.stockQuantity < item.quantity)
+    .map(({ material }) => material?.name ?? "material removido");
 }
 
 type MergeableFinanceItem = {
