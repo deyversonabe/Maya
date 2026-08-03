@@ -1,0 +1,283 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #102118;
+  --foreground: #fff5e9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@keyframes maya-grid {
+  0% {
+    background-position: 0 0, 0 0, 0 0;
+  }
+
+  100% {
+    background-position: 48px 48px, 48px 48px, 0 0;
+  }
+}
+
+@keyframes maya-scan {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(115deg, rgba(255, 79, 216, 0.08), transparent 18%, transparent 76%, rgba(85, 247, 255, 0.14)),
+    linear-gradient(90deg, rgba(184, 121, 69, 0.14), transparent 18%, transparent 82%, rgba(114, 255, 182, 0.1)),
+    linear-gradient(180deg, rgba(255, 245, 233, 0.06), transparent 18rem),
+    linear-gradient(135deg, #06120d 0%, #102118 38%, #1b3328 100%);
+  color: var(--foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(rgba(85, 247, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(184, 121, 69, 0.05) 1px, transparent 1px),
+    linear-gradient(115deg, transparent 0 46%, rgba(255, 210, 122, 0.08) 48%, transparent 50% 100%);
+  background-size: 48px 48px, 48px 48px, 100% 100%;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 85%);
+  animation: maya-grid 28s linear infinite;
+}
+
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent, rgba(85, 247, 255, 0.05), transparent),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 6px);
+  opacity: 0.45;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  caret-color: #55f7ff;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #102118;
+  color: #fff5e9;
+}
+
+select option:checked {
+  background-color: #b87945;
+  color: #08160f;
+}
+
+select option:disabled {
+  color: #d7cbbd;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(196, 106, 67, 0.45);
+  color: #fff5e9;
+}
+
+::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(8, 22, 15, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(8, 22, 15, 0.8);
+  border-radius: 999px;
+  background: rgba(184, 121, 69, 0.55);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(196, 106, 67, 0.8);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(184, 121, 69, 0.4);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-container {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .app-container section.rounded-card,
+  .app-container .glass-panel {
+    padding: 1rem !important;
+  }
+
+  .app-container {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.75rem;
+  }
+
+  .app-container h1 {
+    font-size: 2.25rem;
+    line-height: 1.08;
+  }
+
+  .section-title {
+    font-size: 1.45rem;
+    line-height: 1.15;
+  }
+
+  .eyebrow {
+    letter-spacing: 0;
+  }
+
+  .field {
+    min-height: 3rem;
+    font-size: 16px;
+  }
+
+  .app-container .glass-panel,
+  .app-container .neon-card,
+  .app-container .led-panel {
+    border-radius: 1rem;
+  }
+}
+
+@layer components {
+  .app-container {
+    @apply mx-auto min-h-screen w-full max-w-[1560px] px-4 py-4 sm:px-6 lg:px-8;
+  }
+
+  .glass-panel {
+    @apply border border-cyan-200/15 bg-moss-800/70 shadow-neon backdrop-blur-xl;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 245, 233, 0.08),
+      0 0 0 1px rgba(184, 121, 69, 0.08),
+      0 24px 90px rgba(0, 0, 0, 0.32),
+      0 0 48px rgba(85, 247, 255, 0.08);
+  }
+
+  .section-title {
+    @apply font-serif text-2xl font-bold leading-tight text-bronze;
+    text-shadow: 0 0 18px rgba(184, 121, 69, 0.22);
+  }
+
+  .eyebrow {
+    @apply text-xs font-black uppercase tracking-[0.16em] text-terracotta;
+    text-shadow: 0 0 14px rgba(196, 106, 67, 0.32);
+  }
+
+  .field {
+    @apply min-h-11 w-full rounded-lg border border-cyan-200/15 bg-cream/[0.06] px-3 text-sm text-cream outline-none transition placeholder:text-muted/60 focus:border-neon-cyan focus:ring-4 focus:ring-neon-cyan/20;
+  }
+
+  .neon-card {
+    @apply relative overflow-hidden rounded-card border border-cyan-200/15 bg-cream/[0.045];
+    box-shadow:
+      inset 0 1px 0 rgba(255, 245, 233, 0.08),
+      0 0 28px rgba(85, 247, 255, 0.08),
+      0 20px 70px rgba(0, 0, 0, 0.22);
+  }
+
+  .neon-card::before {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    background:
+      linear-gradient(120deg, transparent 0 35%, rgba(85, 247, 255, 0.13), transparent 64% 100%),
+      linear-gradient(90deg, rgba(184, 121, 69, 0.12), transparent 40%, rgba(255, 79, 216, 0.08));
+    opacity: 0;
+    transition: opacity 220ms ease;
+  }
+
+  .neon-card:hover::before {
+    opacity: 1;
+  }
+
+  .neon-topline {
+    @apply absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan to-transparent;
+    box-shadow: 0 0 18px rgba(85, 247, 255, 0.5);
+  }
+
+  .financial-negative {
+    @apply text-red-200;
+    text-shadow: 0 0 14px rgba(255, 77, 109, 0.62);
+  }
+
+  .financial-positive {
+    @apply text-bronze;
+    text-shadow: 0 0 14px rgba(184, 121, 69, 0.28);
+  }
+
+  .led-panel {
+    @apply relative overflow-hidden;
+  }
+
+  .led-panel::after {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 36%;
+    pointer-events: none;
+    content: "";
+    background: linear-gradient(90deg, transparent, rgba(85, 247, 255, 0.08), transparent);
+    transform: translateX(-120%);
+    animation: maya-scan 5.2s linear infinite;
+  }
+}
