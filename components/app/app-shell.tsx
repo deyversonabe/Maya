@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Bot, CalendarDays, Clock3, Database, FileText, Home, Landmark, LogOut, Menu, ReceiptText, ShieldCheck, Target, WalletCards, X } from "lucide-react";
+import { BarChart3, BellRing, Bot, CalendarDays, Clock3, Database, FileText, Home, Landmark, LogOut, Menu, ReceiptText, Scissors, ShieldCheck, Target, WalletCards, X } from "lucide-react";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/income", label: "Receitas", icon: Landmark },
+  { href: "/salon", label: "Salao", icon: Scissors },
   { href: "/months", label: "Meses", icon: CalendarDays },
   { href: "/expenses", label: "Despesas", icon: ReceiptText },
   { href: "/bills", label: "Contas", icon: BellRing },
@@ -25,7 +26,7 @@ const navItems = [
 ];
 
 const mobilePrimaryHrefs = ["/", "/income", "/expenses", "/bills", "/maya"];
-const mobileMenuHrefs = ["/dashboard", "/months", "/budgets", "/goals", "/fiscal", "/hours", "/data", "/admin"];
+const mobileMenuHrefs = ["/dashboard", "/salon", "/months", "/budgets", "/goals", "/fiscal", "/hours", "/data", "/admin"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -95,7 +96,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="ml-3 font-serif text-3xl font-bold text-bronze drop-shadow-[0_0_18px_rgba(184,121,69,0.26)]">Maya</span>
         </Link>
 
-        <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-[repeat(13,minmax(0,1fr))]" aria-label="Navegacao principal">
+        <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-[repeat(14,minmax(0,1fr))]" aria-label="Navegacao principal">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActivePath(pathname, item.href);
