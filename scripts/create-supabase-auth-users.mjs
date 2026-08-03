@@ -58,7 +58,7 @@ console.log("Usuarios iniciais e acesso compartilhado processados com sucesso.")
 
 async function ensureSharedWorkspace() {
   const initialState = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     profile: {
       name: "Maya",
       slogan: "Organizar hoje. Construir o amanha.",
@@ -70,6 +70,9 @@ async function ensureSharedWorkspace() {
     goals: [],
     budgets: [],
     bills: [],
+    salonMaterials: [],
+    salonServiceRecipes: [],
+    salonStockMovements: [],
     taxDocuments: [],
     laborBenefits: [],
     payrollRecords: [],
