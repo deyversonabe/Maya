@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
-import { AlertTriangle, Calculator, CalendarClock, ClipboardList, DollarSign, FileScan, Layers, Package, Pencil, Plus, RefreshCw, Save, Scissors, ShoppingBag, Trash2, TrendingUp } from "lucide-react";
+import { AlertTriangle, Calculator, CalendarClock, ClipboardList, DollarSign, FileScan, Layers, Package, Pencil, Plus, RefreshCw, Save, ShoppingBag, Trash2, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,7 +143,6 @@ export function SalonMaterialsPage() {
   const saleMargin = Number.isFinite(parsedSaleAmount) ? parsedSaleAmount - recipeCost : 0;
   const lowStockMaterials = state.salonMaterials.filter((material) => material.stockQuantity <= material.minStockQuantity);
   const expiringMaterials = state.salonMaterials.filter((material) => getDaysUntil(material.expirationDate) <= 30);
-  const totalRecipesCost = state.salonServiceRecipes.reduce((total, recipe) => total + calculateRecipeCost(recipe, materialsById), 0);
   const recentMovements = state.salonStockMovements.slice(0, 8);
   const stockInsights = useMemo(
     () => buildStockInsights(state.salonMaterials, state.salonStockMovements),
@@ -426,7 +425,7 @@ export function SalonMaterialsPage() {
               <Metric label="Fichas" value={String(state.salonServiceRecipes.length)} icon={<ClipboardList />} />
               <Metric label="Baixo estoque" value={String(lowStockMaterials.length)} icon={<AlertTriangle />} tone={lowStockMaterials.length > 0 ? "warning" : "success"} />
               <Metric label="Validade" value={String(expiringMaterials.length)} icon={<CalendarClock />} tone={expiringMaterials.length > 0 ? "warning" : "success"} />
-              <Metric label="Custo fichas" value={formatCurrency(totalRecipesCost)} icon={<Scissors />} />
+              <Metric label="Margem mes" value={formatCurrency(salonReport.grossMargin)} icon={<TrendingUp />} tone={salonReport.grossMargin >= 0 ? "success" : "warning"} />
             </div>
           </div>
         </LedPanel>

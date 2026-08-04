@@ -440,29 +440,49 @@ function normalizeWorkTimeEntries(entries: WorkTimeEntry[] | undefined): WorkTim
 
   return entries
     .filter((entry) => typeof entry.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry.date))
-    .map((entry): WorkTimeEntry => ({
-      ...entry,
-      id: typeof entry.id === "string" && entry.id ? entry.id : `work_${crypto.randomUUID()}`,
-      person: normalizePerson(entry.person),
-      startTime: normalizeTime(entry.startTime, "08:00"),
-      endTime: normalizeTime(entry.endTime, "18:00"),
-      lunchMinutes: Number.isFinite(entry.lunchMinutes) ? Math.max(0, Math.min(240, Math.round(entry.lunchMinutes))) : 72,
-      expectedMinutes:
-        Number.isFinite(entry.expectedMinutes) && entry.expectedMinutes >= 0
-          ? Math.round(entry.expectedMinutes)
-          : getDefaultExpectedMinutesForDate(entry.date),
-      notes: typeof entry.notes === "string" ? entry.notes.trim() || undefined : undefined,
-      attachmentImageName: typeof entry.attachmentImageName === "string" ? entry.attachmentImageName : undefined,
-      attachmentDataUrl: typeof entry.attachmentDataUrl === "string" ? entry.attachmentDataUrl : undefined,
-      attachmentStoragePath: typeof entry.attachmentStoragePath === "string" ? entry.attachmentStoragePath : undefined,
-      attachmentMimeType: typeof entry.attachmentMimeType === "string" ? entry.attachmentMimeType : undefined,
-      attachmentSize:
-        typeof entry.attachmentSize === "number" && Number.isFinite(entry.attachmentSize)
-          ? Math.max(0, Math.round(entry.attachmentSize))
-          : undefined,
-      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
-      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : undefined
-    }));
+    .map((entry): WorkTimeEntry => {
+      const legacyStart = normalizeOptionalTime(entry.startTime);
+      const legacyEnd = normalizeOptionalTime(entry.endTime);
+      const punches = normalizeWorkPunches(entry.punches, legacyStart, legacyEnd);
+      const firstIn = normalizeOptionalTime(entry.firstIn) || punches[0] || legacyStart || "08:00";
+      const firstOut = normalizeOptionalTime(entry.firstOut) || punches[1];
+      const secondIn = normalizeOptionalTime(entry.secondIn) || punches[2];
+      const secondOut = normalizeOptionalTime(entry.secondOut) || punches[3] || legacyEnd || "18:00";
+      const lunchFromPunches = firstOut && secondIn ? Math.max(0, timeToMinutes(secondIn) - timeToMinutes(firstOut)) : Number.NaN;
+
+      return {
+        ...entry,
+        id: typeof entry.id === "string" && entry.id ? entry.id : `work_${crypto.randomUUID()}`,
+        person: normalizePerson(entry.person),
+        firstIn,
+        firstOut,
+        secondIn,
+        secondOut,
+        punches: normalizeWorkPunches([firstIn, firstOut, secondIn, secondOut].filter(Boolean)),
+        startTime: firstIn,
+        endTime: secondOut,
+        lunchMinutes: Number.isFinite(lunchFromPunches)
+          ? Math.max(0, Math.min(240, Math.round(lunchFromPunches)))
+          : Number.isFinite(entry.lunchMinutes)
+            ? Math.max(0, Math.min(240, Math.round(entry.lunchMinutes)))
+            : 72,
+        expectedMinutes:
+          Number.isFinite(entry.expectedMinutes) && entry.expectedMinutes >= 0
+            ? Math.round(entry.expectedMinutes)
+            : getDefaultExpectedMinutesForDate(entry.date),
+        notes: typeof entry.notes === "string" ? entry.notes.trim() || undefined : undefined,
+        attachmentImageName: typeof entry.attachmentImageName === "string" ? entry.attachmentImageName : undefined,
+        attachmentDataUrl: typeof entry.attachmentDataUrl === "string" ? entry.attachmentDataUrl : undefined,
+        attachmentStoragePath: typeof entry.attachmentStoragePath === "string" ? entry.attachmentStoragePath : undefined,
+        attachmentMimeType: typeof entry.attachmentMimeType === "string" ? entry.attachmentMimeType : undefined,
+        attachmentSize:
+          typeof entry.attachmentSize === "number" && Number.isFinite(entry.attachmentSize)
+            ? Math.max(0, Math.round(entry.attachmentSize))
+            : undefined,
+        createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+        updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : undefined
+      };
+    });
 }
 
 function normalizeV2(state: PersistedFinanceStateV2) {
@@ -775,6 +795,28 @@ function normalizeSalonStockMovementType(type: unknown): SalonStockMovementType 
 
 function normalizeTime(value: unknown, fallback: string) {
   return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : fallback;
+}
+
+function normalizeOptionalTime(value: unknown) {
+  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : undefined;
+}
+
+function normalizeWorkPunches(value: unknown, legacyStart?: string, legacyEnd?: string) {
+  const raw = Array.isArray(value) ? value : [];
+  const punches = raw
+    .map((item) => normalizeOptionalTime(item))
+    .filter((item): item is string => Boolean(item));
+
+  if (punches.length > 0) {
+    return Array.from(new Set(punches)).slice(0, 4);
+  }
+
+  return [legacyStart, legacyEnd].filter((item): item is string => Boolean(item));
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
 }
 
 function getDefaultExpectedMinutesForDate(date: string) {
