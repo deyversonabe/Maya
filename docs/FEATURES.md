@@ -233,7 +233,9 @@ Escopo:
 
 - Aba `Horas` em `/hours`, acessivel pelo menu principal e pelo menu extra do celular.
 - Calendario mensal com dias da semana e registros por data.
+- Registro diario com quatro batidas: entrada, saida para almoco, retorno do almoco e saida final.
 - Upload ou camera para enviar foto do registro de ponto e preencher data/horarios automaticamente quando legivel.
+- Comprovante individual de ponto pode preencher apenas uma batida provavel, mantendo as demais para conferencia manual antes de salvar.
 - Jornada padrao de segunda a sexta, das 08:00 as 18:00, com 72 minutos de almoco.
 - Carga esperada diaria padrao de 528 minutos em dias uteis, editavel por registro.
 - Calculo automatico de horas trabalhadas, saldo diario positivo/negativo e saldo acumulado do mes.
@@ -301,8 +303,9 @@ Escopo:
 
 - Selecionar mes de exibicao.
 - Exibir total de entradas, saidas, investimentos e transferencias.
-- Exibir saldo realizado ate hoje separado do saldo previsto do mes.
-- Manter lancamentos futuros visiveis com marcador `Futuro`, sem somar no saldo realizado.
+- Exibir saldo realizado ate hoje, contas pagas e contas previstas em blocos separados.
+- Manter lancamentos futuros visiveis com marcador `Futuro`, sem somar no saldo realizado do mes atual.
+- Comparar dois meses escolhidos manualmente, mostrando diferenca de rendas, despesas lancadas, contas pagas, contas previstas e saldo.
 - Discriminar lancamentos por tipo, com descricao, categoria, pessoa, data e marcadores de recorrencia ou parcela.
 - Permitir remover lancamentos diretamente da visao mensal.
 

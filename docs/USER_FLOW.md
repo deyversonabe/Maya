@@ -156,12 +156,12 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 2. Usuario escolhe o mes e a pessoa acompanhada.
 3. Sistema exibe calendario mensal com dias da semana e resumo de cada dia.
 4. Usuario seleciona uma data do calendario.
-5. Sistema preenche entrada padrao 08:00, saida padrao 18:00, almoco de 72 minutos e carga esperada de 528 minutos quando for dia util.
+5. Sistema preenche primeira entrada padrao 08:00, saida final padrao 18:00 e carga esperada de 528 minutos quando for dia util.
 6. Usuario pode anexar uma foto do papel de ponto ou abrir a camera do celular.
 7. Sistema envia a imagem para `POST /api/maya/timecard`.
 8. MAYA tenta localizar a data e as batidas reais do dia, ignorando cabecalho, matricula, empresa e textos administrativos.
-9. Quando houver quatro batidas, sistema sugere entrada, saida e intervalo pelo segundo e terceiro horario; quando houver menos dados, marca campos para conferencia.
-10. Usuario revisa e ajusta entrada, saida, almoco, carga esperada ou observacoes conforme o dia real.
+9. Quando houver quatro batidas, sistema sugere entrada, saida para almoco, retorno do almoco e saida final; quando a foto for comprovante individual, preenche apenas a batida provavel.
+10. Usuario revisa e ajusta as quatro batidas, carga esperada ou observacoes conforme o dia real.
 11. Sistema calcula minutos trabalhados, saldo diario positivo/negativo e status do dia.
 12. Sistema salva a foto do ponto vinculada ao registro diario quando o usuario confirma.
 13. Sistema classifica cada dia como `Completo`, `Sobrando`, `Devendo`, `Folga`, `Aguardando` ou `Sem registro`.

@@ -8,6 +8,10 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Extrato/Receitas passa a ter mes de visualizacao e saldo calculado ate o corte do mes escolhido, evitando que lancamentos recorrentes ou parcelas futuras fora do periodo inflem o saldo exibido.
+- Aba `Meses` separa saldo realizado de contas previstas e adiciona comparacao manual entre dois meses para rendas, despesas, contas pagas, contas previstas e saldo.
+- Leitura de foto de ponto reforcada para comprovantes individuais com `DATA` e `HORA`, preenchendo apenas a batida provavel e mantendo demais campos para revisao.
+- Aba `Salao` substitui o indicador confuso de custo total das fichas por margem do mes, mantendo estoque sem impacto financeiro automatico.
 - Estrutura preparada para upload no GitHub: `supabase/migrations/` validada apenas com `.sql`, `tsconfig.tsbuildinfo` protegido no `.gitignore` e ZIP final sem artefatos de build, dependencias ou segredos locais.
 - Assets antigos com nome `juntos-*` removidos/renomeados para manter a marca publica focada em Maya.
 - Nome de exibicao normalizado para `Deyverson`, mantendo compatibilidade com dados antigos gravados como `Deyveron`.
@@ -18,6 +22,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Aba `Horas` passa a registrar quatro batidas por dia: entrada, saida para almoco, retorno do almoco e saida final, calculando intervalo e horas trabalhadas a partir dos horarios reais.
 - Aba `Salao` adicionada para gestao profissional de materiais do studio, com estoque por unidade/ml, custo individual, estoque minimo e movimentos internos sem impacto financeiro automatico.
 - Controle profissional do salao expandido com lote, validade, inventario fisico, alertas de vencimento, compras planejadas e sugestao de reposicao por consumo.
 - Leitura de nota de compra de material adicionada na aba `Salao`, criando rascunhos revisaveis para entrada de estoque sem gerar despesa automatica.
