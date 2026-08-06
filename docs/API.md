@@ -220,7 +220,7 @@ Validacao: a imagem deve ser `data:image/*` e respeitar limite maximo de tamanho
 
 Saida:
 
-- `timeClockDraft` com `date`, `firstIn`, `firstOut`, `secondIn`, `secondOut`, `startTime`, `endTime`, `lunchMinutes`, `expectedMinutes`, `confidence`, `missingFields`, `punches` e `notes`.
+- `timeClockDraft` com `date`, `startTime`, `endTime`, `lunchMinutes`, `expectedMinutes`, `confidence`, `missingFields`, `punches` e `notes`.
 - `needsReview`: sempre `true`.
 
 Regras:
@@ -228,7 +228,6 @@ Regras:
 - A rota deve ignorar cabecalhos, matricula, empresa, CNPJ, assinatura, totais legais e textos administrativos.
 - Quando a data alvo aparecer no documento, a leitura deve priorizar essa data.
 - Quando houver quatro batidas, a primeira vira entrada, a ultima vira saida e a diferenca entre segunda e terceira vira intervalo.
-- Quando houver comprovante individual com apenas `DATA` e `HORA`, a rota deve preencher somente a batida provavel (`firstIn`, `firstOut`, `secondIn` ou `secondOut`) e manter as demais pendentes.
 - Quando a leitura nao identificar data ou horarios confiaveis, deve manter campos pendentes em vez de inventar.
 - Nenhum registro de horas deve ser salvo sem confirmacao do usuario na tela `Horas`.
 

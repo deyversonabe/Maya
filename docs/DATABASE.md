@@ -395,14 +395,9 @@ Campos essenciais de WorkTimeEntry:
 - `id`.
 - `person`.
 - `date`.
-- `firstIn`.
-- `firstOut`.
-- `secondIn`.
-- `secondOut`.
-- `punches`.
 - `startTime`.
 - `endTime`.
-- `lunchMinutes`.
+- `lunchBreakMinutes`.
 - `expectedMinutes`.
 - `notes`.
 - `attachmentImageName`.
@@ -416,18 +411,14 @@ Campos essenciais de WorkTimeEntry:
 Regras de WorkTimeEntry:
 
 - `date` usa formato `YYYY-MM-DD`.
-- `firstIn`, `firstOut`, `secondIn`, `secondOut`, `startTime` e `endTime` usam formato `HH:mm`.
-- O registro diario deve priorizar as quatro batidas reais: entrada, saida para almoco, retorno do almoco e saida final.
-- `startTime` e `endTime` permanecem por compatibilidade e devem refletir `firstIn` e `secondOut`.
-- `punches` preserva a lista de batidas lidas ou revisadas no dia.
+- `startTime` e `endTime` usam formato `HH:mm`.
 - A jornada padrao e segunda a sexta, 08:00 as 18:00, com 72 minutos de almoco.
-- `lunchMinutes` deve ser calculado preferencialmente pela diferenca entre `firstOut` e `secondIn`.
 - `expectedMinutes` padrao e 528 minutos em dias uteis e 0 em finais de semana, podendo ser editado por registro.
 - O saldo diario e calculado como minutos trabalhados menos minutos esperados.
 - O saldo mensal soma apenas registros do mes, sem gerar debito automatico para dias uteis sem registro.
 - Horas trabalhadas nao alteram receita, despesa, contas, metas, orcamentos ou saldos de carteira.
 - Foto do registro de ponto deve usar os mesmos campos de anexo e Storage privado dos demais documentos.
-- Leitura automatica do ponto gera rascunho revisavel; comprovantes individuais de REP podem preencher apenas uma das quatro batidas e o usuario precisa completar/conferir antes de salvar.
+- Leitura automatica do ponto gera rascunho revisavel; o usuario precisa salvar o dia para persistir o registro.
 
 Campos essenciais de Budget:
 
