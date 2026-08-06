@@ -210,17 +210,14 @@ export async function exportFinanceReportExcel(report: FinanceReport) {
     {
       name: "Horas",
       rows: [
-        ["Data", "Pessoa", "Entrada 1", "Saida almoco", "Retorno", "Saida final", "Almoco min", "Esperado min", "Trabalhado min", "Saldo min", "Observacoes"],
+        ["Data", "Pessoa", "Entrada", "Saida", "Almoco min", "Esperado min", "Trabalhado min", "Saldo min", "Observacoes"],
         ...report.workTimeEntries.map((entry) => {
-          const worked = calculateWorkedMinutes(entry);
-          const punches = getWorkPunches(entry);
+          const worked = calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes);
           return [
             entry.date,
             entry.person,
-            punches.firstIn,
-            punches.firstOut,
-            punches.secondIn,
-            punches.secondOut,
+            entry.startTime,
+            entry.endTime,
             entry.lunchMinutes,
             entry.expectedMinutes,
             worked,
@@ -363,44 +360,15 @@ function translatePayrollStatus(status: string) {
   return labels[status] ?? status;
 }
 
-function calculateWorkedMinutes(entry: FinanceReport["workTimeEntries"][number]) {
-  const punches = getWorkPunches(entry);
-
-  if (!punches.firstOut || !punches.secondIn) {
-    const legacyRange = calculateTimeRange(punches.firstIn, punches.secondOut);
-    return legacyRange > 0 ? Math.max(0, legacyRange - Math.max(0, Math.round(entry.lunchMinutes))) : 0;
-  }
-
-  const firstBlock = calculateTimeRange(punches.firstIn, punches.firstOut);
-  const secondBlock = calculateTimeRange(punches.secondIn, punches.secondOut);
-
-  if (firstBlock < 0 || secondBlock < 0) {
-    return 0;
-  }
-
-  return firstBlock + secondBlock;
-}
-
-function getWorkPunches(entry: FinanceReport["workTimeEntries"][number]) {
-  const punches = entry.punches?.filter((punch) => Number.isFinite(timeToMinutes(punch))) ?? [];
-
-  return {
-    firstIn: entry.firstIn || punches[0] || entry.startTime,
-    firstOut: entry.firstOut || punches[1] || "",
-    secondIn: entry.secondIn || punches[2] || "",
-    secondOut: entry.secondOut || punches[3] || entry.endTime
-  };
-}
-
-function calculateTimeRange(startTime: string, endTime: string) {
+function calculateWorkedMinutes(startTime: string, endTime: string, lunchMinutes: number) {
   const start = timeToMinutes(startTime);
   const end = timeToMinutes(endTime);
 
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return -1;
+    return 0;
   }
 
-  return end - start;
+  return Math.max(0, end - start - Math.max(0, Math.round(lunchMinutes)));
 }
 
 function timeToMinutes(value: string) {

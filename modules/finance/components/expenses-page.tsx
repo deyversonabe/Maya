@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Camera, Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -480,7 +481,7 @@ export function ExpensesPage() {
             action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Rascunho MAYA" : "Manual ou nota"}</Badge>}
           />
 
-          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
               <FileImage className="size-4" aria-hidden="true" />
               Anexar nota
@@ -493,6 +494,9 @@ export function ExpensesPage() {
               <FileText className="size-4" aria-hidden="true" />
               Anexar extrato
             </Button>
+            <Link href="/expenses/note" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-bronze/40 bg-bronze/10 px-4 text-sm font-black text-bronze transition hover:bg-bronze/20">
+              Importar QR/XML
+            </Link>
             <input
               ref={uploadRef}
               className="hidden"

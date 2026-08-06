@@ -375,10 +375,7 @@ export async function readTimeClockWithMaya({
                   "O objetivo e preencher um rascunho revisavel de horas trabalhadas, nao criar lancamento financeiro.",
                   targetDate ? `Data alvo selecionada pelo usuario: ${targetDate}. Se essa data aparecer no documento, use somente os horarios dessa data.` : "Se houver varias datas, escolha a data mais legivel e mais completa.",
                   "Ignore cabecalho, nome da empresa, CNPJ, matricula, assinatura, totais legais, banco de horas antigo, observacoes administrativas, linhas de escala e qualquer texto que nao seja data/horario do dia.",
-                  "Em comprovante individual de REP/relógio de ponto, procure principalmente os rotulos DATA ou TA e HORA. Exemplo comum: DATA: 03/08/2026 HORA: 18:13.",
-                  "Quando a imagem tiver apenas uma batida, retorne essa batida em punches e preencha somente o campo mais provavel entre firstIn, firstOut, secondIn ou secondOut. Nao use o mesmo horario como entrada e saida.",
                   "Procure horarios reais de batida do ponto: entrada, inicio do intervalo, fim do intervalo e saida.",
-                  "Mapeie as quatro batidas como firstIn, firstOut, secondIn e secondOut quando for possivel.",
                   "Se houver quatro batidas no dia, use startTime como a primeira batida, endTime como a ultima batida e lunchMinutes como a diferenca entre segunda e terceira batida.",
                   "Se houver duas batidas no dia, use primeira e ultima batida, e deixe lunchMinutes como 72 apenas se o documento nao mostrar intervalo; inclua lunchMinutes em missingFields.",
                   "Se houver mais de quatro batidas, use a primeira e a ultima como jornada total e use as batidas intermediarias mais provaveis para intervalo; explique em notes.",
@@ -386,7 +383,7 @@ export async function readTimeClockWithMaya({
                   "Preserve os horarios exatos. Nunca arredonde minutos.",
                   "Nao invente data ou horario. Se nao enxergar com confianca, deixe vazio e inclua o campo em missingFields.",
                   "expectedMinutes deve ser 528 para dia util comum quando a data for segunda a sexta, 0 para sabado/domingo, salvo se o documento mostrar carga esperada diferente.",
-                  "Responda apenas JSON valido com: date, firstIn, firstOut, secondIn, secondOut, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
+                  "Responda apenas JSON valido com: date, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
                   "punches deve listar todos os horarios de batida usados ou relevantes no formato HH:mm."
                 ].join(" ")
               },
@@ -841,16 +838,12 @@ function buildFallbackTimeClockDraft(targetDate?: string): TimeClockDraft {
 
   return {
     date,
-    firstIn: "",
-    firstOut: "",
-    secondIn: "",
-    secondOut: "",
     startTime: "",
     endTime: "",
     lunchMinutes: 72,
     expectedMinutes: date ? getDefaultExpectedMinutesForDate(date) : 528,
     confidence: 0,
-    missingFields: ["date", "firstIn", "firstOut", "secondIn", "secondOut", "startTime", "endTime"],
+    missingFields: ["date", "startTime", "endTime"],
     punches: [],
     notes: "Ponto pendente de revisao manual."
   };
@@ -860,39 +853,16 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
   const date = toDateString(parsed.date ?? parsed.data ?? parsed.workDate ?? parsed.referenceDate) || fallback.date;
   const rawPunches = parsed.punches ?? parsed.batidas ?? parsed.times ?? parsed.horarios;
   const punches = normalizeClockPunches(rawPunches);
-  const inferredFields = inferTimeClockFieldsFromPunches(punches);
-  const firstIn =
-    normalizeClockTime(parsed.firstIn ?? parsed.entrada1 ?? parsed.primeiraEntrada) ||
-    inferredFields.firstIn ||
-    fallback.firstIn ||
-    "";
-  const firstOut =
-    normalizeClockTime(parsed.firstOut ?? parsed.saidaAlmoco ?? parsed.inicioIntervalo ?? parsed.intervalStart) ||
-    inferredFields.firstOut ||
-    fallback.firstOut ||
-    "";
-  const secondIn =
-    normalizeClockTime(parsed.secondIn ?? parsed.retornoAlmoco ?? parsed.fimIntervalo ?? parsed.intervalEnd) ||
-    inferredFields.secondIn ||
-    fallback.secondIn ||
-    "";
-  const secondOut =
-    normalizeClockTime(parsed.secondOut ?? parsed.saidaFinal ?? parsed.endTime ?? parsed.saida) ||
-    inferredFields.secondOut ||
-    fallback.secondOut ||
-    "";
   const startTime =
-    (firstIn && secondOut ? firstIn : "") ||
-    (punches.length >= 2 ? punches[0] : "") ||
     normalizeClockTime(parsed.startTime ?? parsed.entrada ?? parsed.firstPunch ?? parsed.inicio) ||
+    punches[0] ||
     fallback.startTime;
   const endTime =
-    (firstIn && secondOut ? secondOut : "") ||
-    (punches.length >= 2 ? punches[punches.length - 1] : "") ||
     normalizeClockTime(parsed.endTime ?? parsed.saida ?? parsed.lastPunch ?? parsed.fim) ||
+    punches[punches.length - 1] ||
     fallback.endTime;
-  const secondPunch = firstOut ? timeToMinutes(firstOut) : Number.NaN;
-  const thirdPunch = secondIn ? timeToMinutes(secondIn) : Number.NaN;
+  const secondPunch = punches[1] ? timeToMinutes(punches[1]) : Number.NaN;
+  const thirdPunch = punches[2] ? timeToMinutes(punches[2]) : Number.NaN;
   const lunchFromPunches =
     Number.isFinite(secondPunch) && Number.isFinite(thirdPunch) && thirdPunch > secondPunch
       ? thirdPunch - secondPunch
@@ -931,20 +901,7 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
     missingFields.add("endTime");
   }
 
-  ([
-    ["firstIn", firstIn],
-    ["firstOut", firstOut],
-    ["secondIn", secondIn],
-    ["secondOut", secondOut]
-  ] as const).forEach(([field, value]) => {
-    if (value) {
-      missingFields.delete(field);
-    } else {
-      missingFields.add(field);
-    }
-  });
-
-  if (!Number.isFinite(lunchFromPunches) && (!firstOut || !secondIn)) {
+  if (!Number.isFinite(lunchFromPunches) && punches.length < 4) {
     missingFields.add("lunchMinutes");
   } else {
     missingFields.delete("lunchMinutes");
@@ -952,10 +909,6 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
 
   return {
     date,
-    firstIn,
-    firstOut,
-    secondIn,
-    secondOut,
     startTime,
     endTime,
     lunchMinutes: Math.round(lunchMinutes),
@@ -965,41 +918,6 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
     punches,
     notes: toCleanString(parsed.notes) || fallback.notes
   };
-}
-
-function inferTimeClockFieldsFromPunches(punches: string[]) {
-  const fields = {
-    firstIn: "",
-    firstOut: "",
-    secondIn: "",
-    secondOut: ""
-  };
-
-  if (punches.length >= 4) {
-    const sorted = [...punches].sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
-    return {
-      firstIn: sorted[0],
-      firstOut: sorted[1],
-      secondIn: sorted[2],
-      secondOut: sorted[3]
-    };
-  }
-
-  punches.forEach((punch) => {
-    const minutes = timeToMinutes(punch);
-
-    if (minutes <= timeToMinutes("10:30")) {
-      fields.firstIn = punch;
-    } else if (minutes <= timeToMinutes("13:00")) {
-      fields.firstOut = punch;
-    } else if (minutes <= timeToMinutes("16:30")) {
-      fields.secondIn = punch;
-    } else {
-      fields.secondOut = punch;
-    }
-  });
-
-  return fields;
 }
 
 function normalizeStatementLine(value: unknown): StatementTransactionDraft | null {

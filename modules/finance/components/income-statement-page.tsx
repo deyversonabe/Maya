@@ -69,7 +69,6 @@ export function IncomeStatementPage() {
   const { state, actions } = useFinanceStore();
   const [feedback, setFeedback] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState<"all" | string>("all");
-  const [selectedStatementMonth, setSelectedStatementMonth] = useState(() => toInputDate(new Date()).slice(0, 7));
   const [form, setForm] = useState({
     plan: "variable" as IncomePlan,
     description: "",
@@ -96,12 +95,12 @@ export function IncomeStatementPage() {
   });
 
   const accountSummaries = useMemo(
-    () => buildAccountSummaries(state.accounts, state.transactions, state.bills, selectedStatementMonth),
-    [selectedStatementMonth, state.accounts, state.bills, state.transactions]
+    () => buildAccountSummaries(state.accounts, state.transactions, state.bills),
+    [state.accounts, state.bills, state.transactions]
   );
   const statement = useMemo(
-    () => buildStatementEntries(state.accounts, state.transactions, state.bills, selectedAccountId, selectedStatementMonth),
-    [selectedAccountId, selectedStatementMonth, state.accounts, state.bills, state.transactions]
+    () => buildStatementEntries(state.accounts, state.transactions, state.bills, selectedAccountId),
+    [selectedAccountId, state.accounts, state.bills, state.transactions]
   );
   const totalBalance = accountSummaries.reduce((total, summary) => total + summary.balance, 0);
   const selectedSummary =
@@ -109,7 +108,7 @@ export function IncomeStatementPage() {
       ? null
       : accountSummaries.find((summary) => summary.account.id === selectedAccountId) ?? null;
   const currentBalance = selectedSummary?.balance ?? totalBalance;
-  const month = selectedStatementMonth;
+  const month = form.date.slice(0, 7);
   const monthIncome = statement
     .filter((entry) => entry.type === "income" && entry.date.startsWith(month) && isOnOrBeforeToday(entry.date))
     .reduce((total, entry) => total + entry.amount, 0);
@@ -299,7 +298,7 @@ export function IncomeStatementPage() {
               <StatementMetric label="Debitos realizados" value={-monthDebits} icon={<ArrowDownCircle className="size-5" />} />
               <StatementMetric label="Saldo apos vencidas" value={projectedBalance} icon={<Landmark className="size-5" />} />
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_220px]">
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
               <Label>
                 Ver extrato de
                 <Select value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}>
@@ -310,10 +309,6 @@ export function IncomeStatementPage() {
                     </option>
                   ))}
                 </Select>
-              </Label>
-              <Label>
-                Mes
-                <Input type="month" value={selectedStatementMonth} onChange={(event) => setSelectedStatementMonth(event.target.value)} />
               </Label>
               <div className="rounded-xl border border-cream/10 bg-cream/[0.04] p-3">
                 <span className="block text-xs font-black uppercase tracking-[0.14em] text-muted">Saldo geral</span>
@@ -821,23 +816,17 @@ function createIncomeTransactions({
   }));
 }
 
-function buildAccountSummaries(
-  accounts: FinanceAccount[],
-  transactions: Transaction[],
-  bills: PayableBill[],
-  selectedMonth: string
-): AccountSummary[] {
-  const cutoffDate = getStatementCutoffDate(selectedMonth);
+function buildAccountSummaries(accounts: FinanceAccount[], transactions: Transaction[], bills: PayableBill[]): AccountSummary[] {
   const summaries = normalizeAccountsForDisplay(accounts).map((account) => ({
     account,
     income: 0,
     debit: 0,
-    balance: account.openingBalanceDate <= cutoffDate ? account.openingBalance : 0
+    balance: account.openingBalance
   }));
   const byId = new Map(summaries.map((summary) => [summary.account.id, summary]));
 
   transactions
-    .filter((transaction) => transaction.date <= cutoffDate)
+    .filter((transaction) => isOnOrBeforeToday(transaction.date))
     .forEach((transaction) => {
     const summary = byId.get(getEffectiveAccountId(transaction.accountId, accounts));
 
@@ -857,7 +846,6 @@ function buildAccountSummaries(
 
   bills
     .filter((bill) => bill.status === "paid")
-    .filter((bill) => getBillStatementDate(bill) <= cutoffDate)
     .forEach((bill) => {
       const summary = byId.get(getEffectiveAccountId(bill.accountId, accounts));
 
@@ -876,13 +864,10 @@ function buildStatementEntries(
   accounts: FinanceAccount[],
   transactions: Transaction[],
   bills: PayableBill[],
-  selectedAccountId: "all" | string,
-  selectedMonth: string
-): StatementEntry[] {
+  selectedAccountId: "all" | string
+) {
   const displayAccounts = normalizeAccountsForDisplay(accounts);
   const accountById = new Map(displayAccounts.map((account) => [account.id, account]));
-  const periodStart = `${selectedMonth}-01`;
-  const periodEnd = getStatementCutoffDate(selectedMonth);
   const selectedAccounts = selectedAccountId === "all"
     ? displayAccounts
     : displayAccounts.filter((account) => account.id === selectedAccountId);
@@ -902,9 +887,7 @@ function buildStatementEntries(
         accountName: account.name,
         source: "opening" as const
       })),
-    ...transactions
-      .filter((transaction) => transaction.date <= periodEnd)
-      .map((transaction) => ({
+    ...transactions.map((transaction) => ({
       id: transaction.id,
       date: transaction.date,
       description: transaction.description,
@@ -922,7 +905,6 @@ function buildStatementEntries(
     })).filter((entry) => selectedAccountId === "all" || selectedIds.has(entry.accountId)),
     ...bills
       .filter((bill) => bill.status === "paid")
-      .filter((bill) => getBillStatementDate(bill) <= periodEnd)
       .map((bill) => ({
         id: `bill_${bill.id}`,
         date: bill.paidAt?.slice(0, 10) || bill.dueDate,
@@ -942,48 +924,20 @@ function buildStatementEntries(
   });
 
   let balance = 0;
-  const monthEntries: StatementEntry[] = [];
 
-  rawEntries.forEach((entry) => {
+  return rawEntries.map((entry): StatementEntry => {
     const isFuture = "isFuture" in entry && entry.isFuture === true;
 
     if (!isFuture) {
       balance += entry.amount;
     }
 
-    if (entry.date >= periodStart && entry.date <= periodEnd) {
-      monthEntries.push({
-        ...entry,
-        isFuture,
-        balanceAfter: balance
-      });
-    }
-  });
-
-  const firstMonthEntry = monthEntries[0];
-  const balanceBeforeMonth = rawEntries
-    .filter((entry) => entry.date < periodStart)
-    .reduce((total, entry) => total + entry.amount, 0);
-
-  if (balanceBeforeMonth !== 0 || !firstMonthEntry) {
-    const openingEntry: StatementEntry = {
-      id: `opening_period_${selectedAccountId}_${selectedMonth}`,
-      date: periodStart,
-      description: "Saldo anterior ao mes",
-      category: "Saldo inicial",
-      person: "Casal",
-      type: "opening",
-      amount: balanceBeforeMonth,
-      balanceAfter: balanceBeforeMonth,
-      accountId: selectedAccountId === "all" ? DEFAULT_FINANCE_ACCOUNT_ID : selectedAccountId,
-      accountName: selectedAccountId === "all" ? "Todas as carteiras" : accountById.get(selectedAccountId)?.name ?? "Carteira",
-      source: "opening"
+    return {
+      ...entry,
+      isFuture,
+      balanceAfter: balance
     };
-
-    return [openingEntry, ...monthEntries];
-  }
-
-  return monthEntries;
+  });
 }
 
 function normalizeAccountsForDisplay(accounts: FinanceAccount[]) {
@@ -1039,20 +993,6 @@ function getSignedTransactionAmount(transaction: Transaction) {
 
 function isOnOrBeforeToday(value: string) {
   return value <= toInputDate(new Date());
-}
-
-function getStatementCutoffDate(month: string) {
-  const today = toInputDate(new Date());
-  const monthEnd = getMonthEndDate(month);
-
-  return month === today.slice(0, 7) ? today : monthEnd;
-}
-
-function getMonthEndDate(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(year, monthNumber, 0);
-
-  return date.toISOString().slice(0, 10);
 }
 
 function getBillStatementDate(bill: PayableBill) {

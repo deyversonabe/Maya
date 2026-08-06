@@ -45,10 +45,9 @@ export function WorkHoursPage() {
   const [timeClockDraft, setTimeClockDraft] = useState<TimeClockDraft | null>(null);
   const [pointAttachment, setPointAttachment] = useState<FinanceAttachmentUpload | null>(null);
   const [form, setForm] = useState({
-    firstIn: DEFAULT_START,
-    firstOut: "",
-    secondIn: "",
-    secondOut: DEFAULT_END,
+    startTime: DEFAULT_START,
+    endTime: DEFAULT_END,
+    lunchMinutes: String(DEFAULT_LUNCH_MINUTES),
     expectedMinutes: String(DEFAULT_EXPECTED_MINUTES),
     notes: ""
   });
@@ -70,12 +69,6 @@ export function WorkHoursPage() {
   const weekSummary = useMemo(() => buildWeekSummary(selectedDate, personEntries), [personEntries, selectedDate]);
   const totalBalanceMinutes = useMemo(() => calculateEntriesBalance(personEntries), [personEntries]);
   const alerts = useMemo(() => buildWorkTimeAlerts(monthDays, entriesByDate, today), [entriesByDate, monthDays, today]);
-  const formPunchFields = getFormPunchFields(form);
-  const formWorkedMinutes = calculateWorkedMinutesFromPunchFields(formPunchFields);
-  const formLunchMinutes = calculateLunchMinutesFromPunchFields(formPunchFields);
-  const formExpectedMinutes = Number(form.expectedMinutes);
-  const formBalance =
-    formWorkedMinutes >= 0 && Number.isFinite(formExpectedMinutes) ? formWorkedMinutes - formExpectedMinutes : 0;
 
   function selectDate(date: string) {
     const entry = entriesByDate.get(date);
@@ -84,12 +77,10 @@ export function WorkHoursPage() {
     setSelectedDate(date);
     setTimeClockDraft(null);
     setPointAttachment(null);
-    const punchFields = getEntryPunchFields(entry);
     setForm({
-      firstIn: punchFields.firstIn,
-      firstOut: punchFields.firstOut,
-      secondIn: punchFields.secondIn,
-      secondOut: punchFields.secondOut,
+      startTime: entry?.startTime ?? DEFAULT_START,
+      endTime: entry?.endTime ?? DEFAULT_END,
+      lunchMinutes: String(entry?.lunchMinutes ?? DEFAULT_LUNCH_MINUTES),
       expectedMinutes: String(entry?.expectedMinutes ?? expectedMinutes),
       notes: entry?.notes ?? ""
     });
@@ -142,23 +133,18 @@ export function WorkHoursPage() {
   function applyTimeClockDraft(draft: TimeClockDraft, fileName: string) {
     const draftDate = draft.date || selectedDate;
     const expectedMinutes = draft.expectedMinutes ?? getExpectedMinutesForDate(draftDate);
-    const existingForDraft = entriesByDate.get(draftDate);
-    const punchFields = mergeTimeClockDraftIntoPunchFields(draft, getEntryPunchFields(existingForDraft));
-    const lunchMinutes = calculateLunchMinutesFromPunchFields(punchFields);
 
     setTimeClockDraft(draft);
     setSelectedDate(draftDate);
     setSelectedMonth(draftDate.slice(0, 7));
     setForm({
-      firstIn: punchFields.firstIn,
-      firstOut: punchFields.firstOut,
-      secondIn: punchFields.secondIn,
-      secondOut: punchFields.secondOut,
+      startTime: draft.startTime || DEFAULT_START,
+      endTime: draft.endTime || DEFAULT_END,
+      lunchMinutes: String(draft.lunchMinutes),
       expectedMinutes: String(expectedMinutes),
       notes: [
         draft.notes,
         draft.punches.length ? `Batidas lidas: ${draft.punches.join(", ")}.` : "",
-        Number.isFinite(lunchMinutes) && lunchMinutes > 0 ? `Intervalo calculado: ${formatDuration(lunchMinutes)}.` : "",
         draft.missingFields.length ? `Campos para conferir: ${draft.missingFields.join(", ")}.` : "",
         `Anexo do ponto: ${fileName}.`
       ]
@@ -169,18 +155,17 @@ export function WorkHoursPage() {
 
   function submitEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const lunchMinutes = Number(form.lunchMinutes);
     const expectedMinutes = Number(form.expectedMinutes);
-    const punchFields = getFormPunchFields(form);
-    const lunchMinutes = calculateLunchMinutesFromPunchFields(punchFields);
-    const workedMinutes = calculateWorkedMinutesFromPunchFields(punchFields);
+    const workedMinutes = calculateWorkedMinutes(form.startTime, form.endTime, lunchMinutes);
 
-    if (!arePunchFieldsComplete(punchFields)) {
-      setFeedback("Preencha as 4 batidas do dia: entrada, saida para almoco, retorno e saida final.");
+    if (!isValidTime(form.startTime) || !isValidTime(form.endTime) || workedMinutes < 0) {
+      setFeedback("Confira entrada, saida e almoco. A saida precisa ser maior que a entrada.");
       return;
     }
 
-    if (workedMinutes < 0 || lunchMinutes < 0) {
-      setFeedback("Confira a ordem dos horarios. Cada saida precisa ser maior que a entrada correspondente.");
+    if (!Number.isFinite(lunchMinutes) || lunchMinutes < 0 || lunchMinutes > 240) {
+      setFeedback("Informe o almoco em minutos, entre 0 e 240.");
       return;
     }
 
@@ -192,14 +177,9 @@ export function WorkHoursPage() {
     actions.upsertWorkTimeEntry({
       person: selectedPerson,
       date: selectedDate,
-      firstIn: punchFields.firstIn,
-      firstOut: punchFields.firstOut,
-      secondIn: punchFields.secondIn,
-      secondOut: punchFields.secondOut,
-      punches: [punchFields.firstIn, punchFields.firstOut, punchFields.secondIn, punchFields.secondOut],
-      startTime: punchFields.firstIn,
-      endTime: punchFields.secondOut,
-      lunchMinutes,
+      startTime: form.startTime,
+      endTime: form.endTime,
+      lunchMinutes: Math.round(lunchMinutes),
       expectedMinutes: Math.round(expectedMinutes),
       notes: form.notes.trim() || undefined,
       attachmentImageName: pointAttachment?.fileName ?? selectedEntry?.attachmentImageName,
@@ -333,7 +313,7 @@ export function WorkHoursPage() {
             {monthDays.map((day) => {
               const entry = entriesByDate.get(day.date);
               const expected = getExpectedMinutesForDate(day.date);
-              const worked = entry ? calculateWorkedMinutesFromEntry(entry) : 0;
+              const worked = entry ? calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes) : 0;
               const balance = entry ? worked - entry.expectedMinutes : 0;
               const isSelected = day.date === selectedDate;
               const isPastWorkdayWithoutEntry = !entry && expected > 0 && day.date <= today;
@@ -370,7 +350,7 @@ export function WorkHoursPage() {
                   </span>
                   {entry ? (
                     <span className="mt-1 block text-[0.68rem] font-bold text-cyan-50">
-                      {formatEntryPunches(entry)}
+                      {entry.startTime}-{entry.endTime}
                     </span>
                   ) : isPastWorkdayWithoutEntry ? (
                     <span className="mt-1 block text-[0.68rem] font-black text-amber-100">Sem registro</span>
@@ -454,44 +434,30 @@ export function WorkHoursPage() {
             </Label>
             <div className="grid grid-cols-2 gap-3">
               <Label>
-                1. Entrada
+                Entrada
                 <Input
                   type="time"
-                  value={form.firstIn}
-                  onChange={(event) => setForm((current) => ({ ...current, firstIn: event.target.value }))}
+                  value={form.startTime}
+                  onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))}
                 />
               </Label>
               <Label>
-                2. Saida almoco
+                Saida
                 <Input
                   type="time"
-                  value={form.firstOut}
-                  onChange={(event) => setForm((current) => ({ ...current, firstOut: event.target.value }))}
-                />
-              </Label>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Label>
-                3. Retorno almoco
-                <Input
-                  type="time"
-                  value={form.secondIn}
-                  onChange={(event) => setForm((current) => ({ ...current, secondIn: event.target.value }))}
-                />
-              </Label>
-              <Label>
-                4. Saida final
-                <Input
-                  type="time"
-                  value={form.secondOut}
-                  onChange={(event) => setForm((current) => ({ ...current, secondOut: event.target.value }))}
+                  value={form.endTime}
+                  onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))}
                 />
               </Label>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Label>
-                Intervalo calculado
-                <Input value={formatDuration(formLunchMinutes)} readOnly />
+                Almoco em minutos
+                <Input
+                  inputMode="numeric"
+                  value={form.lunchMinutes}
+                  onChange={(event) => setForm((current) => ({ ...current, lunchMinutes: event.target.value }))}
+                />
               </Label>
               <Label>
                 Carga esperada
@@ -509,15 +475,19 @@ export function WorkHoursPage() {
                 className={cn(
                   "mt-1 block font-serif text-2xl",
                   financialValueClass(
-                    formBalance,
+                    calculateWorkedMinutes(form.startTime, form.endTime, Number(form.lunchMinutes)) -
+                      Number(form.expectedMinutes),
                     "text-cyan-50"
                   )
                 )}
               >
-                {formatSignedDuration(formBalance)}
+                {formatSignedDuration(
+                  calculateWorkedMinutes(form.startTime, form.endTime, Number(form.lunchMinutes)) -
+                    Number(form.expectedMinutes)
+                )}
               </strong>
               <p className="mt-1 text-sm text-muted">
-                Trabalhado: {formatDuration(formWorkedMinutes)}
+                Trabalhado: {formatDuration(calculateWorkedMinutes(form.startTime, form.endTime, Number(form.lunchMinutes)))}
               </p>
             </div>
 
@@ -599,7 +569,7 @@ function Metric({
 }
 
 function calculateEntryBalance(entry: WorkTimeEntry) {
-  return calculateWorkedMinutesFromEntry(entry) - entry.expectedMinutes;
+  return calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes) - entry.expectedMinutes;
 }
 
 function calculateEntriesBalance(entries: WorkTimeEntry[]) {
@@ -638,7 +608,7 @@ function buildWorkTimeAlerts(days: Array<{ date: string }>, entriesByDate: Map<s
   const longDays: string[] = [];
 
   entriesByDate.forEach((entry) => {
-    const worked = calculateWorkedMinutesFromEntry(entry);
+    const worked = calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes);
     const balance = worked - entry.expectedMinutes;
 
     if (entry.lunchMinutes > 120) {
@@ -768,21 +738,18 @@ async function exportWorkHoursPdf({
 
   autoTable(doc, {
     startY: Math.min(((doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 122) + 26, 420),
-    head: [["Data", "Status", "Entrada 1", "Saida almoco", "Retorno", "Saida final", "Almoco", "Trabalhado", "Esperado", "Saldo"]],
+    head: [["Data", "Status", "Entrada", "Saida", "Almoco", "Trabalhado", "Esperado", "Saldo"]],
     body: days.map((day) => {
       const entry = entriesByDate.get(day.date);
       const status = getDayStatus(day.date, entry, today);
-      const worked = entry ? calculateWorkedMinutesFromEntry(entry) : 0;
+      const worked = entry ? calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes) : 0;
       const expected = entry?.expectedMinutes ?? getExpectedMinutesForDate(day.date);
-      const punchFields = getEntryPunchFields(entry);
 
       return [
         formatDate(day.date),
         status.label,
-        punchFields.firstIn,
-        punchFields.firstOut,
-        punchFields.secondIn,
-        punchFields.secondOut,
+        entry?.startTime ?? "",
+        entry?.endTime ?? "",
         entry ? formatDuration(entry.lunchMinutes) : "",
         entry ? formatDuration(worked) : "",
         formatDuration(expected),
@@ -848,7 +815,7 @@ function buildMonthSummary(days: Array<{ date: string }>, entriesByDate: Map<str
         return summary;
       }
 
-      const worked = calculateWorkedMinutesFromEntry(entry);
+      const worked = calculateWorkedMinutes(entry.startTime, entry.endTime, entry.lunchMinutes);
       const balance = worked - entry.expectedMinutes;
 
       summary.recordedDays += 1;
@@ -880,154 +847,19 @@ function buildMonthSummary(days: Array<{ date: string }>, entriesByDate: Map<str
   );
 }
 
-type PunchFields = {
-  firstIn: string;
-  firstOut: string;
-  secondIn: string;
-  secondOut: string;
-};
-
-function getFormPunchFields(form: PunchFields): PunchFields {
-  return {
-    firstIn: form.firstIn,
-    firstOut: form.firstOut,
-    secondIn: form.secondIn,
-    secondOut: form.secondOut
-  };
-}
-
-function getEntryPunchFields(entry: WorkTimeEntry | undefined): PunchFields {
-  const punches = entry?.punches?.filter(isValidTime) ?? [];
-
-  return {
-    firstIn: entry?.firstIn || punches[0] || entry?.startTime || DEFAULT_START,
-    firstOut: entry?.firstOut || punches[1] || "",
-    secondIn: entry?.secondIn || punches[2] || "",
-    secondOut: entry?.secondOut || punches[3] || entry?.endTime || DEFAULT_END
-  };
-}
-
-function mergeTimeClockDraftIntoPunchFields(draft: TimeClockDraft, base: PunchFields): PunchFields {
-  const next = { ...base };
-  const explicitFields: PunchFields = {
-    firstIn: draft.firstIn || "",
-    firstOut: draft.firstOut || "",
-    secondIn: draft.secondIn || "",
-    secondOut: draft.secondOut || ""
-  };
-
-  if (arePunchFieldsComplete(explicitFields)) {
-    return explicitFields;
-  }
-
-  const punches = normalizePunches([
-    explicitFields.firstIn,
-    explicitFields.firstOut,
-    explicitFields.secondIn,
-    explicitFields.secondOut,
-    ...(draft.punches ?? [])
-  ]);
-
-  if (punches.length >= 4) {
-    return {
-      firstIn: punches[0],
-      firstOut: punches[1],
-      secondIn: punches[2],
-      secondOut: punches[3]
-    };
-  }
-
-  punches.forEach((punch) => {
-    const slot = guessPunchSlot(punch);
-    next[slot] = punch;
-  });
-
-  if (punches.length === 0 && draft.startTime && isValidTime(draft.startTime)) {
-    next.firstIn = draft.startTime;
-  }
-
-  if (punches.length === 0 && draft.endTime && isValidTime(draft.endTime)) {
-    next.secondOut = draft.endTime;
-  }
-
-  return next;
-}
-
-function normalizePunches(values: string[]) {
-  return Array.from(new Set(values.filter(isValidTime))).sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
-}
-
-function guessPunchSlot(time: string): keyof PunchFields {
-  const minutes = timeToMinutes(time);
-
-  if (minutes <= timeToMinutes("10:30")) {
-    return "firstIn";
-  }
-
-  if (minutes <= timeToMinutes("13:00")) {
-    return "firstOut";
-  }
-
-  if (minutes <= timeToMinutes("16:30")) {
-    return "secondIn";
-  }
-
-  return "secondOut";
-}
-
-function arePunchFieldsComplete(fields: PunchFields) {
-  return Object.values(fields).every(isValidTime);
-}
-
-function calculateWorkedMinutesFromEntry(entry: WorkTimeEntry) {
-  const fields = getEntryPunchFields(entry);
-  const worked = calculateWorkedMinutesFromPunchFields(fields);
-
-  if ((!fields.firstOut || !fields.secondIn) && isValidTime(fields.firstIn) && isValidTime(fields.secondOut)) {
-    const legacyRange = calculateTimeRange(fields.firstIn, fields.secondOut);
-    return legacyRange > 0 ? Math.max(0, legacyRange - Math.max(0, Math.round(entry.lunchMinutes))) : worked;
-  }
-
-  return worked;
-}
-
-function calculateWorkedMinutesFromPunchFields(fields: PunchFields) {
-  if (!arePunchFieldsComplete(fields)) {
-    return 0;
-  }
-
-  const firstBlock = calculateTimeRange(fields.firstIn, fields.firstOut);
-  const secondBlock = calculateTimeRange(fields.secondIn, fields.secondOut);
-
-  if (firstBlock < 0 || secondBlock < 0) {
-    return -1;
-  }
-
-  return firstBlock + secondBlock;
-}
-
-function calculateLunchMinutesFromPunchFields(fields: PunchFields) {
-  if (!isValidTime(fields.firstOut) || !isValidTime(fields.secondIn)) {
-    return DEFAULT_LUNCH_MINUTES;
-  }
-
-  return calculateTimeRange(fields.firstOut, fields.secondIn);
-}
-
-function calculateTimeRange(startTime: string, endTime: string) {
-  if (!isValidTime(startTime) || !isValidTime(endTime)) {
+function calculateWorkedMinutes(startTime: string, endTime: string, lunchMinutes: number) {
+  if (!isValidTime(startTime) || !isValidTime(endTime) || !Number.isFinite(lunchMinutes)) {
     return 0;
   }
 
   const start = timeToMinutes(startTime);
   const end = timeToMinutes(endTime);
 
-  return end > start ? end - start : -1;
-}
+  if (end <= start) {
+    return -1;
+  }
 
-function formatEntryPunches(entry: WorkTimeEntry) {
-  const fields = getEntryPunchFields(entry);
-  return [fields.firstIn, fields.firstOut, fields.secondIn, fields.secondOut].filter(Boolean).join(" / ");
+  return Math.max(0, end - start - Math.max(0, Math.round(lunchMinutes)));
 }
 
 function timeToMinutes(value: string) {
