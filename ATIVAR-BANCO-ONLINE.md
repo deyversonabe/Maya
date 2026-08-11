@@ -7,7 +7,9 @@ Use este roteiro para deixar os orcamentos acessiveis de varios computadores, ce
 1. Acesse https://supabase.com/dashboard.
 2. Crie um projeto ou abra o projeto do OrcaFlow.
 3. Va em **SQL Editor > New query**.
-4. Cole e execute todo o arquivo `supabase/schema.sql`.
+4. Cole e execute todo o arquivo `supabase/BASE-COMPLETA-ORCAFLOW.sql`.
+   - Esse arquivo cria/atualiza a base completa sem apagar dados.
+   - Se preferir, `supabase/schema.sql` possui a mesma estrutura tecnica, mas o arquivo `BASE-COMPLETA-ORCAFLOW.sql` foi preparado para uso direto no SQL Editor.
 5. Va em **Authentication > Providers > Email** e confirme que Email esta ativo.
 6. Va em **Project Settings > API** e copie:
    - Project URL;
