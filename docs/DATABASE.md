@@ -81,6 +81,7 @@ Regras:
 - `save_finance_workspace_state_locked` valida membro ativo, bloqueia a linha com `SELECT ... FOR UPDATE` e mescla listas por `id` antes de gravar, evitando sobrescrita cega do JSONB em sessoes concorrentes.
 - Exclusoes usam `deletedEntityIds` como tombstones sincronizados; qualquer item removido do estado local ou online fica bloqueado de voltar em merges futuros.
 - O merge da RPC e o merge em tempo real do cliente preservam campos de anexo e itens lidos (`attachmentStoragePath`, `attachmentDataUrl`, `attachmentImageName`, `receiptImageName`, `documentItems` e equivalentes) quando outra sessao salva uma versao menos completa do mesmo registro.
+- Ao normalizar `bills`, recorrencias ou parcelas futuras marcadas como pagas antecipadamente no mesmo grupo e no mesmo dia sao devolvidas para `pending`, mantendo apenas a primeira baixa como realizada.
 - Escritas diretas em `finance_workspace_states` por cliente autenticado devem permanecer bloqueadas por RLS; o app deve usar a RPC segura.
 - A tabela `finance_workspace_states` participa do Supabase Realtime para outros aparelhos receberem atualizacoes sem recarregar a pagina.
 - Dados financeiros continuam em `localStorage` como cache local para carregamento rapido e fallback.
@@ -395,9 +396,14 @@ Campos essenciais de WorkTimeEntry:
 - `id`.
 - `person`.
 - `date`.
+- `firstIn`.
+- `firstOut`.
+- `secondIn`.
+- `secondOut`.
+- `punches`.
 - `startTime`.
 - `endTime`.
-- `lunchBreakMinutes`.
+- `lunchMinutes`.
 - `expectedMinutes`.
 - `notes`.
 - `attachmentImageName`.
@@ -411,14 +417,18 @@ Campos essenciais de WorkTimeEntry:
 Regras de WorkTimeEntry:
 
 - `date` usa formato `YYYY-MM-DD`.
-- `startTime` e `endTime` usam formato `HH:mm`.
+- `firstIn`, `firstOut`, `secondIn`, `secondOut`, `startTime` e `endTime` usam formato `HH:mm`.
+- O registro diario deve priorizar as quatro batidas reais: entrada, saida para almoco, retorno do almoco e saida final.
+- `startTime` e `endTime` permanecem por compatibilidade e devem refletir `firstIn` e `secondOut`.
+- `punches` preserva a lista de batidas lidas ou revisadas no dia.
 - A jornada padrao e segunda a sexta, 08:00 as 18:00, com 72 minutos de almoco.
+- `lunchMinutes` deve ser calculado preferencialmente pela diferenca entre `firstOut` e `secondIn`.
 - `expectedMinutes` padrao e 528 minutos em dias uteis e 0 em finais de semana, podendo ser editado por registro.
 - O saldo diario e calculado como minutos trabalhados menos minutos esperados.
 - O saldo mensal soma apenas registros do mes, sem gerar debito automatico para dias uteis sem registro.
 - Horas trabalhadas nao alteram receita, despesa, contas, metas, orcamentos ou saldos de carteira.
 - Foto do registro de ponto deve usar os mesmos campos de anexo e Storage privado dos demais documentos.
-- Leitura automatica do ponto gera rascunho revisavel; o usuario precisa salvar o dia para persistir o registro.
+- Leitura automatica do ponto gera rascunho revisavel; comprovantes individuais de REP podem preencher apenas uma das quatro batidas e o usuario precisa completar/conferir antes de salvar.
 
 Campos essenciais de Budget:
 
@@ -504,7 +514,7 @@ Campos essenciais:
 - `confidence`.
 - `missingFields`.
 - `items`.
-- `fiscalDocument`: metadados opcionais de DANFE/NF-e/NFC-e/cupom fiscal, como tipo fiscal, chave de acesso, emissor, CNPJ, numero, serie, protocolo e totais.
+- `fiscalDocument`: metadados opcionais de DANFE/NF-e/NFC-e/cupom fiscal, como tipo fiscal, chave de acesso, QR fiscal, URL da consulta fiscal, emissor, CNPJ, numero, serie, protocolo e totais.
 - `attachmentImageName`.
 - `attachmentDataUrl`.
 

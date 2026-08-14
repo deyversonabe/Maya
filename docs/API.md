@@ -208,19 +208,21 @@ Fallback: se a leitura nao ocorrer, retornar rascunho pendente com valor zero, c
 
 ### `POST /api/maya/timecard`
 
-Objetivo: ler imagem de registro de ponto ou espelho de ponto e sugerir rascunho revisavel de horas trabalhadas.
+Objetivo: ler imagem de registro de ponto, espelho de ponto ou relatorio de ponto em PDF e sugerir rascunho revisavel de horas trabalhadas.
 
 Entrada:
 
 - Imagem em base64/data URL.
+- PDF em `fileDataUrl` quando o arquivo for `application/pdf`.
 - Nome do arquivo.
 - `targetDate`: data selecionada no calendario, quando existir.
 
-Validacao: a imagem deve ser `data:image/*` e respeitar limite maximo de tamanho antes de qualquer leitura por IA.
+Validacao: imagem deve ser `data:image/*` e PDF deve ser `data:application/pdf`; ambos respeitam limite maximo de tamanho antes de qualquer leitura.
 
 Saida:
 
-- `timeClockDraft` com `date`, `startTime`, `endTime`, `lunchMinutes`, `expectedMinutes`, `confidence`, `missingFields`, `punches` e `notes`.
+- `timeClockDraft` com `date`, `firstIn`, `firstOut`, `secondIn`, `secondOut`, `startTime`, `endTime`, `lunchMinutes`, `expectedMinutes`, `confidence`, `missingFields`, `punches` e `notes`.
+- `timeClockDrafts`: array opcional quando o relatorio tiver varias datas legiveis.
 - `needsReview`: sempre `true`.
 
 Regras:
@@ -228,8 +230,10 @@ Regras:
 - A rota deve ignorar cabecalhos, matricula, empresa, CNPJ, assinatura, totais legais e textos administrativos.
 - Quando a data alvo aparecer no documento, a leitura deve priorizar essa data.
 - Quando houver quatro batidas, a primeira vira entrada, a ultima vira saida e a diferenca entre segunda e terceira vira intervalo.
+- Quando o PDF trouxer linhas estruturadas com data, batidas, carga normal e faltas, a rota deve importar apenas horarios reais de batida e nao transformar `09:00` de carga normal em batida.
+- Quando houver comprovante individual com apenas `DATA` e `HORA`, a rota deve preencher somente a batida provavel (`firstIn`, `firstOut`, `secondIn` ou `secondOut`) e manter as demais pendentes.
 - Quando a leitura nao identificar data ou horarios confiaveis, deve manter campos pendentes em vez de inventar.
-- Nenhum registro de horas deve ser salvo sem confirmacao do usuario na tela `Horas`.
+- Foto individual deve ficar como rascunho revisavel antes de salvar; relatorio PDF com varias datas pode alimentar o calendario automaticamente, mantendo cada dia editavel apos a importacao.
 
 ## Endpoints WhatsApp
 
@@ -359,12 +363,13 @@ Entrada:
 - `imageDataUrl`: imagem em data URL.
 - `fileName`: nome do arquivo, opcional.
 - `documentKind`: `expense`, `income` ou `bill`, opcional.
+- `qrPayloads`: lista opcional de conteudos de QR Code detectados no navegador antes do envio, usada como apoio fiscal para NFC-e/NF-e/cupom.
 
 Saida:
 
 - `financialDraft`: rascunho normalizado de despesa, renda ou conta a pagar.
 - `expenseDraft`: compatibilidade com a primeira versao de despesas por nota.
-- `financialDraft.fiscalDocument`: metadados fiscais opcionais para DANFE NF-e, DANFE NFC-e e cupom fiscal, incluindo tipo, chave de acesso, emissor, CNPJ, numero, serie, protocolo e totais quando legiveis.
+- `financialDraft.fiscalDocument`: metadados fiscais opcionais para DANFE NF-e, DANFE NFC-e e cupom fiscal, incluindo tipo, chave de acesso, QR fiscal, emissor, CNPJ, numero, serie, protocolo e totais quando legiveis.
 - `needsReview`: sempre `true`.
 - `message`: orientacao curta para revisao.
 
@@ -375,6 +380,7 @@ Regras:
 - A rota declara `maxDuration = 25` e usa timeout interno controlado para reduzir falhas em documentos longos sem travar a interface.
 - A rota solicita saida JSON estruturada e rejeita respostas vazias ou malformadas.
 - Quando a OpenAI nao estiver configurada ou falhar, retorna rascunho seguro com campos essenciais vazios.
+- Quando `qrPayloads` vier preenchido, a rota extrai dados fiscais confiaveis do QR, como chave de acesso, CNPJ, numero, serie, URL fiscal e valor/data quando estiverem no proprio QR ou na pagina publica consultada com timeout curto.
 - A IA nao deve inventar titulo, valor, vencimento, descricao ou codigo quando a imagem nao sustentar a informacao.
 - Em DANFE/NF-e/NFC-e/cupom fiscal, a IA deve usar o valor total da nota ou valor pago como `amount` e manter chave de acesso/CNPJ apenas quando legiveis.
 - A IA pode retornar itens de nota ou linhas de extrato em `items`, mas esses itens sao informativos ate que o usuario confirme o lancamento.
@@ -424,6 +430,7 @@ Regras:
 - Se a IA ou o extrato retornar um valor negativo em uma linha de saida, o backend normaliza o valor como positivo e preserva `type = expense`.
 - A normalizacao aceita linhas em `lines`, `linhas`, `transactions`, `transacoes` ou `items`, desde que cada linha tenha tipo/direcao, descricao, valor e data confiaveis.
 - Quando a linha for Pix e o destinatario/remetente estiver legivel, preencher `paymentRecipient`.
+- Quando uma nota fiscal/comprovante for anexada a uma despesa do extrato no mesmo dia e valor, a nota deve prevalecer para descricao, itens e dados fiscais, sem gerar novo valor financeiro.
 - Quando nao houver categoria confiavel, usar `Outros`.
 - O frontend deve permitir editar as linhas antes de salvar.
 - O frontend deve verificar duplicidade por tipo, data e valor antes de importar.

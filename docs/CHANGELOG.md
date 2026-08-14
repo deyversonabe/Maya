@@ -8,6 +8,15 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Contas recorrentes ou parceladas criadas como pagas agora mantem apenas a primeira ocorrencia como paga; parcelas futuras nascem pendentes para nao inflar o saldo realizado.
+- Dados antigos com recorrencias/parcelas futuras pagas no mesmo dia sao normalizados no carregamento, mantendo a primeira baixa e devolvendo as futuras para pendente.
+- Extrato/Receitas passa a ignorar lancamentos futuros no saldo anterior do periodo, evitando que parcelas planejadas contaminem o saldo realizado.
+- Conciliacao entre nota e extrato reforcada: quando houver despesa ja existente no mesmo dia e valor, os dados da nota prevalecem em descricao, itens, categoria e dados fiscais sem criar novo debito.
+- Leitura de nota fiscal/cupom passa a aceitar QR Code detectado no navegador como apoio de preenchimento, preservando chave de acesso, URL fiscal e dados confiaveis no rascunho da despesa.
+- Extrato/Receitas passa a ter mes de visualizacao e saldo calculado ate o corte do mes escolhido, evitando que lancamentos recorrentes ou parcelas futuras fora do periodo inflem o saldo exibido.
+- Aba `Meses` separa saldo realizado de contas previstas e adiciona comparacao manual entre dois meses para rendas, despesas, contas pagas, contas previstas e saldo.
+- Leitura de foto de ponto reforcada para comprovantes individuais com `DATA` e `HORA`, preenchendo apenas a batida provavel e mantendo demais campos para revisao.
+- Aba `Salao` substitui o indicador confuso de custo total das fichas por margem do mes, mantendo estoque sem impacto financeiro automatico.
 - Estrutura preparada para upload no GitHub: `supabase/migrations/` validada apenas com `.sql`, `tsconfig.tsbuildinfo` protegido no `.gitignore` e ZIP final sem artefatos de build, dependencias ou segredos locais.
 - Assets antigos com nome `juntos-*` removidos/renomeados para manter a marca publica focada em Maya.
 - Nome de exibicao normalizado para `Deyverson`, mantendo compatibilidade com dados antigos gravados como `Deyveron`.
@@ -18,6 +27,9 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Aba `Horas` passa a importar relatorio de ponto em PDF, extrair varias datas quando o PDF tiver texto estruturado e alimentar o calendario mantendo cada dia editavel.
+- `POST /api/maya/timecard` passa a aceitar PDF de relatorio alem de imagem, retornando `timeClockDrafts` quando houver varios dias no arquivo.
+- Aba `Horas` passa a registrar quatro batidas por dia: entrada, saida para almoco, retorno do almoco e saida final, calculando intervalo e horas trabalhadas a partir dos horarios reais.
 - Aba `Salao` adicionada para gestao profissional de materiais do studio, com estoque por unidade/ml, custo individual, estoque minimo e movimentos internos sem impacto financeiro automatico.
 - Controle profissional do salao expandido com lote, validade, inventario fisico, alertas de vencimento, compras planejadas e sugestao de reposicao por consumo.
 - Leitura de nota de compra de material adicionada na aba `Salao`, criando rascunhos revisaveis para entrada de estoque sem gerar despesa automatica.
