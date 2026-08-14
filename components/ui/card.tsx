@@ -16,13 +16,11 @@ export function Card({
 export function CardHeader({
   eyebrow,
   title,
-  description,
   action,
   className
 }: {
   eyebrow?: string;
   title: string;
-  description?: string;
   action?: React.ReactNode;
   className?: string;
 }) {
@@ -31,7 +29,6 @@ export function CardHeader({
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
         <h2 className="section-title">{title}</h2>
-        {description ? <p className="mt-1 text-sm leading-5 text-muted">{description}</p> : null}
       </div>
       {action}
     </div>
