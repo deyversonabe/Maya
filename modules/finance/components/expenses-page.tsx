@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { Camera, Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +13,7 @@ import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toI
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
-import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import { detectQrPayloadsFromImageDataUrl, fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BankStatementDraft,
@@ -151,13 +150,15 @@ export function ExpensesPage() {
 
     try {
       const attachment = await fileToFinanceAttachment(file);
+      const qrPayloads = await detectQrPayloadsFromImageDataUrl(attachment.imageDataUrl);
       const response = await fetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
           fileName: file.name,
-          documentKind: "expense"
+          documentKind: "expense",
+          qrPayloads
         })
       });
       const result = (await response.json()) as {
@@ -481,7 +482,7 @@ export function ExpensesPage() {
             action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Rascunho MAYA" : "Manual ou nota"}</Badge>}
           />
 
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
             <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
               <FileImage className="size-4" aria-hidden="true" />
               Anexar nota
@@ -494,9 +495,6 @@ export function ExpensesPage() {
               <FileText className="size-4" aria-hidden="true" />
               Anexar extrato
             </Button>
-            <Link href="/expenses/note" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-bronze/40 bg-bronze/10 px-4 text-sm font-black text-bronze transition hover:bg-bronze/20">
-              Importar QR/XML
-            </Link>
             <input
               ref={uploadRef}
               className="hidden"
@@ -966,25 +964,25 @@ function buildReceiptAttachmentPatch(
   incoming: Omit<Transaction, "id" | "createdAt">
 ): Partial<Omit<Transaction, "id" | "createdAt">> {
   return {
-    description: chooseReceiptEnhancedDescription(existing.description, incoming.description),
-    category: existing.category || incoming.category,
-    otherCategoryDescription: existing.otherCategoryDescription || incoming.otherCategoryDescription,
-    paymentMethod: existing.paymentMethod || incoming.paymentMethod,
-    paymentRecipient: existing.paymentRecipient || incoming.paymentRecipient,
-    source: existing.source === "manual" || !existing.source ? "receipt" : existing.source,
+    description: chooseReceiptEnhancedDescription(existing.description, incoming.description, existing.source),
+    category: incoming.category || existing.category,
+    otherCategoryDescription: incoming.otherCategoryDescription || existing.otherCategoryDescription,
+    paymentMethod: incoming.paymentMethod || existing.paymentMethod,
+    paymentRecipient: incoming.paymentRecipient || existing.paymentRecipient,
+    source: incoming.source || existing.source || "receipt",
     receiptImageName: incoming.receiptImageName || existing.receiptImageName,
     attachmentImageName: incoming.attachmentImageName || existing.attachmentImageName,
     attachmentDataUrl: incoming.attachmentDataUrl || existing.attachmentDataUrl,
     attachmentStoragePath: incoming.attachmentStoragePath || existing.attachmentStoragePath,
     attachmentMimeType: incoming.attachmentMimeType || existing.attachmentMimeType,
     attachmentSize: incoming.attachmentSize || existing.attachmentSize,
-    documentItems: mergeDocumentItems(existing.documentItems, incoming.documentItems),
+    documentItems: mergeDocumentItems(incoming.documentItems, existing.documentItems),
     fiscalDocument: incoming.fiscalDocument || existing.fiscalDocument,
     notes: mergeReceiptAttachmentNotes(existing.notes, incoming)
   };
 }
 
-function chooseReceiptEnhancedDescription(existingDescription: string, incomingDescription?: string) {
+function chooseReceiptEnhancedDescription(existingDescription: string, incomingDescription?: string, existingSource?: string) {
   const candidate = incomingDescription?.trim();
 
   if (!candidate) {
@@ -999,6 +997,10 @@ function chooseReceiptEnhancedDescription(existingDescription: string, incomingD
   }
 
   if (normalizedCandidate.includes(normalizedExisting)) {
+    return candidate;
+  }
+
+  if (existingSource === "statement") {
     return candidate;
   }
 

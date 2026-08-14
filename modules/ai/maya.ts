@@ -20,6 +20,32 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5-mini";
 const DEFAULT_VISION_MODEL = "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 18_000;
+const FISCAL_QR_FETCH_TIMEOUT_MS = 4_000;
+
+export interface TimeClockReadResult {
+  timeClockDraft: TimeClockDraft;
+  timeClockDrafts?: TimeClockDraft[];
+  needsReview: true;
+  message: string;
+}
+
+interface FiscalQrContext {
+  payloads: string[];
+  qrCodeContent?: string;
+  qrCodeUrl?: string;
+  accessKey?: string;
+  documentType?: FiscalDocumentMetadata["documentType"];
+  issuerCnpj?: string;
+  issuerName?: string;
+  documentNumber?: string;
+  series?: string;
+  issueTime?: string;
+  documentDate?: string;
+  amount?: number;
+  paidAmount?: number;
+  totalItemsAmount?: number;
+  pageText?: string;
+}
 
 export async function generateMayaAnalysis({
   state,
@@ -108,11 +134,13 @@ export async function generateMayaAnalysis({
 export async function readReceiptWithMaya({
   imageDataUrl,
   fileName,
-  documentKind = "expense"
+  documentKind = "expense",
+  qrPayloads = []
 }: {
   imageDataUrl: string;
   fileName?: string;
   documentKind?: FinancialDocumentKind;
+  qrPayloads?: string[];
 }): Promise<{
   financialDraft: FinancialDocumentDraft;
   expenseDraft: ExpenseDraft;
@@ -120,12 +148,14 @@ export async function readReceiptWithMaya({
   message: string;
 }> {
   const fallbackDraft = buildFallbackFinancialDraft(fileName, documentKind, imageDataUrl);
+  const qrContext = await buildFiscalQrContext(qrPayloads);
+  const qrFallbackDraft = mergeQrContextIntoDraft(fallbackDraft, qrContext);
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     return {
-      financialDraft: fallbackDraft,
-      expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
+      financialDraft: qrFallbackDraft,
+      expenseDraft: buildExpenseDraftFromFinancialDraft(qrFallbackDraft),
       needsReview: true,
       message:
         "MAYA preparou um rascunho seguro. Preencha ou revise os dados manualmente antes de confirmar."
@@ -133,6 +163,7 @@ export async function readReceiptWithMaya({
   }
 
   try {
+    const qrContextText = buildFiscalQrPrompt(qrContext);
     const response = await fetchOpenAIResponse(apiKey, {
         model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
         input: [
@@ -146,6 +177,9 @@ export async function readReceiptWithMaya({
                   "O usuario quer um rascunho revisavel para o app Maya.",
                   `Tipo solicitado: ${documentKind}.`,
                   "A imagem pode ser nota, DANFE NF-e, DANFE NFC-e, cupom fiscal, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
+                  qrContextText
+                    ? `Dados extraidos previamente do QR Code fiscal, use apenas se ajudarem a confirmar o documento: ${qrContextText}`
+                    : "",
                   "Faca OCR minucioso antes de responder: leia cabecalho, emissor, CNPJ/CPF, datas, vencimento, favorecido, pagador, forma de pagamento, valor final, descontos, itens e linhas legiveis.",
                   "Antes de classificar o documento, procure por palavras-chave brasileiras como VALOR TOTAL, VALOR PAGO, TOTAL DA NOTA, VENCIMENTO, DATA DE EMISSAO, EMITENTE, DESTINATARIO, FAVORECIDO, CHAVE DE ACESSO, LINHA DIGITAVEL, COPIA E COLA e PIX.",
                   "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, fiscalDocument, notes.",
@@ -168,7 +202,7 @@ export async function readReceiptWithMaya({
                   "Preserve centavos e valores exatos. Nunca arredonde valor. Se o documento mostrar R$ 1.234,56, devolva 1234.56.",
                   "Nao invente titulo, descricao, valor, datas, codigo, estabelecimento ou categoria quando nao houver confianca.",
                   "Se um campo nao estiver legivel, use string vazia e inclua o nome dele em missingFields."
-                ].join(" ")
+                ].filter(Boolean).join(" ")
               },
               {
                 type: "input_image",
@@ -188,8 +222,8 @@ export async function readReceiptWithMaya({
       logReceiptReadFailure(error, documentKind);
 
       return {
-        financialDraft: fallbackDraft,
-        expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
+        financialDraft: qrFallbackDraft,
+        expenseDraft: buildExpenseDraftFromFinancialDraft(qrFallbackDraft),
         needsReview: true,
         message: buildReceiptFailureMessage(error)
       };
@@ -209,14 +243,14 @@ export async function readReceiptWithMaya({
       );
 
       return {
-        financialDraft: fallbackDraft,
-        expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
+        financialDraft: qrFallbackDraft,
+        expenseDraft: buildExpenseDraftFromFinancialDraft(qrFallbackDraft),
         needsReview: true,
         message: "MAYA nao encontrou dados confiaveis no anexo. Preencha manualmente antes de salvar."
       };
     }
 
-    const financialDraft = normalizeFinancialDraft(parsed, fallbackDraft, documentKind);
+    const financialDraft = normalizeFinancialDraft(mergeQrContextIntoParsed(parsed, qrContext), qrFallbackDraft, documentKind);
 
     return {
       financialDraft,
@@ -229,8 +263,8 @@ export async function readReceiptWithMaya({
     logReceiptReadFailure(failure, documentKind);
 
     return {
-      financialDraft: fallbackDraft,
-      expenseDraft: buildExpenseDraftFromFinancialDraft(fallbackDraft),
+      financialDraft: qrFallbackDraft,
+      expenseDraft: buildExpenseDraftFromFinancialDraft(qrFallbackDraft),
       needsReview: true,
       message: buildReceiptFailureMessage(failure)
     };
@@ -345,11 +379,7 @@ export async function readTimeClockWithMaya({
   imageDataUrl: string;
   fileName?: string;
   targetDate?: string;
-}): Promise<{
-  timeClockDraft: TimeClockDraft;
-  needsReview: true;
-  message: string;
-}> {
+}): Promise<TimeClockReadResult> {
   const fallbackDraft = buildFallbackTimeClockDraft(targetDate);
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -375,7 +405,10 @@ export async function readTimeClockWithMaya({
                   "O objetivo e preencher um rascunho revisavel de horas trabalhadas, nao criar lancamento financeiro.",
                   targetDate ? `Data alvo selecionada pelo usuario: ${targetDate}. Se essa data aparecer no documento, use somente os horarios dessa data.` : "Se houver varias datas, escolha a data mais legivel e mais completa.",
                   "Ignore cabecalho, nome da empresa, CNPJ, matricula, assinatura, totais legais, banco de horas antigo, observacoes administrativas, linhas de escala e qualquer texto que nao seja data/horario do dia.",
+                  "Em comprovante individual de REP/relógio de ponto, procure principalmente os rotulos DATA ou TA e HORA. Exemplo comum: DATA: 03/08/2026 HORA: 18:13.",
+                  "Quando a imagem tiver apenas uma batida, retorne essa batida em punches e preencha somente o campo mais provavel entre firstIn, firstOut, secondIn ou secondOut. Nao use o mesmo horario como entrada e saida.",
                   "Procure horarios reais de batida do ponto: entrada, inicio do intervalo, fim do intervalo e saida.",
+                  "Mapeie as quatro batidas como firstIn, firstOut, secondIn e secondOut quando for possivel.",
                   "Se houver quatro batidas no dia, use startTime como a primeira batida, endTime como a ultima batida e lunchMinutes como a diferenca entre segunda e terceira batida.",
                   "Se houver duas batidas no dia, use primeira e ultima batida, e deixe lunchMinutes como 72 apenas se o documento nao mostrar intervalo; inclua lunchMinutes em missingFields.",
                   "Se houver mais de quatro batidas, use a primeira e a ultima como jornada total e use as batidas intermediarias mais provaveis para intervalo; explique em notes.",
@@ -383,7 +416,7 @@ export async function readTimeClockWithMaya({
                   "Preserve os horarios exatos. Nunca arredonde minutos.",
                   "Nao invente data ou horario. Se nao enxergar com confianca, deixe vazio e inclua o campo em missingFields.",
                   "expectedMinutes deve ser 528 para dia util comum quando a data for segunda a sexta, 0 para sabado/domingo, salvo se o documento mostrar carga esperada diferente.",
-                  "Responda apenas JSON valido com: date, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
+                  "Responda apenas JSON valido com: date, firstIn, firstOut, secondIn, secondOut, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
                   "punches deve listar todos os horarios de batida usados ou relevantes no formato HH:mm."
                 ].join(" ")
               },
@@ -413,13 +446,21 @@ export async function readTimeClockWithMaya({
 
     const data = (await response.json()) as OpenAIResponse;
     const parsed = parseJsonObject(getOutputText(data));
-    const timeClockDraft = normalizeTimeClockDraft(parsed, fallbackDraft);
+    const parsedEntries = Array.isArray(parsed.entries) ? parsed.entries : Array.isArray(parsed.dias) ? parsed.dias : [];
+    const timeClockDrafts = parsedEntries
+      .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+      .map((entry) => normalizeTimeClockDraft(entry, buildFallbackTimeClockDraft(toDateString(entry.date ?? entry.data) || targetDate)))
+      .filter((draft) => draft.date && draft.punches.length > 0);
+    const timeClockDraft = timeClockDrafts[0] ?? normalizeTimeClockDraft(parsed, fallbackDraft);
 
     return {
       timeClockDraft,
+      timeClockDrafts: timeClockDrafts.length > 1 ? timeClockDrafts : undefined,
       needsReview: true,
       message:
-        timeClockDraft.startTime && timeClockDraft.endTime
+        timeClockDrafts.length > 1
+          ? `MAYA encontrou ${timeClockDrafts.length} dia(s) no relatorio. Revise os registros importados.`
+          : timeClockDraft.startTime && timeClockDraft.endTime
           ? "MAYA leu o ponto e preencheu o rascunho. Revise os horarios antes de salvar."
           : "MAYA nao encontrou horarios suficientes no ponto. Complete manualmente antes de salvar."
     };
@@ -433,6 +474,34 @@ export async function readTimeClockWithMaya({
       message: buildReceiptFailureMessage(failure)
     };
   }
+}
+
+export function readTimeClockReportText({
+  text,
+  fileName,
+  targetDate
+}: {
+  text: string;
+  fileName?: string;
+  targetDate?: string;
+}): TimeClockReadResult {
+  const fallbackDraft = buildFallbackTimeClockDraft(targetDate);
+  const timeClockDrafts = parseTimeClockReportText(text, fileName);
+
+  if (timeClockDrafts.length === 0) {
+    return {
+      timeClockDraft: fallbackDraft,
+      needsReview: true,
+      message: "MAYA nao encontrou linhas de ponto confiaveis no PDF. Envie uma imagem mais nitida ou preencha manualmente."
+    };
+  }
+
+  return {
+    timeClockDraft: timeClockDrafts[0],
+    timeClockDrafts,
+    needsReview: true,
+    message: `MAYA importou ${timeClockDrafts.length} dia(s) do relatorio de ponto. Todos ficam editaveis no calendario.`
+  };
 }
 
 interface OpenAIResponse {
@@ -584,6 +653,326 @@ function logTimeClockReadFailure(error: OpenAIFailure) {
 
 function sanitizeLogText(value: string) {
   return value.replace(/\s+/g, " ").slice(0, 180);
+}
+
+async function buildFiscalQrContext(rawPayloads: string[]): Promise<FiscalQrContext> {
+  const payloads = normalizeQrPayloads(rawPayloads);
+  const context: FiscalQrContext = { payloads };
+
+  for (const payload of payloads) {
+    const partial = parseFiscalQrPayload(payload);
+    mergeFiscalQrContext(context, partial);
+  }
+
+  if (context.qrCodeUrl) {
+    const pageText = await fetchFiscalQrPageText(context.qrCodeUrl);
+    if (pageText) {
+      mergeFiscalQrContext(context, parseFiscalQrPageText(pageText));
+      context.pageText = pageText.slice(0, 2200);
+    }
+  }
+
+  return context;
+}
+
+function normalizeQrPayloads(payloads: string[]) {
+  return Array.from(
+    new Set(
+      payloads
+        .map((payload) => toCleanString(payload))
+        .filter(Boolean)
+        .map((payload) => payload.slice(0, 1200))
+    )
+  ).slice(0, 3);
+}
+
+function parseFiscalQrPayload(payload: string): FiscalQrContext {
+  const url = parseUrl(payload);
+  const text = decodeURIComponentSafe(payload);
+  const accessKey = extractAccessKey(text);
+  const qrCodeUrl = url?.toString();
+  const pParam = url?.searchParams.get("p") ?? url?.searchParams.get("chNFe") ?? url?.searchParams.get("chave");
+  const pParts = pParam ? pParam.split("|").map((part) => part.trim()) : [];
+  const keyFromParam = extractAccessKey(pParam ?? "");
+  const key = keyFromParam || accessKey;
+  const keyMetadata = parseAccessKeyMetadata(key);
+  const amount = parseNfceQrAmount(pParts);
+  const documentDate = parseNfceQrDate(pParts);
+
+  return {
+    payloads: [payload],
+    qrCodeContent: payload,
+    qrCodeUrl,
+    accessKey: key,
+    documentType: keyMetadata.documentType || inferFiscalDocumentType(text),
+    issuerCnpj: keyMetadata.issuerCnpj,
+    documentNumber: keyMetadata.documentNumber,
+    series: keyMetadata.series,
+    documentDate,
+    amount,
+    paidAmount: amount,
+    totalItemsAmount: amount
+  };
+}
+
+async function fetchFiscalQrPageText(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FISCAL_QR_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8",
+        "user-agent": "MayaFinance/1.0"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const html = await response.text();
+    return htmlToReadableText(html);
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseFiscalQrPageText(pageText: string): FiscalQrContext {
+  const text = pageText.replace(/\s+/g, " ").trim();
+  const issuerCnpj = normalizeCnpj(text.match(/CNPJ[:\s]*([0-9./-]{14,18})/i)?.[1]);
+  const issuerName =
+    toCleanString(text.match(/(?:Emitente|Estabelecimento|Razao Social)[:\s]+([^|]{3,90}?)(?: CNPJ| Endereco|$)/i)?.[1]) ||
+    toCleanString(text.match(/NFC-e\s+([^|]{3,90}?)(?: CNPJ|$)/i)?.[1]);
+  const amount = parseFiscalAmountFromText(text);
+  const documentDate = toDateString(
+    text.match(/(?:Emissao|Data de emissao|Data)[:\s]*(\d{2}\/\d{2}\/\d{4})/i)?.[1] ||
+      text.match(/(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}/)?.[1]
+  );
+  const issueTime = normalizeTimeString(text.match(/(\d{2}:\d{2}(?::\d{2})?)/)?.[1]);
+
+  return {
+    payloads: [],
+    issuerCnpj,
+    issuerName,
+    amount,
+    paidAmount: amount,
+    totalItemsAmount: amount,
+    documentDate,
+    issueTime
+  };
+}
+
+function mergeQrContextIntoParsed(parsed: Record<string, unknown>, context: FiscalQrContext) {
+  if (!hasFiscalQrContext(context)) {
+    return parsed;
+  }
+
+  const fiscalSource = getObjectRecord(parsed.fiscalDocument) ?? {};
+  const notes = [toCleanString(parsed.notes), buildFiscalQrNotes(context)].filter(Boolean).join("\n");
+
+  return {
+    ...parsed,
+    title: parsed.title || context.issuerName,
+    amount: firstDefined(parsed.amount, context.amount),
+    totalAmount: firstDefined(parsed.totalAmount, context.amount),
+    valorTotal: firstDefined(parsed.valorTotal, context.amount),
+    documentDate: parsed.documentDate || context.documentDate,
+    issueDate: parsed.issueDate || context.documentDate,
+    paymentCode: parsed.paymentCode || context.qrCodeUrl || context.qrCodeContent,
+    fiscalDocument: {
+      documentType: context.documentType,
+      accessKey: context.accessKey,
+      qrCodeContent: context.qrCodeContent,
+      qrCodeUrl: context.qrCodeUrl,
+      issuerName: context.issuerName,
+      issuerCnpj: context.issuerCnpj,
+      documentNumber: context.documentNumber,
+      series: context.series,
+      issueTime: context.issueTime,
+      paidAmount: context.paidAmount,
+      totalItemsAmount: context.totalItemsAmount,
+      ...fiscalSource
+    },
+    notes
+  };
+}
+
+function mergeQrContextIntoDraft(draft: FinancialDocumentDraft, context: FiscalQrContext): FinancialDocumentDraft {
+  if (!hasFiscalQrContext(context)) {
+    return draft;
+  }
+
+  const parsedDraft = normalizeFinancialDraft(mergeQrContextIntoParsed({}, context), draft, draft.kind);
+
+  return {
+    ...draft,
+    ...parsedDraft,
+    attachmentImageName: draft.attachmentImageName,
+    attachmentDataUrl: draft.attachmentDataUrl,
+    attachmentStoragePath: draft.attachmentStoragePath,
+    attachmentMimeType: draft.attachmentMimeType,
+    attachmentSize: draft.attachmentSize,
+    missingFields: parsedDraft.missingFields,
+    notes: buildFinancialDocumentNotes(parsedDraft.notes ?? "", parsedDraft.fiscalDocument, draft.notes)
+  };
+}
+
+function buildFiscalQrPrompt(context: FiscalQrContext) {
+  if (!hasFiscalQrContext(context)) {
+    return "";
+  }
+
+  return [
+    context.qrCodeUrl ? `URL do QR: ${context.qrCodeUrl}` : "",
+    context.accessKey ? `chave de acesso: ${context.accessKey}` : "",
+    context.issuerCnpj ? `CNPJ emitente: ${context.issuerCnpj}` : "",
+    context.issuerName ? `emissor: ${context.issuerName}` : "",
+    context.documentNumber ? `numero: ${context.documentNumber}` : "",
+    context.series ? `serie: ${context.series}` : "",
+    context.documentDate ? `data: ${context.documentDate}` : "",
+    Number.isFinite(context.amount) ? `valor: ${context.amount}` : "",
+    context.pageText ? `texto parcial da pagina fiscal: ${context.pageText}` : ""
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function buildFiscalQrNotes(context: FiscalQrContext) {
+  const lines = [
+    context.qrCodeUrl ? `QR fiscal: ${context.qrCodeUrl}.` : "",
+    context.qrCodeContent && !context.qrCodeUrl ? `Conteudo do QR fiscal: ${context.qrCodeContent}.` : ""
+  ];
+
+  return lines.filter(Boolean).join("\n");
+}
+
+function hasFiscalQrContext(context: FiscalQrContext) {
+  return Boolean(
+    context.qrCodeContent ||
+      context.qrCodeUrl ||
+      context.accessKey ||
+      context.issuerCnpj ||
+      context.issuerName ||
+      context.documentNumber ||
+      context.amount ||
+      context.documentDate
+  );
+}
+
+function mergeFiscalQrContext(target: FiscalQrContext, source: FiscalQrContext) {
+  target.qrCodeContent ||= source.qrCodeContent;
+  target.qrCodeUrl ||= source.qrCodeUrl;
+  target.accessKey ||= source.accessKey;
+  target.documentType ||= source.documentType;
+  target.issuerCnpj ||= source.issuerCnpj;
+  target.issuerName ||= source.issuerName;
+  target.documentNumber ||= source.documentNumber;
+  target.series ||= source.series;
+  target.issueTime ||= source.issueTime;
+  target.documentDate ||= source.documentDate;
+  target.amount ||= source.amount;
+  target.paidAmount ||= source.paidAmount;
+  target.totalItemsAmount ||= source.totalItemsAmount;
+}
+
+function parseAccessKeyMetadata(accessKey?: string) {
+  if (!accessKey || accessKey.length !== 44) {
+    return {};
+  }
+
+  const model = accessKey.slice(20, 22);
+
+  return {
+    documentType: model === "65" ? "danfe_nfce" : model === "55" ? "danfe_nfe" : undefined,
+    issuerCnpj: normalizeCnpj(accessKey.slice(6, 20)),
+    series: accessKey.slice(22, 25).replace(/^0+/, "") || accessKey.slice(22, 25),
+    documentNumber: accessKey.slice(25, 34).replace(/^0+/, "") || accessKey.slice(25, 34)
+  } satisfies Partial<FiscalQrContext>;
+}
+
+function parseNfceQrAmount(parts: string[]) {
+  for (const part of parts.slice(3, 8)) {
+    const value = parseNumber(part.replace(",", "."));
+    if (Number.isFinite(value) && value > 0 && value < 999999) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function parseNfceQrDate(parts: string[]) {
+  for (const part of parts) {
+    const date = toDateString(part);
+    if (date) {
+      return date;
+    }
+  }
+
+  return "";
+}
+
+function parseFiscalAmountFromText(text: string) {
+  const match =
+    text.match(/(?:Valor\s+total|Valor\s+pago|Total\s+da\s+nota|Total)[:\sR$]*([0-9.]+,\d{2})/i) ??
+    text.match(/R\$\s*([0-9.]+,\d{2})/i);
+
+  return match ? parseNumber(match[1]) : undefined;
+}
+
+function inferFiscalDocumentType(text: string): FiscalDocumentMetadata["documentType"] | undefined {
+  const normalized = text.toLowerCase();
+
+  if (normalized.includes("nfce") || normalized.includes("nfc-e")) {
+    return "danfe_nfce";
+  }
+
+  if (normalized.includes("nfe") || normalized.includes("nf-e")) {
+    return "danfe_nfe";
+  }
+
+  return normalized.includes("cupom") ? "cupom_fiscal" : undefined;
+}
+
+function extractAccessKey(text: string) {
+  return text.match(/\b\d{44}\b/)?.[0] ?? "";
+}
+
+function parseUrl(value: string) {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeURIComponentSafe(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function htmlToReadableText(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstDefined<T>(primary: T | undefined, fallback: T | undefined) {
+  return primary !== undefined && primary !== "" ? primary : fallback;
 }
 
 function buildFallbackFinancialDraft(
@@ -838,12 +1227,16 @@ function buildFallbackTimeClockDraft(targetDate?: string): TimeClockDraft {
 
   return {
     date,
+    firstIn: "",
+    firstOut: "",
+    secondIn: "",
+    secondOut: "",
     startTime: "",
     endTime: "",
     lunchMinutes: 72,
     expectedMinutes: date ? getDefaultExpectedMinutesForDate(date) : 528,
     confidence: 0,
-    missingFields: ["date", "startTime", "endTime"],
+    missingFields: ["date", "firstIn", "firstOut", "secondIn", "secondOut", "startTime", "endTime"],
     punches: [],
     notes: "Ponto pendente de revisao manual."
   };
@@ -853,16 +1246,39 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
   const date = toDateString(parsed.date ?? parsed.data ?? parsed.workDate ?? parsed.referenceDate) || fallback.date;
   const rawPunches = parsed.punches ?? parsed.batidas ?? parsed.times ?? parsed.horarios;
   const punches = normalizeClockPunches(rawPunches);
+  const inferredFields = inferTimeClockFieldsFromPunches(punches);
+  const firstIn =
+    normalizeClockTime(parsed.firstIn ?? parsed.entrada1 ?? parsed.primeiraEntrada) ||
+    inferredFields.firstIn ||
+    fallback.firstIn ||
+    "";
+  const firstOut =
+    normalizeClockTime(parsed.firstOut ?? parsed.saidaAlmoco ?? parsed.inicioIntervalo ?? parsed.intervalStart) ||
+    inferredFields.firstOut ||
+    fallback.firstOut ||
+    "";
+  const secondIn =
+    normalizeClockTime(parsed.secondIn ?? parsed.retornoAlmoco ?? parsed.fimIntervalo ?? parsed.intervalEnd) ||
+    inferredFields.secondIn ||
+    fallback.secondIn ||
+    "";
+  const secondOut =
+    normalizeClockTime(parsed.secondOut ?? parsed.saidaFinal ?? parsed.endTime ?? parsed.saida) ||
+    inferredFields.secondOut ||
+    fallback.secondOut ||
+    "";
   const startTime =
+    (firstIn && secondOut ? firstIn : "") ||
+    (punches.length >= 2 ? punches[0] : "") ||
     normalizeClockTime(parsed.startTime ?? parsed.entrada ?? parsed.firstPunch ?? parsed.inicio) ||
-    punches[0] ||
     fallback.startTime;
   const endTime =
+    (firstIn && secondOut ? secondOut : "") ||
+    (punches.length >= 2 ? punches[punches.length - 1] : "") ||
     normalizeClockTime(parsed.endTime ?? parsed.saida ?? parsed.lastPunch ?? parsed.fim) ||
-    punches[punches.length - 1] ||
     fallback.endTime;
-  const secondPunch = punches[1] ? timeToMinutes(punches[1]) : Number.NaN;
-  const thirdPunch = punches[2] ? timeToMinutes(punches[2]) : Number.NaN;
+  const secondPunch = firstOut ? timeToMinutes(firstOut) : Number.NaN;
+  const thirdPunch = secondIn ? timeToMinutes(secondIn) : Number.NaN;
   const lunchFromPunches =
     Number.isFinite(secondPunch) && Number.isFinite(thirdPunch) && thirdPunch > secondPunch
       ? thirdPunch - secondPunch
@@ -901,7 +1317,20 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
     missingFields.add("endTime");
   }
 
-  if (!Number.isFinite(lunchFromPunches) && punches.length < 4) {
+  ([
+    ["firstIn", firstIn],
+    ["firstOut", firstOut],
+    ["secondIn", secondIn],
+    ["secondOut", secondOut]
+  ] as const).forEach(([field, value]) => {
+    if (value) {
+      missingFields.delete(field);
+    } else {
+      missingFields.add(field);
+    }
+  });
+
+  if (!Number.isFinite(lunchFromPunches) && (!firstOut || !secondIn)) {
     missingFields.add("lunchMinutes");
   } else {
     missingFields.delete("lunchMinutes");
@@ -909,6 +1338,10 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
 
   return {
     date,
+    firstIn,
+    firstOut,
+    secondIn,
+    secondOut,
     startTime,
     endTime,
     lunchMinutes: Math.round(lunchMinutes),
@@ -918,6 +1351,202 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
     punches,
     notes: toCleanString(parsed.notes) || fallback.notes
   };
+}
+
+function parseTimeClockReportText(text: string, fileName?: string): TimeClockDraft[] {
+  const bestByDate = new Map<string, TimeClockDraft>();
+
+  text
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/\s+/g, " "))
+    .forEach((line) => {
+      const dateMatch = line.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+
+      if (!dateMatch || dateMatch.index === undefined) {
+        return;
+      }
+
+      const [, day, month, year] = dateMatch;
+      const date = `${year}-${month}-${day}`;
+      const timeMatches = Array.from(line.matchAll(/\b(?:[01]\d|2[0-3]):[0-5]\d\b/g));
+      const reportTimes = normalizeClockPunches(orderReportTimesForDateLine(timeMatches, dateMatch.index));
+      const { punches, expectedMinutes } = splitReportPunchesAndExpected(reportTimes, date);
+
+      if (punches.length === 0) {
+        return;
+      }
+
+      const parsed = buildTimeClockParsedObjectFromReportLine({
+        date,
+        punches,
+        expectedMinutes,
+        line,
+        fileName
+      });
+      const draft = normalizeTimeClockDraft(parsed, buildFallbackTimeClockDraft(date));
+      const current = bestByDate.get(date);
+
+      if (!current || draft.punches.length > current.punches.length || draft.missingFields.length < current.missingFields.length) {
+        bestByDate.set(date, draft);
+      }
+    });
+
+  return Array.from(bestByDate.values()).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function orderReportTimesForDateLine(timeMatches: RegExpMatchArray[], dateIndex: number) {
+  const times = timeMatches.map((match) => match[0]);
+
+  if (timeMatches.length >= 4 && (timeMatches[0].index ?? 0) < dateIndex) {
+    const firstPunchMovedToEnd = times[times.length - 1];
+    return [firstPunchMovedToEnd, ...times.slice(0, -1)];
+  }
+
+  return times;
+}
+
+function splitReportPunchesAndExpected(reportTimes: string[], date: string) {
+  if (reportTimes.length === 0) {
+    return { punches: [] as string[], expectedMinutes: getDefaultExpectedMinutesForDate(date) };
+  }
+
+  const times = [...reportTimes];
+  let expectedMinutes = getDefaultExpectedMinutesForDate(date);
+  const last = times[times.length - 1];
+  const secondLast = times[times.length - 2];
+
+  if (times.length >= 2 && isLikelyExpectedDuration(secondLast) && isLikelyMissingDuration(last)) {
+    expectedMinutes = timeToMinutes(secondLast);
+    times.splice(-2, 2);
+  } else if (times.length >= 3 && isLikelyExpectedDuration(last)) {
+    expectedMinutes = timeToMinutes(last);
+    times.splice(-1, 1);
+  }
+
+  if (times.length === 2 && isLikelyExpectedDuration(times[0]) && isLikelyExpectedDuration(times[1])) {
+    return { punches: [] as string[], expectedMinutes };
+  }
+
+  return { punches: times.slice(0, 4), expectedMinutes };
+}
+
+function buildTimeClockParsedObjectFromReportLine({
+  date,
+  punches,
+  expectedMinutes,
+  line,
+  fileName
+}: {
+  date: string;
+  punches: string[];
+  expectedMinutes: number;
+  line: string;
+  fileName?: string;
+}) {
+  const missingFields: string[] = [];
+  const fields = {
+    firstIn: "",
+    firstOut: "",
+    secondIn: "",
+    secondOut: ""
+  };
+
+  if (punches.length >= 4) {
+    fields.firstIn = punches[0];
+    fields.firstOut = punches[1];
+    fields.secondIn = punches[2];
+    fields.secondOut = punches[3];
+  } else if (punches.length === 3) {
+    fields.firstIn = punches[0];
+    fields.firstOut = punches[1];
+    fields.secondIn = punches[2];
+    missingFields.push("secondOut");
+  } else if (punches.length === 2) {
+    fields.firstIn = punches[0];
+    fields.secondOut = punches[1];
+    missingFields.push("firstOut", "secondIn", "lunchMinutes");
+  } else if (punches.length === 1) {
+    fields.firstIn = punches[0];
+    missingFields.push("firstOut", "secondIn", "secondOut", "endTime", "lunchMinutes");
+  }
+
+  const lunchMinutes =
+    fields.firstOut && fields.secondIn && timeToMinutes(fields.secondIn) > timeToMinutes(fields.firstOut)
+      ? timeToMinutes(fields.secondIn) - timeToMinutes(fields.firstOut)
+      : 72;
+  const notes = [
+    fileName ? `Importado do relatorio ${fileName}.` : "Importado de relatorio de ponto.",
+    `Linha lida: ${line}.`,
+    missingFields.length ? "Registro incompleto: revise os campos vazios." : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    date,
+    ...fields,
+    startTime: fields.firstIn,
+    endTime: fields.secondOut || punches[punches.length - 1] || "",
+    lunchMinutes,
+    expectedMinutes,
+    confidence: missingFields.length ? 0.74 : 0.94,
+    missingFields,
+    punches,
+    notes
+  };
+}
+
+function isLikelyExpectedDuration(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const minutes = timeToMinutes(value);
+  return minutes >= 420 && minutes <= 600;
+}
+
+function isLikelyMissingDuration(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const minutes = timeToMinutes(value);
+  return minutes >= 0 && minutes <= 420;
+}
+
+function inferTimeClockFieldsFromPunches(punches: string[]) {
+  const fields = {
+    firstIn: "",
+    firstOut: "",
+    secondIn: "",
+    secondOut: ""
+  };
+
+  if (punches.length >= 4) {
+    const sorted = [...punches].sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
+    return {
+      firstIn: sorted[0],
+      firstOut: sorted[1],
+      secondIn: sorted[2],
+      secondOut: sorted[3]
+    };
+  }
+
+  punches.forEach((punch) => {
+    const minutes = timeToMinutes(punch);
+
+    if (minutes <= timeToMinutes("10:30")) {
+      fields.firstIn = punch;
+    } else if (minutes <= timeToMinutes("13:00")) {
+      fields.firstOut = punch;
+    } else if (minutes <= timeToMinutes("16:30")) {
+      fields.secondIn = punch;
+    } else {
+      fields.secondOut = punch;
+    }
+  });
+
+  return fields;
 }
 
 function normalizeStatementLine(value: unknown): StatementTransactionDraft | null {
@@ -1079,6 +1708,8 @@ function normalizeFiscalDocument(parsed: Record<string, unknown>): FiscalDocumen
     fiscalSource.accessKey ?? fiscalSource.chaveAcesso ?? fiscalSource.chaveDeAcesso,
     44
   );
+  const qrCodeContent = toCleanString(fiscalSource.qrCodeContent ?? fiscalSource.qrPayload ?? fiscalSource.qrCode);
+  const qrCodeUrl = toCleanString(fiscalSource.qrCodeUrl ?? fiscalSource.qrUrl ?? fiscalSource.urlQrCode);
   const issuerName = toCleanString(
     fiscalSource.issuerName ??
       fiscalSource.emitente ??
@@ -1117,6 +1748,8 @@ function normalizeFiscalDocument(parsed: Record<string, unknown>): FiscalDocumen
   const fiscalDocument = {
     documentType,
     accessKey,
+    qrCodeContent,
+    qrCodeUrl,
     issuerName,
     issuerCnpj,
     documentNumber,
@@ -1222,6 +1855,10 @@ function buildFiscalDocumentSummary(fiscalDocument?: FiscalDocumentMetadata) {
 
   if (fiscalDocument.accessKey) {
     lines.push(`Chave de acesso: ${fiscalDocument.accessKey}.`);
+  }
+
+  if (fiscalDocument.qrCodeUrl) {
+    lines.push(`QR fiscal: ${fiscalDocument.qrCodeUrl}.`);
   }
 
   if (fiscalDocument.protocolNumber) {

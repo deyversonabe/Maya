@@ -94,7 +94,37 @@ export async function fileToFinanceAttachment(file: File): Promise<FinanceAttach
   };
 }
 
-function fileToDataUrl(file: File) {
+export async function detectQrPayloadsFromImageDataUrl(imageDataUrl: string) {
+  const Detector = (
+    globalThis as typeof globalThis & {
+      BarcodeDetector?: new (options: { formats: string[] }) => {
+        detect(source: CanvasImageSource): Promise<Array<{ rawValue?: string }>>;
+      };
+    }
+  ).BarcodeDetector;
+
+  if (!Detector) {
+    return [];
+  }
+
+  try {
+    const image = await loadImage(imageDataUrl);
+    const detector = new Detector({ formats: ["qr_code"] });
+    const results = await detector.detect(image);
+
+    return Array.from(
+      new Set(
+        results
+          .map((result) => result.rawValue?.trim())
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));

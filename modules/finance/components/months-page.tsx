@@ -15,6 +15,7 @@ import {
   buildBillSummary,
   buildMonthSummaries,
   getBillEffectiveStatus,
+  getBillPaymentDate,
   getPaidBillsByPaymentMonthUntil,
   getTransactionsByMonth,
   getTransactionsByMonthUntil
@@ -72,6 +73,8 @@ export function MonthsPage() {
   const [periodEndMonth, setPeriodEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [incomeFilter, setIncomeFilter] = useState("Todos");
   const [expenseFilter, setExpenseFilter] = useState("Todos");
+  const [compareMonthA, setCompareMonthA] = useState(() => new Date().toISOString().slice(0, 7));
+  const [compareMonthB, setCompareMonthB] = useState(() => getPreviousMonth(new Date().toISOString().slice(0, 7)));
   const today = toInputDate(new Date());
   const monthTransactions = useMemo(
     () => getTransactionsByMonth(state.transactions, selectedMonth).sort((a, b) => b.date.localeCompare(a.date)),
@@ -86,7 +89,7 @@ export function MonthsPage() {
     () => getPaidBillsByPaymentMonthUntil(state.bills, selectedMonth, today).reduce((total, bill) => total + bill.amount, 0),
     [selectedMonth, state.bills, today]
   );
-  const totals = useMemo(() => calculateMonthTotals(monthTransactions, billSummary.total), [billSummary.total, monthTransactions]);
+  const totals = useMemo(() => calculateMonthTotals(monthTransactions, realizedBillTotal), [realizedBillTotal, monthTransactions]);
   const realizedTotals = useMemo(
     () => calculateMonthTotals(realizedMonthTransactions, realizedBillTotal),
     [realizedBillTotal, realizedMonthTransactions]
@@ -105,6 +108,10 @@ export function MonthsPage() {
     () => buildIncomePeriodSummary(state.transactions, selectedPeriod.start, selectedPeriod.end, incomeFilter),
     [incomeFilter, selectedPeriod.end, selectedPeriod.start, state.transactions]
   );
+  const monthComparison = useMemo(
+    () => buildMonthComparison(state.transactions, state.bills, compareMonthA, compareMonthB, today),
+    [compareMonthA, compareMonthB, state.bills, state.transactions, today]
+  );
 
   function changeSelectedMonth(month: string) {
     setSelectedMonth(month);
@@ -113,6 +120,7 @@ export function MonthsPage() {
     setPeriodEndMonth(month);
     setPeriodStart(`${month}-01`);
     setPeriodEnd(getMonthEndDate(month));
+    setCompareMonthA(month);
   }
 
   return (
@@ -151,10 +159,18 @@ export function MonthsPage() {
         <MonthMetric label="Investimentos realizados" value={formatCurrency(realizedTotals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
         <MonthMetric label="Contas previstas" value={formatCurrency(billSummary.total)} tone="warning" icon={<BellRing className="size-5" />} />
         <MonthMetric label="Saldo realizado" value={formatCurrency(realizedTotals.balance)} tone={realizedTotals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
-        <MonthMetric label="Saldo previsto" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
+        <MonthMetric label="Saldo lancado" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
       </section>
 
       <MonthlyLineChart summaries={monthlySeries} />
+      <MonthComparisonCard
+        availableMonths={availableMonths}
+        monthA={compareMonthA}
+        monthB={compareMonthB}
+        comparison={monthComparison}
+        onMonthAChange={setCompareMonthA}
+        onMonthBChange={setCompareMonthB}
+      />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid gap-4">
@@ -185,18 +201,19 @@ export function MonthsPage() {
           <CardHeader eyebrow="Resumo" title={selectedMonth} action={<Badge tone="neutral">{monthTransactions.length} lanc.</Badge>} />
           <div className="grid gap-3">
             <SummaryRow label="Entradas realizadas" value={formatCurrency(realizedTotals.income)} />
-            <SummaryRow label="Entradas previstas no mes" value={formatCurrency(totals.income)} />
+            <SummaryRow label="Entradas lancadas no mes" value={formatCurrency(totals.income)} />
             <SummaryRow label="Saidas realizadas" value={formatCurrency(realizedTotals.expense)} />
-            <SummaryRow label="Saidas previstas no mes" value={formatCurrency(totals.expense)} />
-            <SummaryRow label="Contas previstas no mes" value={formatCurrency(totals.bills)} />
+            <SummaryRow label="Saidas lancadas no mes" value={formatCurrency(totals.expenseTransactions)} />
+            <SummaryRow label="Contas pagas no mes" value={formatCurrency(totals.bills)} />
+            <SummaryRow label="Contas previstas no mes" value={formatCurrency(billSummary.total)} />
             <SummaryRow label="Total investido realizado" value={formatCurrency(realizedTotals.investment)} />
             <SummaryRow label="Transferencias" value={formatCurrency(totals.transfer)} />
             <SummaryRow label="Saldo realizado ate hoje" value={formatCurrency(realizedTotals.balance)} highlight />
-            <SummaryRow label="Saldo previsto do mes" value={formatCurrency(totals.balance)} />
+            <SummaryRow label="Saldo lancado no mes" value={formatCurrency(totals.balance)} />
           </div>
           <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50">
-            O saldo realizado considera apenas lancamentos com data ate hoje e contas pagas. O saldo previsto mostra o
-            mes inteiro, incluindo vencimentos e recorrencias futuras daquele mes.
+            O saldo realizado considera apenas lancamentos com data ate hoje e contas pagas. Contas futuras ficam
+            separadas como previsao e nao entram no saldo realizado.
           </div>
         </Card>
       </section>
@@ -418,6 +435,81 @@ function MonthlyLineChart({ summaries }: { summaries: MonthSummary[] }) {
   );
 }
 
+function MonthComparisonCard({
+  availableMonths,
+  monthA,
+  monthB,
+  comparison,
+  onMonthAChange,
+  onMonthBChange
+}: {
+  availableMonths: string[];
+  monthA: string;
+  monthB: string;
+  comparison: ReturnType<typeof buildMonthComparison>;
+  onMonthAChange: (month: string) => void;
+  onMonthBChange: (month: string) => void;
+}) {
+  const rows = [
+    ["Rendas", comparison.a.income, comparison.b.income, comparison.delta.income],
+    ["Despesas lancadas", comparison.a.expenses, comparison.b.expenses, comparison.delta.expenses],
+    ["Contas pagas", comparison.a.paidBills, comparison.b.paidBills, comparison.delta.paidBills],
+    ["Contas previstas", comparison.a.plannedBills, comparison.b.plannedBills, comparison.delta.plannedBills],
+    ["Saldo realizado", comparison.a.balance, comparison.b.balance, comparison.delta.balance]
+  ] as const;
+
+  return (
+    <Card className="mb-4">
+      <CardHeader eyebrow="Comparacao" title="Comparar dois meses" action={<Badge tone="info">Custos, contas e rendas</Badge>} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <Label>
+          Mes principal
+          <Select value={monthA} onChange={(event) => onMonthAChange(event.target.value)}>
+            {availableMonths.map((month) => (
+              <option key={month} value={month}>
+                {month}
+              </option>
+            ))}
+          </Select>
+        </Label>
+        <Label>
+          Comparar com
+          <Select value={monthB} onChange={(event) => onMonthBChange(event.target.value)}>
+            {availableMonths.map((month) => (
+              <option key={month} value={month}>
+                {month}
+              </option>
+            ))}
+          </Select>
+        </Label>
+      </div>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-cream/10">
+        <div className="grid min-w-[680px] grid-cols-[1.2fr_1fr_1fr_1fr] gap-px bg-cream/10 text-sm">
+          <span className="bg-moss-950/80 p-3 font-black uppercase tracking-[0.1em] text-muted">Indicador</span>
+          <span className="bg-moss-950/80 p-3 font-black text-cream">{monthA}</span>
+          <span className="bg-moss-950/80 p-3 font-black text-cream">{monthB}</span>
+          <span className="bg-moss-950/80 p-3 font-black text-cream">Diferenca</span>
+          {rows.map(([label, valueA, valueB, delta]) => (
+            <div key={label} className="contents">
+              <span className="bg-cream/[0.04] p-3 font-bold text-muted">{label}</span>
+              <span className={cn("bg-cream/[0.04] p-3 font-black", financialValueClass(valueA, "text-cream"))}>
+                {formatCurrency(valueA)}
+              </span>
+              <span className={cn("bg-cream/[0.04] p-3 font-black", financialValueClass(valueB, "text-cream"))}>
+                {formatCurrency(valueB)}
+              </span>
+              <span className={cn("bg-cream/[0.04] p-3 font-black", financialValueClass(delta, "text-bronze"))}>
+                {delta > 0 ? "+" : ""}
+                {formatCurrency(delta)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function PeriodControls({
   mode,
   start,
@@ -578,6 +670,48 @@ function calculateMonthTotals(transactions: Transaction[], billsTotal: number) {
   };
 }
 
+function buildMonthComparison(
+  transactions: Transaction[],
+  bills: PayableBill[],
+  monthA: string,
+  monthB: string,
+  today: string
+) {
+  const a = buildSingleMonthComparison(transactions, bills, monthA, today);
+  const b = buildSingleMonthComparison(transactions, bills, monthB, today);
+
+  return {
+    a,
+    b,
+    delta: {
+      income: a.income - b.income,
+      expenses: a.expenses - b.expenses,
+      paidBills: a.paidBills - b.paidBills,
+      plannedBills: a.plannedBills - b.plannedBills,
+      balance: a.balance - b.balance
+    }
+  };
+}
+
+function buildSingleMonthComparison(transactions: Transaction[], bills: PayableBill[], month: string, today: string) {
+  const cutoff = getMonthCutoffDate(month, today);
+  const monthTransactions = getTransactionsByMonthUntil(transactions, month, cutoff);
+  const paidBills = getPaidBillsByPaymentMonthUntil(bills, month, cutoff).reduce((total, bill) => total + bill.amount, 0);
+  const plannedBills = buildBillSummary(bills, month).total;
+  const income = sumByType(monthTransactions, "income");
+  const expenses = sumByType(monthTransactions, "expense");
+  const investment = sumByType(monthTransactions, "investment");
+
+  return {
+    income,
+    expenses,
+    paidBills,
+    plannedBills,
+    investment,
+    balance: income - expenses - paidBills - investment
+  };
+}
+
 function groupByType(transactions: Transaction[]) {
   return transactionOrder.reduce<Record<TransactionType, Transaction[]>>(
     (groups, type) => {
@@ -658,16 +792,18 @@ function buildRecurringPaymentGroups(
     });
 
   bills
-    .filter((bill) => isDateInRange(bill.dueDate, start, end))
+    .filter((bill) => bill.status === "paid")
+    .filter((bill) => isDateInRange(getBillPaymentDate(bill), start, end))
     .filter((bill) => categoryFilter === "Todos" || bill.category === categoryFilter)
     .forEach((bill) => {
+      const paymentDate = getBillPaymentDate(bill);
       const label =
         bill.paymentMethod === "pix" && bill.paymentRecipient
           ? `Pix para ${bill.paymentRecipient}`
           : bill.paymentMethod === "boleto"
             ? `Boleto - ${bill.title}`
             : `Conta - ${bill.title}`;
-      addPeriodGroup(groups, label, bill.amount, bill.dueDate);
+      addPeriodGroup(groups, label, bill.amount, paymentDate);
     });
 
   return Array.from(groups.values()).sort((a, b) => b.total - a.total || b.count - a.count);
@@ -760,6 +896,16 @@ function isDateInRange(date: string, start: string, end: string) {
 
 function isFutureDate(date: string) {
   return date > toInputDate(new Date());
+}
+
+function getMonthCutoffDate(month: string, today: string) {
+  return month === today.slice(0, 7) ? today : getMonthEndDate(month);
+}
+
+function getPreviousMonth(month: string) {
+  const date = new Date(`${month}-01T12:00:00`);
+  date.setMonth(date.getMonth() - 1);
+  return date.toISOString().slice(0, 7);
 }
 
 function getMonthEndDate(month: string) {

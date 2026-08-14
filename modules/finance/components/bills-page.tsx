@@ -936,35 +936,39 @@ function createPlannedBills({
   const groupId = `${plan}_${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
-  return Array.from({ length: count }, (_, index) => ({
-    title: plan === "installment" ? `${title} (${index + 1}/${count})` : title,
-    description,
-    amount,
-    category,
-    otherCategoryDescription,
-    person,
-    accountId,
-    dueDate: addMonths(dueDate, index),
-    paymentMethod,
-    paymentCode,
-    paymentRecipient,
-    recurrence: plan === "recurring" ? "monthly" : "none",
-    recurrenceGroupId: plan === "recurring" ? groupId : undefined,
-    installmentGroupId: plan === "installment" ? groupId : undefined,
-    installmentNumber: plan === "installment" ? index + 1 : undefined,
-    installmentTotal: plan === "installment" ? count : undefined,
-    status,
-    source,
-    attachmentImageName,
-    attachmentDataUrl,
-    attachmentStoragePath,
-    attachmentMimeType,
-    attachmentSize,
-    documentItems,
-    fiscalDocument,
-    notes,
-    paidAt: status === "paid" ? now : undefined
-  }));
+  return Array.from({ length: count }, (_, index) => {
+    const effectiveStatus = status === "paid" && index > 0 ? "pending" : status;
+
+    return {
+      title: plan === "installment" ? `${title} (${index + 1}/${count})` : title,
+      description,
+      amount,
+      category,
+      otherCategoryDescription,
+      person,
+      accountId,
+      dueDate: addMonths(dueDate, index),
+      paymentMethod,
+      paymentCode,
+      paymentRecipient,
+      recurrence: plan === "recurring" ? "monthly" : "none",
+      recurrenceGroupId: plan === "recurring" ? groupId : undefined,
+      installmentGroupId: plan === "installment" ? groupId : undefined,
+      installmentNumber: plan === "installment" ? index + 1 : undefined,
+      installmentTotal: plan === "installment" ? count : undefined,
+      status: effectiveStatus,
+      source,
+      attachmentImageName,
+      attachmentDataUrl,
+      attachmentStoragePath,
+      attachmentMimeType,
+      attachmentSize,
+      documentItems,
+      fiscalDocument,
+      notes,
+      paidAt: effectiveStatus === "paid" ? now : undefined
+    };
+  });
 }
 
 function buildAvailableBillMonths(bills: PayableBill[]) {

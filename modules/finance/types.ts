@@ -306,6 +306,11 @@ export interface WorkTimeEntry {
   id: string;
   person: Person;
   date: string;
+  firstIn?: string;
+  firstOut?: string;
+  secondIn?: string;
+  secondOut?: string;
+  punches?: string[];
   startTime: string;
   endTime: string;
   lunchMinutes: number;
@@ -322,6 +327,10 @@ export interface WorkTimeEntry {
 
 export interface TimeClockDraft {
   date: string;
+  firstIn?: string;
+  firstOut?: string;
+  secondIn?: string;
+  secondOut?: string;
   startTime: string;
   endTime: string;
   lunchMinutes: number;
@@ -462,6 +471,8 @@ export interface FinancialDocumentItem {
 export interface FiscalDocumentMetadata {
   documentType?: FiscalDocumentType;
   accessKey?: string;
+  qrCodeContent?: string;
+  qrCodeUrl?: string;
   issuerName?: string;
   issuerCnpj?: string;
   documentNumber?: string;
