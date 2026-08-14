@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/weekly-report",
-      "schedule": "0 20 * * 5"
+      "path": "/api/notifications/send-due-alerts",
+      "schedule": "0 15 * * *"
     }
   ]
 }
