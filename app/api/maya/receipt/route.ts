@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       imageDataUrl?: string;
       fileName?: string;
       documentKind?: FinancialDocumentKind;
+      qrPayloads?: string[];
     };
 
     if (!body.imageDataUrl?.startsWith("data:image/")) {
@@ -25,7 +26,8 @@ export async function POST(request: Request) {
     const result = await readReceiptWithMaya({
       imageDataUrl: body.imageDataUrl,
       fileName: body.fileName,
-      documentKind: body.documentKind
+      documentKind: body.documentKind,
+      qrPayloads: body.qrPayloads
     });
 
     return NextResponse.json(result);
