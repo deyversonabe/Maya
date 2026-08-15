@@ -19,7 +19,16 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import {
+  buildMonthKeyRange,
+  cn,
+  financialValueClass,
+  formatCurrency,
+  getCurrentMonthKey,
+  parseFinancialAmountInput,
+  toInputDate
+} from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories } from "../data/defaults";
 import {
   addMonths,
@@ -70,7 +79,7 @@ export function BillsPage() {
   const { state, actions } = useFinanceStore();
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
   const [feedback, setFeedback] = useState("Cadastre contas, boletos e Pix para acompanhar vencimentos.");
   const [documentDraft, setDocumentDraft] = useState<FinancialDocumentDraft | null>(null);
   const [duplicateReview, setDuplicateReview] = useState<BillDuplicateReview | null>(null);
@@ -162,7 +171,7 @@ export function BillsPage() {
 
     try {
       const attachment = await fileToFinanceAttachment(file);
-      const response = await fetch("/api/maya/receipt", {
+      const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -973,13 +982,8 @@ function createPlannedBills({
 
 function buildAvailableBillMonths(bills: PayableBill[]) {
   const months = new Set<string>();
-  const current = new Date();
 
-  for (let index = -12; index <= 24; index += 1) {
-    const date = new Date(current);
-    date.setMonth(current.getMonth() + index);
-    months.add(date.toISOString().slice(0, 7));
-  }
+  buildMonthKeyRange(getCurrentMonthKey(), -12, 24).forEach((month) => months.add(month));
 
   bills.forEach((bill) => months.add(bill.dueDate.slice(0, 7)));
   return Array.from(months).sort();

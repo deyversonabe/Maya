@@ -21,6 +21,44 @@ const DEFAULT_MODEL = "gpt-5-mini";
 const DEFAULT_VISION_MODEL = "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 18_000;
 const FISCAL_QR_FETCH_TIMEOUT_MS = 4_000;
+const FISCAL_QR_MAX_REDIRECTS = 3;
+const FISCAL_QR_ALLOWED_HOSTS = [
+  "fazenda.gov.br",
+  "sefaz.gov.br",
+  "fazenda.sp.gov.br",
+  "fazenda.mg.gov.br",
+  "fazenda.rj.gov.br",
+  "sefaz.rs.gov.br",
+  "sefa.pa.gov.br",
+  "sefin.ro.gov.br",
+  "sefaznet.ac.gov.br",
+  "dfe.ms.gov.br",
+  "receita.pb.gov.br",
+  "nfce.se.gov.br",
+  "sefaz.ba.gov.br",
+  "sefaz.ce.gov.br",
+  "sefaz.es.gov.br",
+  "sefaz.go.gov.br",
+  "sefaz.al.gov.br",
+  "sefaz.ap.gov.br",
+  "sefaz.am.gov.br",
+  "sefaz.ma.gov.br",
+  "sefaz.mt.gov.br",
+  "sefaz.ms.gov.br",
+  "sefaz.pe.gov.br",
+  "sefaz.pi.gov.br",
+  "sefaz.pr.gov.br",
+  "sefa.pr.gov.br",
+  "sefaz.rj.gov.br",
+  "sefaz.ro.gov.br",
+  "sefaz.rr.gov.br",
+  "sefaz.sc.gov.br",
+  "sef.sc.gov.br",
+  "sefaz.se.gov.br",
+  "set.rn.gov.br",
+  "sefaz.to.gov.br",
+  "fazenda.df.gov.br"
+];
 
 export interface TimeClockReadResult {
   timeClockDraft: TimeClockDraft;
@@ -716,24 +754,44 @@ function parseFiscalQrPayload(payload: string): FiscalQrContext {
 }
 
 async function fetchFiscalQrPageText(url: string) {
+  let parsed = parseUrl(url);
+
+  if (!parsed || !isAllowedFiscalQrUrl(parsed)) {
+    return "";
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FISCAL_QR_FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8",
-        "user-agent": "MayaFinance/1.0"
-      },
-      signal: controller.signal
-    });
+    for (let redirectCount = 0; redirectCount <= FISCAL_QR_MAX_REDIRECTS; redirectCount += 1) {
+      const response = await fetch(parsed.toString(), {
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8",
+          "user-agent": "MayaFinance/1.0"
+        },
+        redirect: "manual",
+        signal: controller.signal
+      });
 
-    if (!response.ok) {
-      return "";
+      if (isRedirectResponse(response)) {
+        const nextUrl = parseRedirectUrl(response.headers.get("location"), parsed);
+        if (!nextUrl || !isAllowedFiscalQrUrl(nextUrl)) {
+          return "";
+        }
+        parsed = nextUrl;
+        continue;
+      }
+
+      if (!response.ok) {
+        return "";
+      }
+
+      const html = await response.text();
+      return htmlToReadableText(html);
     }
 
-    const html = await response.text();
-    return htmlToReadableText(html);
+    return "";
   } catch {
     return "";
   } finally {
@@ -895,8 +953,14 @@ function parseAccessKeyMetadata(accessKey?: string) {
 }
 
 function parseNfceQrAmount(parts: string[]) {
-  for (const part of parts.slice(3, 8)) {
-    const value = parseNumber(part.replace(",", "."));
+  for (const part of parts) {
+    const text = part.trim();
+
+    if (!/^\d{1,8}([,.]\d{2})$/.test(text)) {
+      continue;
+    }
+
+    const value = parseNumber(text);
     if (Number.isFinite(value) && value > 0 && value < 999999) {
       return value;
     }
@@ -948,6 +1012,57 @@ function parseUrl(value: string) {
   } catch {
     return undefined;
   }
+}
+
+function isAllowedFiscalQrUrl(url: URL) {
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return false;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  // Evita SSRF: QR fiscal pode ser consultado, mas apenas em hosts fiscais brasileiros conhecidos.
+  if (isPrivateOrLocalHost(hostname)) {
+    return false;
+  }
+
+  return FISCAL_QR_ALLOWED_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
+
+function isRedirectResponse(response: Response) {
+  return response.status === 301 || response.status === 302 || response.status === 303 || response.status === 307 || response.status === 308;
+}
+
+function parseRedirectUrl(location: string | null, base: URL) {
+  if (!location) {
+    return null;
+  }
+
+  try {
+    return new URL(location, base);
+  } catch {
+    return null;
+  }
+}
+
+function isPrivateOrLocalHost(hostname: string) {
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".local") ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1"
+  ) {
+    return true;
+  }
+
+  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+
+  if (!ipv4) {
+    return false;
+  }
+
+  const [a, b] = ipv4.slice(1).map(Number);
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 169;
 }
 
 function decodeURIComponentSafe(value: string) {
@@ -1908,13 +2023,13 @@ function toDateString(value: unknown) {
   const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
 
   if (iso) {
-    return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    return normalizeDateKey(iso[1], iso[2], iso[3]);
   }
 
   const isoSlash = text.match(/\b(\d{4})\/(\d{2})\/(\d{2})\b/);
 
   if (isoSlash) {
-    return `${isoSlash[1]}-${isoSlash[2]}-${isoSlash[3]}`;
+    return normalizeDateKey(isoSlash[1], isoSlash[2], isoSlash[3]);
   }
 
   const brazilian = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})\b/);
@@ -1926,13 +2041,23 @@ function toDateString(value: unknown) {
   const day = brazilian[1].padStart(2, "0");
   const month = brazilian[2].padStart(2, "0");
   const year = brazilian[3].length === 2 ? `20${brazilian[3]}` : brazilian[3];
-  const date = new Date(`${year}-${month}-${day}T12:00:00`);
+  return normalizeDateKey(year, month, day);
+}
 
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== `${year}-${month}-${day}`) {
+function normalizeDateKey(year: string, month: string, day: string) {
+  const normalized = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const date = new Date(`${normalized}T12:00:00`);
+
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() + 1 !== Number(month) ||
+    date.getDate() !== Number(day)
+  ) {
     return "";
   }
 
-  return `${year}-${month}-${day}`;
+  return normalized;
 }
 
 function normalizeItems(value: unknown): FinancialDocumentItem[] {

@@ -1,4 +1,4 @@
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatPercent, monthKeyAdd } from "@/lib/utils";
 import { expenseCategories, incomeCategories } from "../data/defaults";
 import type { FinanceState, MayaAnalysis, PayableBill } from "../types";
 import {
@@ -440,10 +440,19 @@ function extractMoneyLikeValues(prompt: string) {
 }
 
 function parseBrazilianNumber(value: string) {
+  const text = value.trim().replace(/[^\d,.-]/g, "");
+  const hasComma = text.includes(",");
+  const hasDot = text.includes(".");
+  // A MAYA recebe texto livre; essa heuristica evita transformar "R$ 5.000" em R$ 5,00 nos calculos.
+  const thousandsOnly = /^-?[1-9]\d{0,2}(\.\d{3})+$/.test(text);
   const normalized =
-    value.includes(",")
-      ? value.replace(/\./g, "").replace(",", ".")
-      : value.replace(/,/g, "");
+    hasComma && hasDot
+      ? text.replace(/\./g, "").replace(",", ".")
+      : hasComma
+        ? text.replace(",", ".")
+        : hasDot && thousandsOnly
+          ? text.replace(/\./g, "")
+          : text;
 
   return Number(normalized);
 }
@@ -554,11 +563,7 @@ function inferSearchTerm(question: string, type: "income" | "expense") {
 }
 
 function getStartMonth(months: number) {
-  const date = new Date();
-  date.setUTCDate(1);
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCMonth(date.getUTCMonth() - Math.max(0, months - 1));
-  return date.toISOString().slice(0, 7);
+  return monthKeyAdd(getCurrentMonthKey(), -Math.max(0, months - 1));
 }
 
 function groupMemoryByMonth(transactions: Array<{ date: string; amount: number }>) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FileImage } from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
@@ -17,66 +17,66 @@ export function AttachmentLink({
   imageName?: string;
   className?: string;
 }) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
+  const baseClassName =
+    className ??
+    "mt-3 inline-flex items-center gap-2 text-sm font-black text-bronze transition hover:text-terracotta disabled:cursor-wait disabled:opacity-70";
 
-  useEffect(() => {
-    if (!storagePath || dataUrl) {
+  async function openStorageAttachment() {
+    if (!storagePath) {
       return;
     }
 
+    const popup = window.open("", "_blank", "noopener,noreferrer");
     const supabase = createBrowserSupabaseClient();
-    let isMounted = true;
 
     if (!supabase) {
+      popup?.close();
       return;
     }
 
-    void supabase.storage
-      .from(ATTACHMENT_BUCKET)
-      .createSignedUrl(storagePath, 10 * 60)
-      .then(({ data, error }) => {
-        if (!isMounted) {
-          return;
-        }
+    setIsOpening(true);
 
-        if (error) {
-          console.warn("maya_attachment_signed_url_failed", {
-            bucket: ATTACHMENT_BUCKET,
-            code: error.name,
-            message: error.message
-          });
-          setSignedUrl(null);
-          return;
-        }
+    try {
+      const { data, error } = await supabase.storage.from(ATTACHMENT_BUCKET).createSignedUrl(storagePath, 10 * 60);
 
-        setSignedUrl(data.signedUrl);
-      });
+      if (error || !data.signedUrl) {
+        console.warn("maya_attachment_signed_url_failed", {
+          bucket: ATTACHMENT_BUCKET,
+          code: error?.name,
+          message: error?.message
+        });
+        popup?.close();
+        return;
+      }
 
-    return () => {
-      isMounted = false;
-    };
-  }, [dataUrl, storagePath]);
-
-  const href = dataUrl || signedUrl;
-
-  if (!href) {
-    return imageName ? (
-      <p className="mt-3 text-sm font-bold text-muted">Anexo salvo: {imageName}</p>
-    ) : null;
+      if (popup) {
+        popup.location.href = data.signedUrl;
+      } else {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      setIsOpening(false);
+    }
   }
 
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className={
-        className ??
-        "mt-3 inline-flex items-center gap-2 text-sm font-black text-bronze transition hover:text-terracotta"
-      }
-    >
-      <FileImage className="size-4" aria-hidden="true" />
-      Ver anexo
-    </a>
-  );
+  if (dataUrl) {
+    return (
+      <a href={dataUrl} target="_blank" rel="noreferrer" className={baseClassName}>
+        <FileImage className="size-4" aria-hidden="true" />
+        Ver anexo
+      </a>
+    );
+  }
+
+  if (storagePath) {
+    return (
+      <button type="button" onClick={() => void openStorageAttachment()} disabled={isOpening} className={baseClassName}>
+        <FileImage className="size-4" aria-hidden="true" />
+        {isOpening ? "Abrindo anexo..." : "Ver anexo"}
+      </button>
+    );
+  }
+
+  return imageName ? <p className="mt-3 text-sm font-bold text-muted">Anexo salvo: {imageName}</p> : null;
 }

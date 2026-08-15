@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toDateKey } from "@/lib/utils";
 import type { BillAlert, FinancialHealthAlert } from "../types";
 
 const NOTIFIED_KEY = "maya.finance.notified_alerts.v1";
@@ -24,7 +25,7 @@ export function FinanceNotificationPanel({
     }
 
     const notified = readNotifiedKeys();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toDateKey();
 
     [...billAlerts, ...(healthAlerts ?? []).map(mapHealthAlert)]
       .filter((alert) => !notified.has(`${today}_${alert.id}`))
@@ -32,8 +33,8 @@ export function FinanceNotificationPanel({
       .forEach((alert) => {
         new Notification(alert.title, {
           body: alert.message,
-          icon: "/brand/maya-favicon.png",
-          badge: "/brand/maya-favicon.png",
+          icon: "/brand/maya-icon-192.png",
+          badge: "/brand/maya-icon-192.png",
           tag: `maya_${alert.id}`
         });
         notified.add(`${today}_${alert.id}`);
@@ -99,7 +100,7 @@ function mapHealthAlert(alert: FinancialHealthAlert): BillAlert {
       amount: 0,
       category: "MAYA",
       person: "Casal",
-      dueDate: new Date().toISOString().slice(0, 10),
+      dueDate: toDateKey(),
       paymentMethod: "other",
       recurrence: "none",
       status: "pending",

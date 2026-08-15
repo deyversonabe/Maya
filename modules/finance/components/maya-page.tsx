@@ -11,6 +11,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { formatCurrency, formatPercent } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { buildMayaLocalAnalysis, buildMonthSummaries } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { MayaAnalysis } from "../types";
@@ -46,7 +47,7 @@ export function MayaPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/maya/analyze", {
+      const response = await mayaFetch("/api/maya/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -27,7 +27,8 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
-import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput, toDateKey, toInputDate } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { getTransactionCategoriesByType } from "../data/defaults";
 import {
   buildBudgetSummary,
@@ -134,7 +135,7 @@ export function FinanceDashboard() {
     try {
       const attachment = await fileToFinanceAttachment(file);
       const documentKind = transactionForm.type === "income" ? "income" : "expense";
-      const response = await fetch("/api/maya/receipt", {
+      const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -310,7 +311,7 @@ export function FinanceDashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${toDateKey()}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado em JSON.");
@@ -940,14 +941,22 @@ export function FinanceDashboard() {
                   Backup
                 </Button>
                 <Button
-                  variant="danger"
+                  variant="secondary"
                   onClick={() => {
-                    actions.reset();
-                    setFeedback("Cadastros limpos. Cadastre informacoes reais para iniciar a analise.");
+                    const confirmed = window.confirm(
+                      "Isso limpa apenas o cache deste aparelho. Os dados salvos na nuvem continuam preservados. Deseja continuar?"
+                    );
+
+                    if (!confirmed) {
+                      return;
+                    }
+
+                    actions.resetLocalCache();
+                    setFeedback("Cache local limpo. Recarregue a pagina para buscar novamente a base salva na nuvem.");
                   }}
                 >
                   <RefreshCcw className="size-4" aria-hidden="true" />
-                  Limpar cadastros
+                  Limpar cache local
                 </Button>
               </div>
             </div>

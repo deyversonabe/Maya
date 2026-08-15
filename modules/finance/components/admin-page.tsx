@@ -24,7 +24,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
-import { financialValueClass, formatCurrency, formatPercent, toInputDate } from "@/lib/utils";
+import { financialValueClass, formatCurrency, formatPercent, getCurrentMonthKey, toInputDate } from "@/lib/utils";
 import { exportFinanceReportExcel, exportFinanceReportJson, exportFinanceReportPdf } from "../lib/report-export";
 import { createCurrentMonthReportPeriod, createMonthReportPeriod, buildFinanceReport, type FinanceReportPeriod } from "../lib/reporting";
 import { isPushAvailable, registerCurrentDeviceForPush } from "../lib/push-client";
@@ -83,7 +83,7 @@ export function AdminPage() {
   const [feedback, setFeedback] = useState("Painel pronto para administracao, relatorios e notificacoes.");
   const [isLoading, setIsLoading] = useState(false);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => getCurrentMonthKey());
   const [startDate, setStartDate] = useState(() => toInputDate(new Date()));
   const [endDate, setEndDate] = useState(() => toInputDate(new Date()));
   const reportPeriod = useMemo(() => buildSelectedPeriod(periodMode, month, startDate, endDate), [endDate, month, periodMode, startDate]);

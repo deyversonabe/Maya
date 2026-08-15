@@ -7,7 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
-import { cn, financialValueClass, formatCurrency, formatPercent, parseFinancialAmountInput } from "@/lib/utils";
+import {
+  buildMonthKeyRange,
+  cn,
+  financialValueClass,
+  formatCurrency,
+  formatPercent,
+  getCurrentMonthKey,
+  parseFinancialAmountInput
+} from "@/lib/utils";
 import { expenseCategories } from "../data/defaults";
 import { buildBudgetSummary } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -15,7 +23,7 @@ import type { BudgetUsage } from "../types";
 
 export function BudgetsPage() {
   const { state, actions } = useFinanceStore();
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => getCurrentMonthKey());
   const [form, setForm] = useState({
     category: "Alimentacao",
     limitAmount: "",
@@ -239,14 +247,5 @@ function AlertCard({ title, text, tone }: { title: string; text: string; tone: "
 }
 
 function buildBudgetMonths() {
-  const months = new Set<string>();
-  const current = new Date();
-
-  for (let index = -2; index <= 12; index += 1) {
-    const date = new Date(current);
-    date.setMonth(current.getMonth() + index);
-    months.add(date.toISOString().slice(0, 7));
-  }
-
-  return Array.from(months).sort();
+  return buildMonthKeyRange(getCurrentMonthKey(), -2, 12);
 }

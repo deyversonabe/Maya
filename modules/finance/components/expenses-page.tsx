@@ -9,7 +9,17 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import { MoneyInput } from "@/components/ui/money-input";
+import {
+  buildMonthKeyRange,
+  cn,
+  financialValueClass,
+  formatCurrency,
+  getCurrentMonthKey,
+  parseFinancialAmountInput,
+  toInputDate
+} from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
@@ -53,7 +63,7 @@ export function ExpensesPage() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const statementRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
   const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA revisar.");
   const [receiptDraft, setReceiptDraft] = useState<FinancialDocumentDraft | null>(null);
   const [statementDraft, setStatementDraft] = useState<BankStatementDraft | null>(null);
@@ -151,7 +161,7 @@ export function ExpensesPage() {
     try {
       const attachment = await fileToFinanceAttachment(file);
       const qrPayloads = await detectQrPayloadsFromImageDataUrl(attachment.imageDataUrl);
-      const response = await fetch("/api/maya/receipt", {
+      const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -188,7 +198,7 @@ export function ExpensesPage() {
 
     try {
       const attachment = await fileToFinanceAttachment(file);
-      const response = await fetch("/api/maya/statement", {
+      const response = await mayaFetch("/api/maya/statement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -354,8 +364,22 @@ export function ExpensesPage() {
         : null;
 
     if (receiptAttachmentMatch) {
-      attachReceiptToExistingExpense(receiptAttachmentMatch, transactions[0]);
-      return;
+      const shouldAttachToExisting = window.confirm(
+        [
+          "Ja existe uma despesa no mesmo dia e com o mesmo valor.",
+          "",
+          `Lancamento encontrado: ${receiptAttachmentMatch.date} - ${formatCurrency(receiptAttachmentMatch.amount)} - ${receiptAttachmentMatch.description}`,
+          `Nota lida agora: ${transactions[0].date} - ${formatCurrency(transactions[0].amount)} - ${transactions[0].description}`,
+          "",
+          "OK: anexar os dados da nota nesse lancamento existente.",
+          "Cancelar: continuar e criar uma despesa separada."
+        ].join("\n")
+      );
+
+      if (shouldAttachToExisting) {
+        attachReceiptToExistingExpense(receiptAttachmentMatch, transactions[0]);
+        return;
+      }
     }
 
     const duplicates = findTransactionDuplicateMatches(comparableTransactions, transactions);
@@ -1265,10 +1289,9 @@ function StatementDraftReview({
                   </Label>
                   <Label>
                     Valor
-                    <Input
-                      inputMode="decimal"
-                      value={line.amount > 0 ? String(line.amount) : ""}
-                      onChange={(event) => onChangeLine(index, { amount: parseMoney(event.target.value) })}
+                    <MoneyInput
+                      value={line.amount}
+                      onValueChange={(amount) => onChangeLine(index, { amount })}
                     />
                   </Label>
                 </div>
@@ -1368,22 +1391,11 @@ function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {
 
 function buildAvailableMonths(transactions: Transaction[]) {
   const months = new Set<string>();
-  const current = new Date();
 
-  for (let index = -3; index <= 18; index += 1) {
-    const date = new Date(current);
-    date.setMonth(current.getMonth() + index);
-    months.add(date.toISOString().slice(0, 7));
-  }
+  buildMonthKeyRange(getCurrentMonthKey(), -3, 18).forEach((month) => months.add(month));
 
   transactions.forEach((transaction) => months.add(transaction.date.slice(0, 7)));
   return Array.from(months).sort();
-}
-
-function parseMoney(value: string) {
-  const number = parseFinancialAmountInput(value);
-
-  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 function normalizeAmountKey(value: number) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { toDateKey } from "@/lib/utils";
 
 const MAX_IMAGE_EDGE = 3000;
 const MAX_DATA_URL_LENGTH = 3_800_000;
@@ -170,7 +171,7 @@ async function tryUploadAttachment(fileName: string, blob: Blob) {
     return undefined;
   }
 
-  const path = `${WORKSPACE_ID}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${sanitizeFileName(
+  const path = `${WORKSPACE_ID}/${toDateKey()}/${crypto.randomUUID()}-${sanitizeFileName(
     fileName
   )}.jpg`;
 

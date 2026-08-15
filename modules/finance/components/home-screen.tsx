@@ -19,6 +19,7 @@ import { LedPanel } from "@/components/ui/led-panel";
 import { VisualMetric } from "@/components/ui/visual-metric";
 import { AppShell } from "@/components/app/app-shell";
 import { cn, financialValueClass, formatCurrency, formatPercent } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import {
   buildBudgetSummary,
   buildFinancialHealthAlerts,
@@ -50,7 +51,7 @@ export function HomeScreen() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/maya/analyze", {
+      const response = await mayaFetch("/api/maya/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state, question: trimmed })

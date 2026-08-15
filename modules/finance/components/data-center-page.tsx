@@ -15,6 +15,8 @@ import {
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { mayaFetch } from "@/lib/api-client";
+import { toDateKey } from "@/lib/utils";
 import { Card, CardHeader } from "@/components/ui/card";
 import { LedPanel } from "@/components/ui/led-panel";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
@@ -51,7 +53,7 @@ export function DataCenterPage() {
 
     let isMounted = true;
 
-    fetch("/api/system/status")
+    mayaFetch("/api/system/status")
       .then((response) => response.json() as Promise<SystemStatus>)
       .then((nextStatus) => {
         if (isMounted) {
@@ -103,15 +105,24 @@ export function DataCenterPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `maya-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `maya-backup-${toDateKey()}.json`;
     link.click();
     URL.revokeObjectURL(url);
     setFeedback("Backup exportado com seus dados atuais.");
   }
 
   function resetLocalData() {
-    actions.reset();
-    setFeedback("Cadastros limpos. O sistema volta a iniciar sem informacoes financeiras cadastradas.");
+    const confirmed = window.confirm(
+      "Isso limpa apenas o cache deste aparelho. Os dados salvos na nuvem continuam preservados e serao recarregados ao entrar novamente. Deseja continuar?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    actions.resetLocalCache();
+    setFeedback("Cache local limpo. A pagina sera recarregada para buscar novamente a base salva na nuvem.");
+    window.location.reload();
   }
 
   return (
@@ -172,9 +183,9 @@ export function DataCenterPage() {
                 <Download className="size-4" aria-hidden="true" />
                 Exportar backup
               </Button>
-              <Button variant="danger" onClick={resetLocalData}>
+              <Button variant="secondary" onClick={resetLocalData}>
                 <RefreshCcw className="size-4" aria-hidden="true" />
-                Limpar cadastros
+                Limpar cache local
               </Button>
             </div>
           </Card>

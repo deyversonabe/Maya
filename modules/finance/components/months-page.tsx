@@ -9,7 +9,16 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, toInputDate } from "@/lib/utils";
+import {
+  buildMonthKeyRange,
+  cn,
+  financialValueClass,
+  formatCurrency,
+  getCurrentMonthKey,
+  getMonthEndDate,
+  monthKeyAdd,
+  toInputDate
+} from "@/lib/utils";
 import { expenseCategories, incomeCategories } from "../data/defaults";
 import {
   buildBillSummary,
@@ -65,16 +74,17 @@ const transactionOrder: TransactionType[] = ["income", "expense", "investment", 
 export function MonthsPage() {
   const { state, actions } = useFinanceStore();
   const availableMonths = useMemo(() => buildAvailableMonths(state.transactions, state.bills), [state.transactions, state.bills]);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const currentMonth = getCurrentMonthKey();
+  const [selectedMonth, setSelectedMonth] = useState(() => currentMonth);
   const [periodMode, setPeriodMode] = useState<"day" | "month">("month");
-  const [periodStart, setPeriodStart] = useState(() => `${new Date().toISOString().slice(0, 7)}-01`);
+  const [periodStart, setPeriodStart] = useState(() => `${currentMonth}-01`);
   const [periodEnd, setPeriodEnd] = useState(() => toInputDate(new Date()));
-  const [periodStartMonth, setPeriodStartMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [periodEndMonth, setPeriodEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [periodStartMonth, setPeriodStartMonth] = useState(() => currentMonth);
+  const [periodEndMonth, setPeriodEndMonth] = useState(() => currentMonth);
   const [incomeFilter, setIncomeFilter] = useState("Todos");
   const [expenseFilter, setExpenseFilter] = useState("Todos");
-  const [compareMonthA, setCompareMonthA] = useState(() => new Date().toISOString().slice(0, 7));
-  const [compareMonthB, setCompareMonthB] = useState(() => getPreviousMonth(new Date().toISOString().slice(0, 7)));
+  const [compareMonthA, setCompareMonthA] = useState(() => currentMonth);
+  const [compareMonthB, setCompareMonthB] = useState(() => getPreviousMonth(currentMonth));
   const today = toInputDate(new Date());
   const monthTransactions = useMemo(
     () => getTransactionsByMonth(state.transactions, selectedMonth).sort((a, b) => b.date.localeCompare(a.date)),
@@ -903,27 +913,13 @@ function getMonthCutoffDate(month: string, today: string) {
 }
 
 function getPreviousMonth(month: string) {
-  const date = new Date(`${month}-01T12:00:00`);
-  date.setMonth(date.getMonth() - 1);
-  return date.toISOString().slice(0, 7);
-}
-
-function getMonthEndDate(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(year, monthNumber, 0);
-
-  return date.toISOString().slice(0, 10);
+  return monthKeyAdd(month, -1);
 }
 
 function buildAvailableMonths(transactions: Transaction[], bills: PayableBill[]) {
   const months = new Set<string>();
-  const current = new Date();
 
-  for (let index = -12; index <= 24; index += 1) {
-    const date = new Date(current);
-    date.setMonth(current.getMonth() + index);
-    months.add(date.toISOString().slice(0, 7));
-  }
+  buildMonthKeyRange(getCurrentMonthKey(), -12, 24).forEach((month) => months.add(month));
 
   transactions.forEach((transaction) => months.add(transaction.date.slice(0, 7)));
   bills.forEach((bill) => months.add(bill.dueDate.slice(0, 7)));

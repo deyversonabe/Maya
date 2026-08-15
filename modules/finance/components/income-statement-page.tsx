@@ -8,7 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
-import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import {
+  addMonthsSafe,
+  cn,
+  financialValueClass,
+  formatCurrency,
+  getCurrentMonthKey,
+  getMonthEndDate,
+  parseFinancialAmountInput,
+  toInputDate
+} from "@/lib/utils";
 import { DEFAULT_FINANCE_ACCOUNT_ID, incomeCategories } from "../data/defaults";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -69,7 +78,7 @@ export function IncomeStatementPage() {
   const { state, actions } = useFinanceStore();
   const [feedback, setFeedback] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState<"all" | string>("all");
-  const [selectedStatementMonth, setSelectedStatementMonth] = useState(() => toInputDate(new Date()).slice(0, 7));
+  const [selectedStatementMonth, setSelectedStatementMonth] = useState(() => getCurrentMonthKey());
   const [form, setForm] = useState({
     plan: "variable" as IncomePlan,
     description: "",
@@ -811,7 +820,7 @@ function createIncomeTransactions({
     otherCategoryDescription,
     person,
     accountId,
-    date: addMonths(date, index),
+    date: addMonthsSafe(date, index),
     recurring: plan === "monthly",
     recurrenceGroupId: plan === "monthly" ? groupId : undefined,
     source: "manual",
@@ -1051,13 +1060,6 @@ function getStatementCutoffDate(month: string) {
   return month === today.slice(0, 7) ? today : monthEnd;
 }
 
-function getMonthEndDate(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(year, monthNumber, 0);
-
-  return date.toISOString().slice(0, 10);
-}
-
 function getBillStatementDate(bill: PayableBill) {
   return bill.paidAt?.slice(0, 10) || bill.dueDate;
 }
@@ -1080,17 +1082,6 @@ function formatPaymentMethod(method: PaymentMethod) {
   }
 
   return "Outro";
-}
-
-function addMonths(value: string, offset: number) {
-  const date = new Date(`${value}T12:00:00`);
-
-  if (!Number.isFinite(date.getTime())) {
-    return value;
-  }
-
-  date.setMonth(date.getMonth() + offset);
-  return date.toISOString().slice(0, 10);
 }
 
 function clampCount(value: number, min: number, max: number) {

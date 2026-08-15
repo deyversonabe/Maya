@@ -1,4 +1,11 @@
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import {
+  addMonthsSafe,
+  buildMonthKeyRange,
+  formatCurrency,
+  formatPercent,
+  getCurrentMonthKey,
+  toDateKey
+} from "@/lib/utils";
 import type {
   BillAlert,
   BillStatus,
@@ -13,9 +20,7 @@ import type {
   Transaction
 } from "../types";
 
-export function getCurrentMonthKey() {
-  return new Date().toISOString().slice(0, 7);
-}
+export { getCurrentMonthKey } from "@/lib/utils";
 
 export function calculateSummary(state: FinanceState): FinanceSummary {
   const currentMonth = getCurrentMonthKey();
@@ -51,11 +56,7 @@ export function calculateSummary(state: FinanceState): FinanceSummary {
 
 export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill[] = []) {
   const today = toDateKey(new Date());
-  const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (5 - index));
-    return date.toISOString().slice(0, 7);
-  });
+  const months = buildMonthKeyRange(getCurrentMonthKey(), -5, 0);
 
   return months.map((month) => {
     const monthTransactions = getTransactionsByMonthUntil(transactions, month, today);
@@ -69,13 +70,14 @@ export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill
   });
 }
 
-export function buildMonthSummaries(transactions: Transaction[], monthCount = 6, bills: PayableBill[] = []): MonthSummary[] {
-  const today = toDateKey(new Date());
-  const months = Array.from({ length: monthCount }, (_, index) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (monthCount - 1 - index));
-    return date.toISOString().slice(0, 7);
-  });
+export function buildMonthSummaries(
+  transactions: Transaction[],
+  monthCount = 6,
+  bills: PayableBill[] = [],
+  now = new Date()
+): MonthSummary[] {
+  const today = toDateKey(now);
+  const months = buildMonthKeyRange(today.slice(0, 7), -(monthCount - 1), 0);
 
   return months.map((month) => {
     const monthTransactions = getTransactionsByMonthUntil(transactions, month, today);
@@ -177,11 +179,11 @@ export function buildInsights(state: FinanceState) {
 }
 
 export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()): FinancialHealthAlert[] {
-  const currentMonth = now.toISOString().slice(0, 7);
   const today = toDateKey(now);
+  const currentMonth = today.slice(0, 7);
   const currentTransactions = getTransactionsByMonthUntil(state.transactions, currentMonth, today);
   const currentBills = getPaidBillsByPaymentMonthUntil(state.bills, currentMonth, today);
-  const previousMonths = buildMonthSummaries(state.transactions, 4, state.bills).filter((month) => month.month !== currentMonth);
+  const previousMonths = buildMonthSummaries(state.transactions, 4, state.bills, now).filter((month) => month.month !== currentMonth);
   const currentIncome = sumByType(currentTransactions, "income");
   const currentExpenses = calculateMonthExpenseTotal(currentTransactions, currentBills);
   const averageIncome = average(previousMonths.map((month) => month.income).filter((value) => value > 0));
@@ -239,7 +241,9 @@ export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()
     });
   }
 
-  return alerts.slice(0, 4);
+  alerts.push(...buildRecurrenceEndingAlerts(state, currentMonth, createdAt));
+
+  return alerts.sort(sortFinancialHealthAlerts).slice(0, 4);
 }
 
 export function buildMayaLocalAnalysis(state: FinanceState, question?: string): MayaAnalysis {
@@ -506,13 +510,7 @@ export function buildBudgetSummary(state: FinanceState, month: string) {
 }
 
 export function addMonths(dateValue: string, monthsToAdd: number) {
-  const date = new Date(`${dateValue}T12:00:00`);
-  date.setMonth(date.getMonth() + monthsToAdd);
-  return date.toISOString().slice(0, 10);
-}
-
-export function toDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return addMonthsSafe(dateValue, monthsToAdd);
 }
 
 function diffCalendarDays(fromDate: string, toDate: string) {
@@ -630,4 +628,104 @@ function buildExpenseCategoryTotals(transactions: Transaction[], bills: PayableB
   });
 
   return totals;
+}
+
+function buildRecurrenceEndingAlerts(state: FinanceState, currentMonth: string, createdAt: string): FinancialHealthAlert[] {
+  const series = new Map<string, { label: string; kind: "transaction" | "bill"; months: Set<string> }>();
+
+  state.transactions
+    .filter((transaction) => transaction.recurring && isValidDateKey(transaction.date))
+    .forEach((transaction) => {
+      const key = transaction.recurrenceGroupId || buildRecurrenceFallbackKey([
+        "transaction",
+        transaction.description,
+        String(transaction.amount),
+        transaction.category,
+        transaction.person
+      ]);
+      addRecurrenceMonth(series, key, transaction.description, "transaction", transaction.date.slice(0, 7));
+    });
+
+  state.bills
+    .filter((bill) => bill.recurrence === "monthly" && isValidDateKey(bill.dueDate))
+    .forEach((bill) => {
+      const key = bill.recurrenceGroupId || buildRecurrenceFallbackKey(["bill", bill.title, String(bill.amount), bill.category, bill.person]);
+      addRecurrenceMonth(series, key, bill.title, "bill", bill.dueDate.slice(0, 7));
+    });
+
+  return Array.from(series.entries()).flatMap(([key, item]) => {
+    if (item.months.size < 2) {
+      return [];
+    }
+
+    const sortedMonths = Array.from(item.months).sort();
+    const lastMonth = sortedMonths[sortedMonths.length - 1];
+    if (!lastMonth) {
+      return [];
+    }
+
+    const monthsUntilEnd = diffMonthKeys(currentMonth, lastMonth);
+    if (monthsUntilEnd < 0 || monthsUntilEnd > 2) {
+      return [];
+    }
+
+    const label = item.kind === "bill" ? "conta recorrente" : "lancamento recorrente";
+
+    return [
+      {
+        id: `recurrence_ending_${sanitizeAlertId(key)}_${lastMonth}`,
+        title: "Recorrencia perto de acabar",
+        message:
+          monthsUntilEnd === 0
+            ? `A ${label} "${item.label}" termina neste mes. Confira se precisa renovar para os proximos meses.`
+            : `A ${label} "${item.label}" termina em ${lastMonth}. Confira antes para nao sumir do planejamento.`,
+        priority: monthsUntilEnd === 0 ? "critical" : "warning",
+        createdAt
+      } satisfies FinancialHealthAlert
+    ];
+  });
+}
+
+function addRecurrenceMonth(
+  series: Map<string, { label: string; kind: "transaction" | "bill"; months: Set<string> }>,
+  key: string,
+  label: string,
+  kind: "transaction" | "bill",
+  month: string
+) {
+  const existing = series.get(key);
+  if (existing) {
+    existing.months.add(month);
+    return;
+  }
+
+  series.set(key, { label, kind, months: new Set([month]) });
+}
+
+function buildRecurrenceFallbackKey(parts: string[]) {
+  return parts.map((part) => part.trim().toLowerCase()).join("|");
+}
+
+function diffMonthKeys(left: string, right: string) {
+  const [leftYear, leftMonth] = left.split("-").map(Number);
+  const [rightYear, rightMonth] = right.split("-").map(Number);
+  return (rightYear - leftYear) * 12 + (rightMonth - leftMonth);
+}
+
+function isValidDateKey(value: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(value);
+}
+
+function sanitizeAlertId(value: string) {
+  return value.replace(/[^a-z0-9_-]+/gi, "_").slice(0, 80);
+}
+
+function sortFinancialHealthAlerts(left: FinancialHealthAlert, right: FinancialHealthAlert) {
+  const priorityRank: Record<FinancialHealthAlert["priority"], number> = {
+    critical: 0,
+    warning: 1,
+    info: 2
+  };
+
+  return priorityRank[left.priority] - priorityRank[right.priority];
 }

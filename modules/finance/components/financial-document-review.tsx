@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
-import { parseFinancialAmountInput } from "@/lib/utils";
+import { MoneyInput } from "@/components/ui/money-input";
 import type { FinancialDocumentDraft, PaymentMethod, Person } from "../types";
 import { AttachmentLink } from "./attachment-link";
 
@@ -114,10 +114,9 @@ export function FinancialDocumentReview({
         </Label>
         <Label>
           Valor
-          <Input
-            inputMode="decimal"
-            value={draft.amount > 0 ? String(draft.amount) : ""}
-            onChange={(event) => onChange({ amount: parseMoney(event.target.value) })}
+          <MoneyInput
+            value={draft.amount}
+            onValueChange={(amount) => onChange({ amount })}
             placeholder="0,00"
           />
         </Label>
@@ -206,12 +205,6 @@ export function FinancialDocumentReview({
       </Label>
     </div>
   );
-}
-
-function parseMoney(value: string) {
-  const number = parseFinancialAmountInput(value);
-
-  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 function buildFiscalEntries(draft: FinancialDocumentDraft): Array<[string, string]> {

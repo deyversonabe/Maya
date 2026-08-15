@@ -1,4 +1,5 @@
 ﻿import { DEFAULT_FINANCE_ACCOUNT_ID, createDefaultFinanceAccount, createEmptyFinanceState } from "../data/defaults";
+import { getCurrentMonthKey, toDateKey } from "../../../lib/utils";
 import type {
   Budget,
   FinanceActivityLog,
@@ -170,7 +171,29 @@ export function migrateFinanceState(value: unknown): FinanceState {
     };
   }
 
+  if (looksLikeFinanceState(value)) {
+    return normalizeV7({
+      ...createEmptyFinanceState(),
+      ...value,
+      schemaVersion: 7
+    } as unknown as PersistedFinanceStateV7);
+  }
+
   return createEmptyFinanceState();
+}
+
+function looksLikeFinanceState(value: Record<string, unknown>) {
+  return (
+    Array.isArray(value.transactions) ||
+    Array.isArray(value.bills) ||
+    Array.isArray(value.goals) ||
+    Array.isArray(value.budgets) ||
+    Array.isArray(value.taxDocuments) ||
+    Array.isArray(value.laborBenefits) ||
+    Array.isArray(value.payrollRecords) ||
+    Array.isArray(value.workTimeEntries) ||
+    Array.isArray(value.salonMaterials)
+  );
 }
 
 function normalizeV7(state: PersistedFinanceStateV7): FinanceState {
@@ -199,9 +222,9 @@ function normalizeV6(state: PersistedFinanceStateV6): FinanceState {
   return normalizeV7({
     ...state,
     schemaVersion: 7,
-    salonMaterials: [],
-    salonServiceRecipes: [],
-    salonStockMovements: []
+    salonMaterials: (state as { salonMaterials?: SalonMaterial[] }).salonMaterials ?? [],
+    salonServiceRecipes: (state as { salonServiceRecipes?: SalonServiceRecipe[] }).salonServiceRecipes ?? [],
+    salonStockMovements: (state as { salonStockMovements?: SalonStockMovement[] }).salonStockMovements ?? []
   });
 }
 
@@ -332,7 +355,7 @@ function normalizeSalonStockMovements(movements: SalonStockMovement[] | undefine
       date:
         typeof movement.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(movement.date)
           ? movement.date
-          : new Date().toISOString().slice(0, 10),
+          : toDateKey(),
       serviceRecipeId: typeof movement.serviceRecipeId === "string" ? movement.serviceRecipeId : undefined,
       transactionId: typeof movement.transactionId === "string" ? movement.transactionId : undefined,
       notes: typeof movement.notes === "string" ? movement.notes.trim() || undefined : undefined,
@@ -375,7 +398,7 @@ function normalizeLaborBenefits(benefits: LaborBenefit[] | undefined): LaborBene
     return [];
   }
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = getCurrentMonthKey();
 
   return benefits
     .filter((benefit) => Number.isFinite(benefit.amount) || Number.isFinite(benefit.blockedBalance))
@@ -407,7 +430,7 @@ function normalizePayrollRecords(records: PayrollRecord[] | undefined): PayrollR
     return [];
   }
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = getCurrentMonthKey();
 
   return records
     .filter((record) => Number.isFinite(record.baseSalary) || Number.isFinite(record.outsideBonus))
@@ -497,7 +520,17 @@ function normalizeV2(state: PersistedFinanceStateV2) {
 }
 
 function normalizeBudgets(budgets: Budget[] | undefined) {
-  return Array.isArray(budgets) ? budgets.filter((budget) => budget.limitAmount > 0) : [];
+  if (!Array.isArray(budgets)) {
+    return [];
+  }
+
+  return budgets
+    .filter((budget) => budget.limitAmount > 0)
+    .map((budget): Budget => ({
+      ...budget,
+      month: typeof budget.month === "string" && /^\d{4}-\d{2}$/.test(budget.month) ? budget.month : getCurrentMonthKey(),
+      createdAt: normalizeTimestamp(budget.createdAt) ?? new Date().toISOString()
+    }));
 }
 
 function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccount[] {
@@ -520,7 +553,7 @@ function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccou
           openingBalanceDate:
             typeof account.openingBalanceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(account.openingBalanceDate)
               ? account.openingBalanceDate
-              : new Date().toISOString().slice(0, 10),
+              : toDateKey(),
           color: typeof account.color === "string" ? account.color : undefined,
           createdAt: typeof account.createdAt === "string" ? account.createdAt : new Date().toISOString()
         }))
@@ -555,7 +588,7 @@ function normalizeGoals(goals: Goal[] | undefined): Goal[] {
                   {
                     id: `goal_entry_${goal.id || "legacy"}`,
                     amount: currentAmount,
-                    date: typeof goal.createdAt === "string" ? goal.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                    date: normalizeDateOnly(goal.createdAt) ?? toDateKey(),
                     notes: "Saldo anterior importado.",
                     createdAt: typeof goal.createdAt === "string" ? goal.createdAt : new Date().toISOString()
                   }
@@ -578,7 +611,7 @@ function normalizeGoalContributions(contributions: GoalContribution[] | undefine
       date:
         typeof contribution.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(contribution.date)
           ? contribution.date
-          : new Date().toISOString().slice(0, 10),
+          : toDateKey(),
       createdAt: typeof contribution.createdAt === "string" ? contribution.createdAt : new Date().toISOString()
     }));
 }
@@ -589,14 +622,17 @@ function normalizeBills(bills: PayableBill[] | undefined): PayableBill[] {
   }
 
   const normalized = bills
-    .filter((bill) => bill.amount > 0 && typeof bill.title === "string" && typeof bill.dueDate === "string")
+    .filter((bill) => bill.amount > 0 && typeof bill.title === "string" && normalizeDateOnly(bill.dueDate))
     .map((bill): PayableBill => ({
       ...bill,
+      dueDate: normalizeDateOnly(bill.dueDate) ?? toDateKey(),
       person: normalizePerson(bill.person),
       status: bill.status === "paid" || bill.status === "overdue" ? bill.status : "pending",
       recurrence: bill.recurrence === "monthly" ? "monthly" : "none",
       paymentMethod: normalizePaymentMethod(bill.paymentMethod),
-      source: bill.source === "attachment" || bill.source === "import" ? bill.source : "manual"
+      source: bill.source === "attachment" || bill.source === "import" ? bill.source : "manual",
+      paidAt: normalizeTimestamp(bill.paidAt),
+      createdAt: normalizeTimestamp(bill.createdAt) ?? new Date().toISOString()
     }));
 
   return resetAccidentallyPaidFutureBills(normalized);
@@ -713,8 +749,10 @@ function stripLegacyDemoTransactions(transactions: Transaction[]) {
     })
     .map((transaction): Transaction => ({
       ...transaction,
+      date: normalizeDateOnly(transaction.date) ?? toDateKey(),
       person: normalizePerson(transaction.person),
-      paymentMethod: transaction.paymentMethod ? normalizePaymentMethod(transaction.paymentMethod) : undefined
+      paymentMethod: transaction.paymentMethod ? normalizePaymentMethod(transaction.paymentMethod) : undefined,
+      createdAt: normalizeTimestamp(transaction.createdAt) ?? new Date().toISOString()
     }));
 }
 
@@ -752,6 +790,40 @@ function isHouseholdProfile(value: unknown): value is HouseholdProfile {
     typeof value.monthlyIncomeTarget === "number" &&
     typeof value.emergencyReserveTarget === "number"
   );
+}
+
+function normalizeDateOnly(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, year, month, day] = match;
+  const date = new Date(`${year}-${month}-${day}T12:00:00`);
+
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() + 1 !== Number(month) ||
+    date.getDate() !== Number(day)
+  ) {
+    return undefined;
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeTimestamp(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : undefined;
 }
 
 function normalizePerson(person: unknown): Person {

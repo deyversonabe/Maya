@@ -21,6 +21,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, toInputDate } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { AttachmentLink } from "./attachment-link";
 import { fileToDataUrl, fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -122,7 +123,7 @@ export function WorkHoursPage() {
       const fileDataUrl = isPdf ? await fileToDataUrl(file) : "";
       setPointAttachment(attachment);
 
-      const response = await fetch("/api/maya/timecard", {
+      const response = await mayaFetch("/api/maya/timecard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -999,7 +1000,7 @@ function getFormPunchFields(form: PunchFields): PunchFields {
 }
 
 function getEntryPunchFields(entry: WorkTimeEntry | undefined): PunchFields {
-  const punches = entry?.punches?.filter(isValidTime) ?? [];
+  const punches = normalizePunches(entry?.punches ?? []);
 
   return {
     firstIn: entry?.firstIn || punches[0] || entry?.startTime || DEFAULT_START,
@@ -1010,7 +1011,6 @@ function getEntryPunchFields(entry: WorkTimeEntry | undefined): PunchFields {
 }
 
 function mergeTimeClockDraftIntoPunchFields(draft: TimeClockDraft, base: PunchFields): PunchFields {
-  const next = { ...base };
   const explicitFields: PunchFields = {
     firstIn: draft.firstIn || "",
     firstOut: draft.firstOut || "",
@@ -1030,51 +1030,18 @@ function mergeTimeClockDraftIntoPunchFields(draft: TimeClockDraft, base: PunchFi
     ...(draft.punches ?? [])
   ]);
 
-  if (punches.length >= 4) {
-    return {
-      firstIn: punches[0],
-      firstOut: punches[1],
-      secondIn: punches[2],
-      secondOut: punches[3]
-    };
-  }
-
-  punches.forEach((punch) => {
-    const slot = guessPunchSlot(punch);
-    next[slot] = punch;
-  });
-
-  if (punches.length === 0 && draft.startTime && isValidTime(draft.startTime)) {
-    next.firstIn = draft.startTime;
-  }
-
-  if (punches.length === 0 && draft.endTime && isValidTime(draft.endTime)) {
-    next.secondOut = draft.endTime;
-  }
-
-  return next;
+  // Relatorios e fotos de ponto podem vir com 1 a 4 batidas. A ordem cronologica e mais confiavel
+  // que "adivinhar" o slot por faixa de hora quando ha escala ou atraso.
+  return {
+    firstIn: punches[0] || (isValidTime(draft.startTime || "") ? draft.startTime || "" : base.firstIn),
+    firstOut: punches[1] || base.firstOut,
+    secondIn: punches[2] || base.secondIn,
+    secondOut: punches[3] || (isValidTime(draft.endTime || "") ? draft.endTime || "" : base.secondOut)
+  };
 }
 
 function normalizePunches(values: string[]) {
   return Array.from(new Set(values.filter(isValidTime))).sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
-}
-
-function guessPunchSlot(time: string): keyof PunchFields {
-  const minutes = timeToMinutes(time);
-
-  if (minutes <= timeToMinutes("10:30")) {
-    return "firstIn";
-  }
-
-  if (minutes <= timeToMinutes("13:00")) {
-    return "firstOut";
-  }
-
-  if (minutes <= timeToMinutes("16:30")) {
-    return "secondIn";
-  }
-
-  return "secondOut";
 }
 
 function arePunchFieldsComplete(fields: PunchFields) {

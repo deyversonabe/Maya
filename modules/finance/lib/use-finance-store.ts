@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { emitSyncStatus } from "@/lib/sync-events";
 import { DEFAULT_FINANCE_ACCOUNT_ID, createEmptyFinanceState } from "../data/defaults";
+import {
+  addDeletedEntityIds,
+  hasDifferentCloudPayload,
+  hasFinanceContent,
+  mergeFinanceStates,
+  prepareFinanceStateForCloud
+} from "./state-merge";
 import { migrateFinanceState } from "./migrations";
 import type {
   Budget,
@@ -30,6 +38,7 @@ const CLOUD_TABLE = "finance_workspace_states";
 const CLOUD_WORKSPACE_ID =
   process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
 const CLOUD_SYNC_DELAY_MS = 150;
+const CLOUD_RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
 const SESSION_LOCK_KEY = "maya.finance.session_locked.v1";
 const SESSION_LAST_ACTIVITY_KEY = "maya.finance.last_activity.v1";
 const BEFORE_SIGN_OUT_EVENT = "maya:before-sign-out";
@@ -49,11 +58,13 @@ interface CloudSyncState {
 interface FinanceCloudRow {
   state: unknown;
   updated_at: string | null;
+  version?: number | null;
 }
 
 interface SafeWorkspaceStateSaveRow {
   state: unknown;
   updated_at: string | null;
+  version?: number | null;
 }
 
 export function useFinanceStore() {
@@ -75,6 +86,11 @@ export function useFinanceStore() {
   const userEmailRef = useRef<string | null>(null);
   const skipNextCloudSaveRef = useRef(false);
   const lastCloudPayloadRef = useRef("");
+  const cloudVersionRef = useRef<number | null>(null);
+  const supportsOptimisticLockRef = useRef(true);
+  const lastCloudRefetchAtRef = useRef(0);
+  const cloudRetryAttemptRef = useRef(0);
+  const cloudRetryTimeoutRef = useRef<number | null>(null);
   const cloudChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
 
   useEffect(() => {
@@ -113,47 +129,90 @@ export function useFinanceStore() {
         return;
       }
 
-      const cloudState = prepareFinanceStateForCloud(nextState);
-      const payload = JSON.stringify(cloudState);
+      let pendingState = nextState;
+      let cloudState = prepareFinanceStateForCloud(pendingState);
+      let payload = JSON.stringify(cloudState);
 
       if (payload === lastCloudPayloadRef.current) {
         return;
       }
 
-      let { data, error } = await supabase
-        .rpc("save_finance_workspace_state_locked", {
-          p_workspace_id: CLOUD_WORKSPACE_ID,
-          p_state: cloudState
-        })
-        .maybeSingle();
+      emitSyncStatus({ status: "syncing", message: "Salvando alteracoes online." });
 
-      if (error && isMissingWorkspaceLockRpcError(error)) {
-        const fallbackResult = await supabase
-          .from(CLOUD_TABLE)
-          .upsert(
-            {
-              workspace_id: CLOUD_WORKSPACE_ID,
-              state: cloudState,
-              updated_by: userIdRef.current
-            },
-            { onConflict: "workspace_id" }
-          )
-          .select("state, updated_at")
-          .maybeSingle();
+      let data: unknown = null;
+      let lastError: unknown = null;
 
-        data = fallbackResult.data;
-        error = fallbackResult.error;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const params = supportsOptimisticLockRef.current
+          ? {
+              p_workspace_id: CLOUD_WORKSPACE_ID,
+              p_state: cloudState,
+              p_expected_version: cloudVersionRef.current
+            }
+          : {
+              p_workspace_id: CLOUD_WORKSPACE_ID,
+              p_state: cloudState
+            };
+        const result = await supabase.rpc("save_finance_workspace_state_locked", params).maybeSingle();
+
+        if (!result.error) {
+          data = result.data;
+          lastError = null;
+          break;
+        }
+
+        const errorCode = result.error.code;
+        const errorText = `${result.error.code ?? ""} ${result.error.message ?? ""}`.toLowerCase();
+
+        if (supportsOptimisticLockRef.current && (errorCode === "PGRST202" || errorCode === "42703" || errorText.includes("p_expected_version"))) {
+          supportsOptimisticLockRef.current = false;
+          continue;
+        }
+
+        if (errorCode === "40001") {
+          const { data: remoteRow, error: reloadError } = await supabase
+            .from(CLOUD_TABLE)
+            .select(supportsOptimisticLockRef.current ? "state, updated_at, version" : "state, updated_at")
+            .eq("workspace_id", CLOUD_WORKSPACE_ID)
+            .maybeSingle();
+
+          if (reloadError) {
+            lastError = reloadError;
+            break;
+          }
+
+          const remote = remoteRow as FinanceCloudRow | null;
+          const remoteState = remote?.state ? migrateFinanceState(remote.state) : createEmptyFinanceState();
+          cloudVersionRef.current = typeof remote?.version === "number" ? remote.version : cloudVersionRef.current;
+          pendingState = mergeFinanceStates(remoteState, stateRef.current);
+          cloudState = prepareFinanceStateForCloud(pendingState);
+          payload = JSON.stringify(cloudState);
+          continue;
+        }
+
+        lastError = result.error;
+        break;
       }
 
-      if (error) {
-        throw new Error(formatCloudError(error));
+      if (lastError) {
+        throw new Error(formatCloudError(lastError as { message?: string; code?: string }));
+      }
+
+      if (!data) {
+        throw new Error("Nao consegui confirmar a sincronizacao online agora.");
       }
 
       const savedRow = data as SafeWorkspaceStateSaveRow | null;
       const savedState = savedRow?.state ? migrateFinanceState(savedRow.state) : cloudState;
       const savedPayload = JSON.stringify(prepareFinanceStateForCloud(savedState));
+      cloudVersionRef.current = typeof savedRow?.version === "number" ? savedRow.version : cloudVersionRef.current;
 
       lastCloudPayloadRef.current = savedPayload || payload;
+      cloudRetryAttemptRef.current = 0;
+      if (cloudRetryTimeoutRef.current) {
+        window.clearTimeout(cloudRetryTimeoutRef.current);
+        cloudRetryTimeoutRef.current = null;
+      }
 
       if (savedPayload && savedPayload !== payload) {
         skipNextCloudSaveRef.current = true;
@@ -167,26 +226,26 @@ export function useFinanceStore() {
         message: "Dados sincronizados online.",
         lastSyncedAt: new Date().toISOString()
       }));
+      emitSyncStatus({ status: "online", message: "Dados sincronizados online." });
     },
     [supabase]
   );
 
-  const applyRemoteState = useCallback((remoteValue: unknown) => {
+  const applyRemoteState = useCallback((remoteValue: unknown, version?: unknown) => {
     const remoteState = migrateFinanceState(remoteValue);
     const remotePayload = JSON.stringify(prepareFinanceStateForCloud(remoteState));
 
     if (remotePayload === lastCloudPayloadRef.current) {
+      cloudVersionRef.current = typeof version === "number" ? version : cloudVersionRef.current;
       return;
     }
 
     const localState = stateRef.current;
-    const localTime = getTime(localState.updatedAt);
-    const remoteTime = getTime(remoteState.updatedAt);
-    const nextState = localTime > remoteTime ? mergeFinanceStates(remoteState, localState) : remoteState;
-    const shouldResaveMergedState =
-      localTime > remoteTime && hasDifferentCloudPayload(nextState, remoteState);
+    const nextState = mergeFinanceStates(remoteState, localState);
+    const shouldResaveMergedState = hasDifferentCloudPayload(nextState, remoteState);
 
     skipNextCloudSaveRef.current = !shouldResaveMergedState;
+    cloudVersionRef.current = typeof version === "number" ? version : cloudVersionRef.current;
     lastCloudPayloadRef.current = remotePayload;
     setState(nextState);
     persistFinanceStateLocally(nextState);
@@ -229,7 +288,7 @@ export function useFinanceStore() {
             return;
           }
 
-          applyRemoteState(payload.new.state);
+          applyRemoteState(payload.new.state, (payload.new as { version?: unknown }).version);
         }
       )
       .subscribe();
@@ -243,7 +302,11 @@ export function useFinanceStore() {
 
       markSessionLocked();
       closeCloudChannel();
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.warn("Nao foi possivel encerrar a sessao remota durante o bloqueio local.", error);
+      }
       userIdRef.current = null;
       userEmailRef.current = null;
       setCloudReady(false);
@@ -274,11 +337,24 @@ export function useFinanceStore() {
       }));
 
       try {
-        const { data, error } = await supabase
+        const firstQuery = await supabase
           .from(CLOUD_TABLE)
-          .select("state, updated_at")
+          .select("state, updated_at, version")
           .eq("workspace_id", CLOUD_WORKSPACE_ID)
           .maybeSingle();
+        let data: unknown = firstQuery.data;
+        let error = firstQuery.error;
+
+        if (error?.code === "42703") {
+          supportsOptimisticLockRef.current = false;
+          const retry = await supabase
+            .from(CLOUD_TABLE)
+            .select("state, updated_at")
+            .eq("workspace_id", CLOUD_WORKSPACE_ID)
+            .maybeSingle();
+          data = retry.data;
+          error = retry.error;
+        }
 
         if (error) {
           throw new Error(formatCloudError(error));
@@ -292,6 +368,7 @@ export function useFinanceStore() {
 
         if (cloudRow?.state) {
           const remoteState = migrateFinanceState(cloudRow.state);
+          cloudVersionRef.current = typeof cloudRow.version === "number" ? cloudRow.version : null;
           nextState = localHasData ? mergeFinanceStates(remoteState, localState) : remoteState;
           shouldSaveCloud = localHasData && hasDifferentCloudPayload(nextState, remoteState);
         } else {
@@ -331,6 +408,41 @@ export function useFinanceStore() {
     },
     [saveStateToCloud, subscribeToWorkspaceChanges, supabase]
   );
+
+  useEffect(() => {
+    if (!supabase || !isHydrated) {
+      return;
+    }
+
+    function refetchIfNeeded() {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastCloudRefetchAtRef.current < 30_000) {
+        return;
+      }
+
+      lastCloudRefetchAtRef.current = now;
+      void loadCloudForUser(userIdRef.current, userEmailRef.current);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refetchIfNeeded();
+      }
+    }
+
+    window.addEventListener("online", refetchIfNeeded);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("online", refetchIfNeeded);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isHydrated, loadCloudForUser, supabase]);
 
   useEffect(() => {
     if (!supabase || !isHydrated) {
@@ -467,17 +579,48 @@ export function useFinanceStore() {
         status: "syncing",
         message: "Salvando alteracoes online."
       }));
+      emitSyncStatus({ status: "syncing", message: "Salvando alteracoes online." });
 
-      void saveStateToCloud(stateRef.current).catch((error) => {
+      function handleSaveError(error: unknown) {
+        const message = error instanceof Error ? error.message : "Nao consegui salvar online agora.";
         setCloud((current) => ({
           ...current,
           status: "error",
-          message: error instanceof Error ? error.message : "Nao consegui salvar online agora."
+          message
         }));
-      });
+        emitSyncStatus({ status: "error", message: `${message} A Maya vai tentar novamente.` });
+
+        const retryDelay = CLOUD_RETRY_DELAYS_MS[cloudRetryAttemptRef.current];
+        if (typeof retryDelay !== "number") {
+          return;
+        }
+
+        cloudRetryAttemptRef.current += 1;
+        if (cloudRetryTimeoutRef.current) {
+          window.clearTimeout(cloudRetryTimeoutRef.current);
+        }
+
+        cloudRetryTimeoutRef.current = window.setTimeout(() => {
+          setCloud((current) => ({
+            ...current,
+            status: "syncing",
+            message: "Tentando sincronizar novamente."
+          }));
+          emitSyncStatus({ status: "syncing", message: "Tentando sincronizar novamente." });
+          void saveStateToCloud(stateRef.current).catch(handleSaveError);
+        }, retryDelay);
+      }
+
+      void saveStateToCloud(stateRef.current).catch(handleSaveError);
     }, CLOUD_SYNC_DELAY_MS);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      if (cloudRetryTimeoutRef.current) {
+        window.clearTimeout(cloudRetryTimeoutRef.current);
+        cloudRetryTimeoutRef.current = null;
+      }
+    };
   }, [cloudReady, isHydrated, saveStateToCloud, state, supabase]);
 
   useEffect(() => {
@@ -561,13 +704,21 @@ export function useFinanceStore() {
     }
 
     if (userIdRef.current) {
-      await saveStateToCloud({
-        ...stateRef.current,
-        updatedAt: new Date().toISOString()
-      });
+      try {
+        await saveStateToCloud({
+          ...stateRef.current,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        console.warn("Nao foi possivel sincronizar antes de sair; encerrando a sessao mesmo assim.", error);
+      }
     }
 
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Nao foi possivel encerrar a sessao remota.", error);
+    }
     markSessionLocked();
     closeCloudChannel();
     userIdRef.current = null;
@@ -1523,16 +1674,12 @@ export function useFinanceStore() {
           updatedAt: new Date().toISOString()
         }));
       },
-      reset() {
-        setState((current) => {
-          const nextState = {
-            ...createEmptyFinanceState(),
-            deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, ...collectStateEntityIds(current)),
-            updatedAt: new Date().toISOString()
-          };
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-          return nextState;
-        });
+      resetLocalCache() {
+        // Limpar cache local nao pode gerar tombstones, porque isso apagaria a base compartilhada de todos.
+        skipNextCloudSaveRef.current = true;
+        lastCloudPayloadRef.current = "";
+        window.localStorage.removeItem(STORAGE_KEY);
+        setState(createEmptyFinanceState());
       }
     }),
     []
@@ -1581,83 +1728,11 @@ function addFinanceActivity(
 }
 
 function persistFinanceStateLocally(state: FinanceState) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function prepareFinanceStateForCloud(state: FinanceState): FinanceState {
-  return state;
-}
-
-function hasFinanceContent(state: FinanceState) {
-  return (
-    state.transactions.length > 0 ||
-    state.goals.length > 0 ||
-    state.budgets.length > 0 ||
-    state.bills.length > 0 ||
-    state.salonMaterials.length > 0 ||
-    state.salonServiceRecipes.length > 0 ||
-    state.salonStockMovements.length > 0 ||
-    state.taxDocuments.length > 0 ||
-    state.laborBenefits.length > 0 ||
-    state.payrollRecords.length > 0 ||
-    state.workTimeEntries.length > 0 ||
-    state.accounts.some((account) => account.id !== DEFAULT_FINANCE_ACCOUNT_ID || account.openingBalance !== 0)
-  );
-}
-
-function hasDifferentCloudPayload(left: FinanceState, right: FinanceState) {
-  return JSON.stringify(prepareFinanceStateForCloud(left)) !== JSON.stringify(prepareFinanceStateForCloud(right));
-}
-
-function mergeFinanceStates(cloudState: FinanceState, localState: FinanceState): FinanceState {
-  const cloudTime = getTime(cloudState.updatedAt);
-  const localTime = getTime(localState.updatedAt);
-  const deletedEntityIds = addDeletedEntityIds(cloudState.deletedEntityIds, ...localState.deletedEntityIds);
-  const deletedEntityIdSet = new Set(deletedEntityIds);
-
-  return {
-    schemaVersion: 7,
-    profile: localTime >= cloudTime ? localState.profile : cloudState.profile,
-    accounts: ensureDefaultAccount(filterDeletedItems(mergeById(cloudState.accounts, localState.accounts), deletedEntityIdSet)).sort(sortByCreatedAtDesc),
-    transactions: filterDeletedItems(mergeById(cloudState.transactions, localState.transactions), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    goals: filterDeletedItems(mergeById(cloudState.goals, localState.goals), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    budgets: filterDeletedItems(mergeById(cloudState.budgets, localState.budgets), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    bills: filterDeletedItems(mergeById(cloudState.bills, localState.bills), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    salonMaterials: filterDeletedItems(mergeById(cloudState.salonMaterials, localState.salonMaterials), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    salonServiceRecipes: filterDeletedItems(mergeById(cloudState.salonServiceRecipes, localState.salonServiceRecipes), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    salonStockMovements: filterDeletedItems(mergeById(cloudState.salonStockMovements, localState.salonStockMovements), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    taxDocuments: filterDeletedItems(mergeById(cloudState.taxDocuments, localState.taxDocuments), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    laborBenefits: filterDeletedItems(mergeById(cloudState.laborBenefits, localState.laborBenefits), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    payrollRecords: filterDeletedItems(mergeById(cloudState.payrollRecords, localState.payrollRecords), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    workTimeEntries: filterDeletedItems(mergeById(cloudState.workTimeEntries, localState.workTimeEntries), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    activityLogs: filterDeletedItems(mergeById(cloudState.activityLogs, localState.activityLogs), deletedEntityIdSet)
-      .sort(sortByCreatedAtDesc)
-      .slice(0, 200),
-    deletedEntityIds,
-    updatedAt: new Date(Math.max(cloudTime, localTime, Date.now())).toISOString()
-  };
-}
-
-function addDeletedEntityIds(current: string[], ...ids: string[]) {
-  const safeIds = ids.filter((id) => id && id !== DEFAULT_FINANCE_ACCOUNT_ID);
-  return Array.from(new Set([...current, ...safeIds])).slice(-1000);
-}
-
-function collectStateEntityIds(state: FinanceState) {
-  return [
-    ...state.accounts.filter((account) => account.id !== DEFAULT_FINANCE_ACCOUNT_ID).map((account) => account.id),
-    ...state.transactions.map((transaction) => transaction.id),
-    ...state.goals.map((goal) => goal.id),
-    ...state.budgets.map((budget) => budget.id),
-    ...state.bills.map((bill) => bill.id),
-    ...state.salonMaterials.map((material) => material.id),
-    ...state.salonServiceRecipes.map((recipe) => recipe.id),
-    ...state.salonStockMovements.map((movement) => movement.id),
-    ...state.taxDocuments.map((document) => document.id),
-    ...state.laborBenefits.map((benefit) => benefit.id),
-    ...state.payrollRecords.map((record) => record.id),
-    ...state.workTimeEntries.map((entry) => entry.id)
-  ];
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Nao foi possivel atualizar o cache local da Maya.", error);
+  }
 }
 
 function getSalonMaterialUnitCost(material: SalonMaterial) {
@@ -1680,64 +1755,6 @@ function getInsufficientSalonMaterials(materials: SalonMaterial[], recipe: Salon
     .map((item) => ({ item, material: materialsById.get(item.materialId) }))
     .filter(({ item, material }) => !material || material.stockQuantity < item.quantity)
     .map(({ material }) => material?.name ?? "material removido");
-}
-
-type MergeableFinanceItem = {
-  id: string;
-  attachmentDataUrl?: string;
-  attachmentStoragePath?: string;
-  attachmentMimeType?: string;
-  attachmentSize?: number;
-  attachmentImageName?: string;
-  receiptImageName?: string;
-  documentItems?: unknown[];
-  fiscalDocument?: unknown;
-};
-
-function mergeById<T extends MergeableFinanceItem>(base: T[], incoming: T[]) {
-  const merged = new Map<string, T>();
-
-  base.forEach((item) => merged.set(item.id, item));
-  incoming.forEach((item) => {
-    const existing = merged.get(item.id);
-    merged.set(item.id, existing ? preserveDocumentFields(existing, item) : item);
-  });
-
-  return Array.from(merged.values());
-}
-
-function filterDeletedItems<T extends { id: string }>(items: T[], deletedEntityIds: Set<string>) {
-  return items.filter((item) => !deletedEntityIds.has(item.id));
-}
-
-function ensureDefaultAccount(accounts: FinanceAccount[]) {
-  return accounts.some((account) => account.id === DEFAULT_FINANCE_ACCOUNT_ID)
-    ? accounts
-    : [createEmptyFinanceState().accounts[0], ...accounts];
-}
-
-function preserveDocumentFields<T extends MergeableFinanceItem>(base: T, incoming: T): T {
-  return {
-    ...base,
-    ...incoming,
-    attachmentDataUrl: incoming.attachmentDataUrl || base.attachmentDataUrl,
-    attachmentStoragePath: incoming.attachmentStoragePath || base.attachmentStoragePath,
-    attachmentMimeType: incoming.attachmentMimeType || base.attachmentMimeType,
-    attachmentSize: incoming.attachmentSize || base.attachmentSize,
-    attachmentImageName: incoming.attachmentImageName || base.attachmentImageName,
-    receiptImageName: incoming.receiptImageName || base.receiptImageName,
-    documentItems: incoming.documentItems?.length ? incoming.documentItems : base.documentItems,
-    fiscalDocument: incoming.fiscalDocument || base.fiscalDocument
-  };
-}
-
-function sortByCreatedAtDesc(left: { createdAt: string }, right: { createdAt: string }) {
-  return right.createdAt.localeCompare(left.createdAt);
-}
-
-function getTime(value: string) {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : 0;
 }
 
 function getSessionIdleMilliseconds() {
@@ -1794,12 +1811,6 @@ function formatCloudError(error: { message?: string; code?: string }) {
   }
 
   return "Nao consegui sincronizar seus dados agora.";
-}
-
-function isMissingWorkspaceLockRpcError(error: { message?: string; code?: string }) {
-  const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
-
-  return text.includes("save_finance_workspace_state_locked") || text.includes("schema cache");
 }
 
 function formatAuthError(error: { message?: string }) {

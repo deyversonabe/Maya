@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, incomeCategories } from "../data/defaults";
 import { fileToFinanceAttachment } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -317,7 +318,7 @@ export function SalonMaterialsPage() {
 
     try {
       const attachment = await fileToFinanceAttachment(file);
-      const response = await fetch("/api/maya/receipt", {
+      const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -87,11 +87,15 @@ export function findDuplicateTransaction(
     : null;
 }
 
-function isPossibleTransactionDuplicate(
+export function isPossibleTransactionDuplicate(
   existing: Pick<Transaction, "type" | "amount" | "date">,
   incoming: Pick<Transaction, "type" | "amount" | "date">
 ) {
   if (!isTrackedTransactionType(existing.type) || !isTrackedTransactionType(incoming.type)) {
+    return false;
+  }
+
+  if (existing.type !== incoming.type) {
     return false;
   }
 
@@ -107,10 +111,10 @@ function isPossibleTransactionDuplicate(
 }
 
 function isSameDaySameAmount(
-  existing: Pick<Transaction, "amount" | "date">,
-  incoming: Pick<Transaction, "amount" | "date">
+  existing: Pick<Transaction, "type" | "amount" | "date">,
+  incoming: Pick<Transaction, "type" | "amount" | "date">
 ) {
-  return existing.date === incoming.date && areSameMoneyValue(existing.amount, incoming.amount);
+  return existing.type === incoming.type && existing.date === incoming.date && areSameMoneyValue(existing.amount, incoming.amount);
 }
 
 function isTrackedTransactionType(type: Transaction["type"]) {
@@ -118,7 +122,7 @@ function isTrackedTransactionType(type: Transaction["type"]) {
 }
 
 function areSameMoneyValue(left: number, right: number) {
-  return Object.is(left, right) || Math.abs(left - right) < Number.EPSILON;
+  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) < 0.005;
 }
 
 function normalizeAmountKey(value: number) {

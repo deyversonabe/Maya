@@ -1,5 +1,6 @@
 import type { FinanceState, LaborBenefit, PayableBill, PayrollRecord, TaxDocument, Transaction, WorkTimeEntry } from "../types";
-import { getBillEffectiveStatus } from "./calculations";
+import { getCurrentMonthKey, getMonthEndDate, toDateKey } from "@/lib/utils";
+import { getBillEffectiveStatus, getBillPaymentDate } from "./calculations";
 
 export type FinanceReportPeriod = {
   start: string;
@@ -47,19 +48,16 @@ export type FinanceReport = {
 };
 
 export function createCurrentMonthReportPeriod(date = new Date()): FinanceReportPeriod {
-  const month = date.toISOString().slice(0, 7);
+  const month = getCurrentMonthKey(date);
   return createMonthReportPeriod(month);
 }
 
 export function createMonthReportPeriod(month: string): FinanceReportPeriod {
   const start = `${month}-01`;
-  const end = new Date(`${month}-01T00:00:00`);
-  end.setUTCMonth(end.getUTCMonth() + 1);
-  end.setUTCDate(0);
 
   return {
     start,
-    end: end.toISOString().slice(0, 10),
+    end: getMonthEndDate(month),
     label: month
   };
 }
@@ -70,8 +68,8 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     .sort((left, right) => left.date.localeCompare(right.date));
 
   const bills = state.bills
-    .filter((bill) => isDateInsidePeriod(bill.dueDate, period))
-    .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+    .filter((bill) => isDateInsidePeriod(getBillReportDate(bill), period))
+    .sort((left, right) => getBillReportDate(left).localeCompare(getBillReportDate(right)));
   const fiscalYear = Number(period.start.slice(0, 4));
   const taxDocuments = state.taxDocuments
     .filter((document) => document.year === fiscalYear)
@@ -125,7 +123,7 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
 
 export function buildReportFilename(report: FinanceReport, extension: "pdf" | "xls" | "json") {
   const safeLabel = report.period.label.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
-  return `maya-relatorio-${safeLabel}-${new Date().toISOString().slice(0, 10)}.${extension}`;
+  return `maya-relatorio-${safeLabel}-${toDateKey()}.${extension}`;
 }
 
 function isDateInsidePeriod(date: string, period: FinanceReportPeriod) {
@@ -146,6 +144,10 @@ function sumBillsByEffectiveStatus(bills: PayableBill[], status: PayableBill["st
 
 function sumAllBills(bills: PayableBill[]) {
   return bills.reduce((total, bill) => total + bill.amount, 0);
+}
+
+function getBillReportDate(bill: PayableBill) {
+  return getBillEffectiveStatus(bill) === "paid" ? getBillPaymentDate(bill) : bill.dueDate;
 }
 
 function buildCategoryReport(transactions: Transaction[]) {

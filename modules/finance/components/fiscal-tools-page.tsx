@@ -20,7 +20,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
-import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
+import { cn, financialValueClass, formatCurrency, getCurrentMonthKey, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { LaborBenefitType, PayrollRecordStatus, Person, TaxDocumentKind, TaxDocumentStatus } from "../types";
@@ -81,7 +81,7 @@ const laborTypeLabels = Object.fromEntries(laborBenefitTypes.map((kind) => [kind
 export function FiscalToolsPage() {
   const { state, actions } = useFinanceStore();
   const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = getCurrentMonthKey();
   const taxFileRef = useRef<HTMLInputElement>(null);
   const laborFileRef = useRef<HTMLInputElement>(null);
   const payrollFileRef = useRef<HTMLInputElement>(null);
