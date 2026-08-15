@@ -1,8 +1,9 @@
-const CACHE_NAME = "maya-static-v1";
+const CACHE_NAME = "maya-static-v2";
 const STATIC_ASSETS = [
   "/manifest.webmanifest",
   "/brand/maya-logo.png",
-  "/brand/maya-favicon.png",
+  "/brand/maya-icon-192.png",
+  "/brand/maya-icon-maskable-192.png",
   "/brand/maya-avatar-welcome.png"
 ];
 
@@ -58,8 +59,8 @@ self.addEventListener("push", (event) => {
     body: "Voce tem um novo alerta financeiro.",
     url: "/bills",
     tag: "maya_finance_alert",
-    icon: "/brand/maya-favicon.png",
-    badge: "/brand/maya-favicon.png"
+    icon: "/brand/maya-icon-192.png",
+    badge: "/brand/maya-icon-192.png"
   };
 
   if (event.data) {

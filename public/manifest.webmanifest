@@ -2,16 +2,38 @@
   "name": "Maya",
   "short_name": "Maya",
   "description": "Organizacao financeira e planejamento do casal.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
+  "lang": "pt-BR",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#102118",
   "theme_color": "#102118",
   "icons": [
     {
-      "src": "/brand/maya-favicon.png",
-      "sizes": "1536x1024",
+      "src": "/brand/maya-icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/brand/maya-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/maya-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/brand/maya-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
