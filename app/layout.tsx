@@ -9,8 +9,13 @@ export const metadata: Metadata = {
     "Aplicativo financeiro premium com MAYA, assistente para organizar receitas, despesas, metas e planejamento do casal.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/brand/maya-favicon.png",
-    apple: "/brand/maya-favicon.png"
+    icon: "/brand/maya-icon-192.png",
+    apple: "/brand/maya-icon-192.png"
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Maya",
+    statusBarStyle: "black-translucent"
   }
 };
 

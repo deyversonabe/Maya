@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireWorkspaceMember } from "@/app/api/_shared/require-member";
 import { createSupabaseBearerClient, getBearerToken } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,12 @@ type PushSubscriptionPayload = {
 };
 
 export async function POST(request: Request) {
+  const access = await requireWorkspaceMember(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
   const token = getBearerToken(request);
   const supabase = token ? createSupabaseBearerClient(token) : null;
 
@@ -42,7 +49,7 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("finance_push_subscriptions").upsert(
     {
       workspace_id: WORKSPACE_ID,
-      user_id: userData.user.id,
+      user_id: access.user.id,
       endpoint,
       p256dh,
       auth,

@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
+import { requireWorkspaceMember } from "@/app/api/_shared/require-member";
 import { generateMayaAnalysis } from "@/modules/ai/maya";
 import { migrateFinanceState } from "@/modules/finance/lib/migrations";
 import type { FinanceState } from "@/modules/finance/types";
 
+export const maxDuration = 25;
+
 export async function POST(request: Request) {
   try {
+    const access = await requireWorkspaceMember(request);
+    if (!access.ok) return access.response;
+
     const body = (await request.json()) as {
       state?: FinanceState;
       question?: string;

@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import webpush from "web-push";
+import { requireCronSecret } from "@/app/api/_shared/cron-auth";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { buildBillAlerts, buildFinancialHealthAlerts } from "@/modules/finance/lib/calculations";
 import { migrateFinanceState } from "@/modules/finance/lib/migrations";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
+
+const MAX_BILL_ALERTS = 20;
+const MAX_ALERTS_PER_RUN = 25;
 
 type WorkspaceStateRow = {
   workspace_id: string;
@@ -30,8 +34,10 @@ export async function POST(request: Request) {
 }
 
 async function sendPushAlerts(request: Request) {
-  if (!isAuthorizedCron(request)) {
-    return NextResponse.json({ ok: false, message: "Rotina nao autorizada." }, { status: 401 });
+  const cron = requireCronSecret(request);
+
+  if (!cron.ok) {
+    return cron.response;
   }
 
   const supabase = createSupabaseServiceClient();
@@ -75,14 +81,14 @@ async function sendPushAlerts(request: Request) {
   let sent = 0;
   let skipped = 0;
   let failed = 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 
   for (const row of (states ?? []) as WorkspaceStateRow[]) {
     const state = migrateFinanceState(row.state);
     const alerts = [
-      ...buildBillAlerts(state.bills),
+      ...buildBillAlerts(state.bills).slice(0, MAX_BILL_ALERTS),
       ...buildFinancialHealthAlerts(state)
-    ].slice(0, 8);
+    ].slice(0, MAX_ALERTS_PER_RUN);
     const workspaceSubscriptions = subscriptionsByWorkspace[row.workspace_id] ?? [];
 
     for (const subscription of workspaceSubscriptions) {
@@ -96,7 +102,13 @@ async function sendPushAlerts(request: Request) {
         });
 
         if (delivery.error) {
-          skipped += 1;
+          if (delivery.error.code === "23505") {
+            skipped += 1;
+            continue;
+          }
+
+          failed += 1;
+          console.error("Erro ao registrar entrega de push da Maya.", delivery.error);
           continue;
         }
 
@@ -114,8 +126,8 @@ async function sendPushAlerts(request: Request) {
               body: alert.message,
               url: "/bills",
               tag: `maya_${alert.id}`,
-              icon: "/brand/maya-favicon.png",
-              badge: "/brand/maya-favicon.png"
+              icon: "/brand/maya-icon-192.png",
+              badge: "/brand/maya-icon-192.png"
             })
           );
           sent += 1;
@@ -135,18 +147,6 @@ async function sendPushAlerts(request: Request) {
   }
 
   return NextResponse.json({ ok: true, sent, skipped, failed });
-}
-
-function isAuthorizedCron(request: Request) {
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret) {
-    return false;
-  }
-
-  const auth = request.headers.get("authorization");
-  const url = new URL(request.url);
-  return auth === `Bearer ${secret}` || url.searchParams.get("secret") === secret;
 }
 
 function getWebPushStatusCode(error: unknown) {

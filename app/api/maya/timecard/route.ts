@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireWorkspaceMember } from "@/app/api/_shared/require-member";
 import { readTimeClockReportText, readTimeClockWithMaya } from "@/modules/ai/maya";
 
 const MAX_IMAGE_DATA_URL_LENGTH = 7_000_000;
@@ -8,6 +9,9 @@ export const maxDuration = 25;
 
 export async function POST(request: Request) {
   try {
+    const access = await requireWorkspaceMember(request);
+    if (!access.ok) return access.response;
+
     const body = (await request.json()) as {
       imageDataUrl?: string;
       fileDataUrl?: string;

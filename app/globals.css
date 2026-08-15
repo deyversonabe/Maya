@@ -218,12 +218,12 @@ button {
   }
 
   .eyebrow {
-    @apply text-xs font-black uppercase tracking-[0.16em] text-terracotta;
+    @apply text-xs font-black uppercase tracking-[0.16em] text-bronze;
     text-shadow: 0 0 14px rgba(196, 106, 67, 0.32);
   }
 
   .field {
-    @apply min-h-11 w-full rounded-lg border border-cyan-200/15 bg-cream/[0.06] px-3 text-sm text-cream outline-none transition placeholder:text-muted/60 focus:border-neon-cyan focus:ring-4 focus:ring-neon-cyan/20;
+    @apply min-h-11 w-full rounded-lg border border-cyan-200/15 bg-cream/[0.06] px-3 text-sm text-cream outline-none transition placeholder:text-muted/80 focus:border-neon-cyan focus:ring-4 focus:ring-neon-cyan/20;
   }
 
   .neon-card {

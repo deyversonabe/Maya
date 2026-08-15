@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireWorkspaceAdmin } from "@/app/api/admin/_shared";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
+export async function GET(request: Request) {
+  const access = await requireWorkspaceAdmin(request);
+  if (!access.ok) return access.response;
+
   return NextResponse.json(
     {
       maya: {
