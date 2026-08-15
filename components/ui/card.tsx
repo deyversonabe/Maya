@@ -21,6 +21,7 @@ export function CardHeader({
 }: {
   eyebrow?: string;
   title: string;
+  description?: string;
   action?: React.ReactNode;
   className?: string;
 }) {
