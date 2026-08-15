@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run --environment node",
+    "test:watch": "vitest",
     "auth:create-users": "node scripts/create-supabase-auth-users.mjs",
     "push:generate-keys": "web-push generate-vapid-keys"
   },
@@ -35,10 +37,11 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.16",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
   },
   "overrides": {
-    "postcss": "$postcss",
+    "postcss": "^8.5.16",
     "sharp": "0.35.3"
   }
 }
