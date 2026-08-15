@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { BarChart3, BellRing, Bot, CalendarDays, Clock3, Database, FileText, Home, Landmark, LogOut, Menu, ReceiptText, Scissors, ShieldCheck, Target, WalletCards, X } from "lucide-react";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
+import { SyncStatusBanner } from "./sync-status-banner";
 
 const navItems = [
   { href: "/", label: "Inicio", icon: Home },
@@ -46,6 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="app-container pb-[calc(6.7rem+env(safe-area-inset-bottom))] md:pb-8">
+      <SyncStatusBanner />
       <header className="glass-panel sticky top-[calc(0.5rem+env(safe-area-inset-top))] z-40 mb-3 flex items-center justify-between gap-3 rounded-2xl p-2 backdrop-blur-2xl md:hidden">
         <Link
           href="/"

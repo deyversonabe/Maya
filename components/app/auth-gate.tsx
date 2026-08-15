@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Eye, EyeOff, KeyRound, LockKeyhole, LogIn } from "lucide-react";
@@ -40,6 +40,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [message, setMessage] = useState("Entre com sua conta autorizada para acessar a MAYA.");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const recoveryVerifiedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -69,11 +70,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       }
 
       if (isRecovery) {
-        clearSessionLocked();
-        recordSessionActivity();
-        setAuthMode("update_password");
-        setStatus("signed_out");
-        setMessage("Defina uma nova senha para concluir a recuperacao do acesso.");
+        enterRecoveryMode();
         return;
       }
 
@@ -95,12 +92,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (event === "PASSWORD_RECOVERY" || isPasswordRecoveryUrl()) {
-        clearSessionLocked();
-        recordSessionActivity();
-        setAuthMode("update_password");
-        setStatus("signed_out");
-        setMessage("Defina uma nova senha para concluir a recuperacao do acesso.");
+      if (event === "PASSWORD_RECOVERY") {
+        enterRecoveryMode();
         return;
       }
 
@@ -123,6 +116,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const activeSupabase = supabase;
     const activityEvents: Array<keyof WindowEventMap> = ["keydown", "pointerdown", "scroll", "touchstart"];
 
     function handleActivity() {
@@ -131,6 +125,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     function handlePageHide() {
       markSessionLocked();
+      void activeSupabase.auth.signOut({ scope: "local" }).then(
+        () => undefined,
+        () => undefined
+      );
     }
 
     const interval = window.setInterval(() => {
@@ -149,18 +147,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isPublicPath, status, supabase]);
 
+  function enterRecoveryMode() {
+    recoveryVerifiedRef.current = true;
+    clearSessionLocked();
+    recordSessionActivity();
+    setAuthMode("update_password");
+    setStatus("signed_out");
+    setMessage("Defina uma nova senha para concluir a recuperacao do acesso.");
+  }
+
   async function validateSession(session: Session | null) {
     if (!supabase) {
       setStatus("unconfigured");
       return false;
     }
 
-    if (isPasswordRecoveryUrl()) {
-      clearSessionLocked();
-      recordSessionActivity();
-      setAuthMode("update_password");
-      setStatus("signed_out");
-      setMessage("Defina uma nova senha para concluir a recuperacao do acesso.");
+    if (recoveryVerifiedRef.current) {
+      enterRecoveryMode();
       return false;
     }
 
@@ -220,6 +223,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
     window.localStorage.setItem(SESSION_LAST_EMAIL_KEY, session.user.email ?? "");
     setEmail(session.user.email ?? "");
+    if (recoveryVerifiedRef.current) {
+      enterRecoveryMode();
+      return false;
+    }
     setStatus("signed_in");
     setMessage("Acesso autorizado.");
     return true;
@@ -275,8 +282,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setIsSubmitting(true);
     setMessage("Enviando link de recuperacao.");
 
-    const redirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}/?maya_recovery=1` : undefined;
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
 
     const result = await supabase.auth.resetPasswordForEmail(cleanEmail, { redirectTo });
 
@@ -295,6 +301,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     event.preventDefault();
 
     if (!supabase) {
+      return;
+    }
+
+    if (!recoveryVerifiedRef.current) {
+      setMessage("Solicite um link de recuperacao antes de alterar a senha.");
+      setAuthMode("reset_request");
       return;
     }
 
@@ -331,6 +343,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     const recoveredEmail = data.session.user.email ?? email;
     await supabase.auth.signOut();
+    recoveryVerifiedRef.current = false;
     clearSessionLocked();
     cleanPasswordRecoveryUrl();
     setEmail(recoveredEmail);
@@ -351,7 +364,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     markSessionLocked();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut().then(
+      () => undefined,
+      () => undefined
+    );
     setStatus("signed_out");
     setMessage("Sessao bloqueada por seguranca. Digite a senha para continuar.");
   }
@@ -607,38 +623,32 @@ function isMissingStatusColumn(message?: string) {
 async function preparePasswordRecoverySession(client: NonNullable<ReturnType<typeof createBrowserSupabaseClient>>) {
   const hint = getPasswordRecoveryHint();
 
-  if (!hint.isRecovery) {
+  if (!hint.code) {
     return false;
   }
 
-  if (hint.code) {
-    await client.auth.exchangeCodeForSession(hint.code).then(
+  const { data, error } = await client.auth.exchangeCodeForSession(hint.code);
+
+  if (error || !data.session) {
+    await client.auth.signOut({ scope: "local" }).then(
       () => undefined,
       () => undefined
     );
+    return false;
   }
 
   return true;
 }
 
-function isPasswordRecoveryUrl() {
-  return getPasswordRecoveryHint().isRecovery;
-}
-
 function getPasswordRecoveryHint() {
   if (typeof window === "undefined") {
-    return { isRecovery: false, code: null };
+    return { code: null };
   }
 
   const url = new URL(window.location.href);
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const type = url.searchParams.get("type") || hashParams.get("type");
-  const accessToken = hashParams.get("access_token");
   const code = url.searchParams.get("code");
-  const mayaRecovery = url.searchParams.get("maya_recovery") === "1";
 
   return {
-    isRecovery: mayaRecovery || type === "recovery" || Boolean(accessToken && type === "recovery") || Boolean(code && !type),
     code
   };
 }

@@ -16,6 +16,7 @@ export function Card({
 export function CardHeader({
   eyebrow,
   title,
+  description,
   action,
   className
 }: {
@@ -30,6 +31,7 @@ export function CardHeader({
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
         <h2 className="section-title">{title}</h2>
+        {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{description}</p> : null}
       </div>
       {action}
     </div>
