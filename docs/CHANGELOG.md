@@ -6,6 +6,30 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ## [Unreleased]
 
+### Security
+
+- Rotas internas da MAYA (`analyze`, `receipt`, `statement`, `timecard`, `validate`), status do sistema e inscricao push reforcadas para exigir sessao Supabase autorizada antes de processar dados ou consumir IA.
+- Cron de notificacoes e limpeza de anexos passam a aceitar `CRON_SECRET` somente no header `Authorization: Bearer ...`, evitando vazamento por URL.
+- Leitura de QR Code fiscal passa a bloquear hosts locais/privados e seguir redirects apenas quando cada destino continuar dentro da allowlist fiscal brasileira.
+
+### Fixed
+
+- Salvamento online reforcado com controle de versao por RPC, merge seguro, retry curto com aviso visual e protecao contra perda de alteracoes entre dispositivos.
+- Campos monetarios de revisao de documentos e linhas de extrato agora mantem texto local durante a digitacao, evitando perda de cursor ao digitar virgula, centavos ou apagar valores.
+- Notas anexadas a despesas existentes por mesma data/valor agora exigem confirmacao antes de alterar o lancamento encontrado.
+- Botao de limpeza passa a limpar apenas o cache local do aparelho, com confirmacao e sem gerar tombstones que apagariam a base compartilhada.
+- Alertas de saude financeira passam a indicar recorrencias proximas do fim e ordenar prioridades antes do corte de exibicao/push.
+- PWA corrigido com icones 192/512 e maskable reais, metadata iOS e cache do service worker atualizado.
+- Placeholders e textos `eyebrow` ajustados para contraste visual mais forte.
+
+### Added
+
+- Banner global de sincronizacao com estados de salvando, sincronizado e erro com nova tentativa.
+- `MoneyInput` reutilizavel para campos financeiros que nao devem reformatar texto a cada tecla.
+- Migration `20260815_audit_hardening.sql` com coluna `version`, merge completo do estado financeiro e RPC `save_finance_workspace_state_locked` com lock otimista.
+- Rota administrativa `POST /api/maintenance/attachment-cleanup` para remover anexos orfaos do Storage privado com limite por execucao.
+- Scripts SQL auxiliares `supabase/verificacao-pos-deploy.sql` e `supabase/autorizar-usuario.sql`.
+
 ### Fixed
 
 - Contas recorrentes ou parceladas criadas como pagas agora mantem apenas a primeira ocorrencia como paga; parcelas futuras nascem pendentes para nao inflar o saldo realizado.

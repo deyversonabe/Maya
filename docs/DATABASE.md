@@ -78,6 +78,21 @@ Regras:
 - Ao entrar na conta, o app compara dados locais e dados compartilhados online.
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
 - Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase pela RPC `save_finance_workspace_state_locked`.
+- A migration `20260815_audit_hardening.sql` adiciona `finance_workspace_states.version` e a RPC com `p_expected_version`. O cliente envia a versao que carregou; se outra sessao salvou antes, o banco rejeita com `40001`, o cliente recarrega, mescla e tenta novamente.
+- A RPC `merge_finance_workspace_state` deve preservar arrays do estado financeiro atual, incluindo transacoes, contas, metas, orcamentos, fiscal/trabalhista, horas, salao e `deletedEntityIds`.
+- `deletedEntityIds` funciona como tombstone de exclusao sincronizada. Limpeza local de cache nunca deve criar tombstones.
+- Anexos com `attachmentStoragePath` nao devem manter `attachmentDataUrl` no JSONB enviado a nuvem, para evitar payload grande no Realtime.
+
+## Manutencao de anexos
+
+Anexos ficam no bucket privado `maya-finance-attachments`.
+
+Regras:
+
+- A visualizacao deve usar URL assinada sob demanda, gerada no clique.
+- A rota `POST /api/maintenance/attachment-cleanup` pode remover anexos orfaos que nao estejam referenciados no estado financeiro.
+- Essa rota e administrativa/cron e exige `Authorization: Bearer <CRON_SECRET>`.
+- A execucao deve ser limitada por lote para reduzir risco operacional.
 - `save_finance_workspace_state_locked` valida membro ativo, bloqueia a linha com `SELECT ... FOR UPDATE` e mescla listas por `id` antes de gravar, evitando sobrescrita cega do JSONB em sessoes concorrentes.
 - Exclusoes usam `deletedEntityIds` como tombstones sincronizados; qualquer item removido do estado local ou online fica bloqueado de voltar em merges futuros.
 - O merge da RPC e o merge em tempo real do cliente preservam campos de anexo e itens lidos (`attachmentStoragePath`, `attachmentDataUrl`, `attachmentImageName`, `receiptImageName`, `documentItems` e equivalentes) quando outra sessao salva uma versao menos completa do mesmo registro.

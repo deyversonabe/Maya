@@ -41,10 +41,15 @@ Quando o backend for ativado, as primeiras APIs deverao cobrir:
 - `POST /api/admin/member-status`.
 - `POST /api/notifications/subscribe`.
 - `GET|POST /api/notifications/send-due-alerts`.
+- `POST /api/maintenance/attachment-cleanup`.
 
 Esses endpoints devem validar usuario, organizacao e permissao antes de acessar dados.
 
 ## Endpoints MAYA
+
+As rotas `POST /api/maya/analyze`, `POST /api/maya/receipt`, `POST /api/maya/statement`, `POST /api/maya/timecard` e `POST /api/maya/validate` exigem sessao Supabase valida no header `Authorization: Bearer <access_token>` e participacao ativa no workspace financeiro.
+
+O cliente deve chamar essas rotas por `mayaFetch`, que anexa o token da sessao atual automaticamente.
 
 ## Endpoints de sistema
 
@@ -52,7 +57,7 @@ Esses endpoints devem validar usuario, organizacao e permissao antes de acessar 
 
 Objetivo: informar ao frontend quais capacidades estao configuradas no servidor sem expor segredos.
 
-Entrada: nenhuma.
+Entrada: bearer token Supabase de usuario administrador da Maya.
 
 Saida:
 
@@ -72,6 +77,20 @@ Saida:
 - `connections.message`: mensagem segura em linguagem de produto.
 
 Regra: nunca retornar chaves, tokens, URLs sensiveis privadas, valores de segredo, modelos, variaveis de ambiente ou nomes de infraestrutura.
+
+### `POST /api/maintenance/attachment-cleanup`
+
+Objetivo: remover anexos orfaos do bucket privado `maya-finance-attachments`.
+
+Entrada: `Authorization: Bearer <CRON_SECRET>`.
+
+Saida:
+
+- `removed`: quantidade removida.
+- `checked`: quantidade de arquivos avaliados.
+- `hasMore`: indica se ainda pode haver mais itens para outro lote.
+
+Regra: nunca executar sem segredo de cron e nunca remover arquivos ainda referenciados pelo estado financeiro compartilhado.
 
 ### `GET /api/admin/overview`
 

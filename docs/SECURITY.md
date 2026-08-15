@@ -78,6 +78,10 @@ Regras de seguranca:
 - Abas `Dados` e `Admin`, listagem de usuarios, bloqueio/reativacao e exportacoes administrativas nao devem aparecer para membros que nao sejam esse e-mail administrador.
 - A trigger `finance_workspace_members_enforce_single_maya_admin` deve impedir que usuarios atuais ou futuros, diferentes de `deyversonsilvaf@gmail.com`, permanecam com papel `admin`.
 - Usuario bloqueado em `finance_workspace_members.status` nao deve acessar dados do workspace nem passar pela funcao `is_finance_workspace_member`.
+- Rotas server-side da MAYA que processam IA, imagem, extrato ou ponto devem exigir bearer token Supabase e associacao ativa no workspace antes de processar qualquer payload.
+- Rotas administrativas e cron nao devem aceitar segredo em query string. `CRON_SECRET` deve ser enviado apenas como `Authorization: Bearer <valor>`.
+- QR Codes fiscais enviados por imagem devem ser consultados somente em dominios fiscais brasileiros permitidos e nunca em hosts privados, locais ou metadados de infraestrutura.
+- Falhas de sincronizacao online devem ficar visiveis ao usuario; erro silencioso e considerado risco de integridade.
 - `last_seen_at` deve ser atualizado por funcao segura no banco, nunca por permissao ampla de update em membros.
 - Escritas em `finance_workspace_states` devem passar pela RPC `save_finance_workspace_state_locked`, que usa lock de linha e evita sobrescrita cega do JSONB.
 - Push real deve usar chaves VAPID em variaveis de ambiente; somente a chave publica pode usar `NEXT_PUBLIC_`.
