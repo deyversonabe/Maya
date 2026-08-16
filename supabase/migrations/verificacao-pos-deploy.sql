@@ -37,3 +37,15 @@ select
 from pg_proc
 where proname in ('merge_finance_workspace_state', 'save_finance_workspace_state_locked')
 order by proname, arguments;
+
+select
+  proname,
+  pg_get_function_arguments(oid) as arguments
+from pg_proc
+where proname in (
+  'merge_finance_jsonb_item_preserving_attachment',
+  'merge_finance_jsonb_array_by_id',
+  'merge_finance_deleted_entity_ids',
+  'remove_finance_jsonb_array_deleted_ids'
+)
+order by proname, arguments;
