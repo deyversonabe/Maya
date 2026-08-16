@@ -83,6 +83,14 @@ Prioridade deve considerar:
 
 Objetivo: transformar a demonstracao visual em um aplicativo utilizavel para organizacao financeira do casal.
 
+Escopo atual de notas e despesas:
+
+- A aba `Despesas` permite enviar nota, cupom, imagem de camera ou PDF.
+- Quando a MAYA identifica descricao/titulo, data e valor, a nota e salva automaticamente como despesa no mes da data lida.
+- Se faltar titulo/descricao, valor, data ou destinatario Pix obrigatorio, a nota entra em revisao editavel antes de salvar.
+- Se existir despesa no mesmo dia e com o mesmo valor, a MAYA pede confirmacao para vincular os itens e dados fiscais ao lancamento existente sem criar novo debito.
+- Despesas salvas com nota mantem anexo, itens lidos e dados fiscais visiveis no detalhe do lancamento.
+
 ### Gestao de materiais do salao
 
 Objetivo: acompanhar estoque, custo individual de materiais e margem operacional dos atendimentos do studio sem transformar estoque em saldo financeiro.

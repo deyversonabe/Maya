@@ -79,6 +79,7 @@ Regras:
 - Quando houver dados locais e online, o app combina listas por `id` para reduzir risco de perda do que ja foi cadastrado em um aparelho.
 - Depois da primeira carga, cada alteracao confirmada e enviada automaticamente para o Supabase pela RPC `save_finance_workspace_state_locked`.
 - A migration `20260815_audit_hardening.sql` adiciona `finance_workspace_states.version` e a RPC com `p_expected_version`. O cliente envia a versao que carregou; se outra sessao salvou antes, o banco rejeita com `40001`, o cliente recarrega, mescla e tenta novamente.
+- A migration `20260816_cloud_storage_hardening.sql` consolida o merge definitivo no banco: escolhe a versao mais recente de cada item por `updatedAt`/`createdAt`, preserva anexos/dados fiscais e remove entidades presentes em `deletedEntityIds`.
 - A RPC `merge_finance_workspace_state` deve preservar arrays do estado financeiro atual, incluindo transacoes, contas, metas, orcamentos, fiscal/trabalhista, horas, salao e `deletedEntityIds`.
 - `deletedEntityIds` funciona como tombstone de exclusao sincronizada. Limpeza local de cache nunca deve criar tombstones.
 - Anexos com `attachmentStoragePath` nao devem manter `attachmentDataUrl` no JSONB enviado a nuvem, para evitar payload grande no Realtime.
@@ -122,6 +123,7 @@ Arquivo SQL:
 - `supabase/migrations/20260802_holerite_hours_state_merge.sql`.
 - `supabase/migrations/20260802_online_deletion_tombstones.sql`.
 - `supabase/migrations/20260803_salon_materials_state_merge.sql`.
+- `supabase/migrations/20260816_cloud_storage_hardening.sql`.
 
 ## Modelo financeiro inicial
 

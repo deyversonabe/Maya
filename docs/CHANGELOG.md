@@ -14,6 +14,11 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Merge online endurecido para resolver conflitos por registro usando `updatedAt`/`createdAt`, evitando que uma edicao antiga de outro aparelho sobrescreva uma versao mais nova.
+- RPC de salvamento restaurada com tombstones de exclusao em todos os arrays atuais do estado financeiro, impedindo que itens apagados voltem por cache local ou abas antigas.
+- Envio de nota em `Despesas` deixa de ficar apenas como rascunho/anexo: quando a MAYA identifica titulo, data e valor, a nota e salva automaticamente como despesa no mes correspondente.
+- Duplicidade por nota reforcada: se ja existir despesa no mesmo dia e valor, o usuario pode vincular os itens e dados fiscais ao lancamento existente sem gerar novo debito.
+- Leitura de PDF de ponto Secullum/Romep corrigida para preservar batidas parciais nos campos certos; horarios como 13:12 passam a preencher `saida 1`, nao `saida final`, quando forem a segunda batida do dia.
 - `Anexar nota` em Despesas passa a aceitar PDF alem de imagem, preservando o PDF como anexo e lendo o texto extraido para criar rascunho revisavel.
 - Rascunhos de nota ficam marcados como `Aguardando salvar`, e despesas salvas com anexo passam a mostrar selos de nota, dados fiscais e quantidade de itens para nao parecerem escondidas.
 - Ao ler uma nota com data identificada, a aba Despesas muda para o mes correspondente antes do usuario confirmar, reduzindo confusao entre anexo lido e lancamento salvo.
@@ -29,6 +34,7 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Added
 
+- Migration `20260816_cloud_storage_hardening.sql` para consolidar lock otimista, merge por item mais recente, preservacao de anexos/dados fiscais e remocao de entidades excluidas no Supabase.
 - Banner global de sincronizacao com estados de salvando, sincronizado e erro com nova tentativa.
 - `MoneyInput` reutilizavel para campos financeiros que nao devem reformatar texto a cada tecla.
 - Migration `20260815_audit_hardening.sql` com coluna `version`, merge completo do estado financeiro e RPC `save_finance_workspace_state_locked` com lock otimista.
