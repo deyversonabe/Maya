@@ -50,6 +50,7 @@ export function FinancialDocumentReview({
     .map((field) => missingFieldLabels[field] ?? field)
     .filter(Boolean);
   const fiscalEntries = buildFiscalEntries(draft);
+  const hasFiscalQr = Boolean(draft.fiscalDocument?.qrCodeUrl || draft.fiscalDocument?.qrCodeContent);
 
   return (
     <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4">
@@ -58,10 +59,12 @@ export function FinancialDocumentReview({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-serif text-2xl font-bold text-cyan-50">Dados do anexo</h3>
             <Badge tone="info">Editavel</Badge>
+            <Badge tone="warning">Aguardando salvar</Badge>
             {confidence > 0 ? <Badge tone={confidence >= 75 ? "success" : "warning"}>Leitura {confidence}%</Badge> : null}
+            {hasFiscalQr ? <Badge tone="success">QR fiscal lido</Badge> : null}
           </div>
           <p className="mt-2 text-sm leading-6 text-cyan-100">
-            Confira o que a MAYA encontrou e ajuste qualquer campo antes de salvar.
+            Confira o que a MAYA encontrou, ajuste qualquer campo e clique em Confirmar despesa para somar no mes.
           </p>
         </div>
 
@@ -82,6 +85,11 @@ export function FinancialDocumentReview({
       {fiscalEntries.length > 0 ? (
         <div className="mb-4 rounded-lg border border-bronze/25 bg-bronze/10 p-3">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-bronze">Dados fiscais lidos</p>
+          {hasFiscalQr ? (
+            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">
+              A MAYA encontrou dados fiscais pelo QR Code ou pela consulta publica da nota. Confira antes de salvar.
+            </p>
+          ) : null}
           <dl className="mt-2 grid gap-2 text-sm md:grid-cols-2">
             {fiscalEntries.map(([label, value]) => (
               <div key={label} className="min-w-0 rounded-md border border-cream/10 bg-moss-950/35 p-2">
@@ -248,6 +256,12 @@ function buildFiscalEntries(draft: FinancialDocumentDraft): Array<[string, strin
 
   if (fiscalDocument.accessKey) {
     entries.push(["Chave de acesso", fiscalDocument.accessKey]);
+  }
+
+  if (fiscalDocument.qrCodeUrl) {
+    entries.push(["QR fiscal", fiscalDocument.qrCodeUrl]);
+  } else if (fiscalDocument.qrCodeContent) {
+    entries.push(["Conteudo do QR", fiscalDocument.qrCodeContent]);
   }
 
   if (fiscalDocument.protocolNumber) {

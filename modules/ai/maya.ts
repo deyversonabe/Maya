@@ -15,6 +15,7 @@ import type {
   TimeClockDraft,
   TransactionType
 } from "@/modules/finance/types";
+import { parseTimeClockReportText } from "./timecard-report-parser";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5-mini";
@@ -171,11 +172,13 @@ export async function generateMayaAnalysis({
 
 export async function readReceiptWithMaya({
   imageDataUrl,
+  documentText,
   fileName,
   documentKind = "expense",
   qrPayloads = []
 }: {
-  imageDataUrl: string;
+  imageDataUrl?: string;
+  documentText?: string;
   fileName?: string;
   documentKind?: FinancialDocumentKind;
   qrPayloads?: string[];
@@ -186,7 +189,13 @@ export async function readReceiptWithMaya({
   message: string;
 }> {
   const fallbackDraft = buildFallbackFinancialDraft(fileName, documentKind, imageDataUrl);
+  const normalizedDocumentText = normalizeDocumentTextForPrompt(documentText);
   const qrContext = await buildFiscalQrContext(qrPayloads);
+
+  if (normalizedDocumentText) {
+    mergeFiscalQrContext(qrContext, parseFiscalQrPageText(normalizedDocumentText));
+  }
+
   const qrFallbackDraft = mergeQrContextIntoDraft(fallbackDraft, qrContext);
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -202,52 +211,61 @@ export async function readReceiptWithMaya({
 
   try {
     const qrContextText = buildFiscalQrPrompt(qrContext);
+    const promptText = [
+      "Voce e a MAYA. Leia este documento financeiro com cuidado.",
+      "O usuario quer um rascunho revisavel para o app Maya.",
+      `Tipo solicitado: ${documentKind}.`,
+      "O anexo pode ser nota, DANFE NF-e, DANFE NFC-e, cupom fiscal, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
+      qrContextText
+        ? `Dados extraidos previamente do QR Code fiscal, use apenas se ajudarem a confirmar o documento: ${qrContextText}`
+        : "",
+      normalizedDocumentText
+        ? `Texto extraido do PDF/anexo, use como fonte principal quando a imagem nao existir: ${normalizedDocumentText}`
+        : "",
+      "Faca OCR minucioso antes de responder: leia cabecalho, emissor, CNPJ/CPF, datas, vencimento, favorecido, pagador, forma de pagamento, valor final, descontos, itens e linhas legiveis.",
+      "Antes de classificar o documento, procure por palavras-chave brasileiras como VALOR TOTAL, VALOR PAGO, TOTAL DA NOTA, VENCIMENTO, DATA DE EMISSAO, EMITENTE, DESTINATARIO, FAVORECIDO, CHAVE DE ACESSO, LINHA DIGITAVEL, COPIA E COLA e PIX.",
+      "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, fiscalDocument, notes.",
+      "kind deve ser expense, income ou bill.",
+      "paymentMethod deve ser cash, boleto, pix, card ou other quando existir.",
+      "Quando paymentMethod for pix e houver destinatario/remetente legivel, preencha paymentRecipient.",
+      "Se for DANFE, NF-e, NFC-e ou cupom fiscal, trate como documento fiscal brasileiro e extraia fiscalDocument com documentType, accessKey, issuerName, issuerCnpj, documentNumber, series, issueTime, protocolNumber, totalItemsAmount, discountAmount, taxAmount e paidAmount quando legiveis.",
+      "documentType deve ser danfe_nfe, danfe_nfce, cupom_fiscal, boleto, pix, recibo, extrato ou unknown.",
+      "accessKey deve ter somente os 44 digitos da chave de acesso quando estiver legivel; nunca invente chave de acesso nem leia conteudo interno de QR Code se ele nao estiver textual.",
+      "Para DANFE/NF-e/NFC-e, amount deve ser o Valor Total da Nota ou Valor Pago quando esse for o total final; nao use impostos, desconto, troco, subtotal, base de calculo ou valor unitario como total.",
+      "Quando a nota tiver total de produtos e total pago diferentes, use o valor efetivamente pago como amount e preserve o total de produtos em fiscalDocument.totalItemsAmount.",
+      "Para boleto ou fatura, amount deve ser valor do documento/valor a pagar, dueDate deve ser vencimento e paymentCode deve ser linha digitavel/codigo de barras textual quando legivel.",
+      "Para comprovante Pix, amount deve ser valor transferido, documentDate deve ser data do comprovante e paymentRecipient deve ser recebedor/favorecido quando legivel.",
+      "title deve ser o emissor/estabelecimento quando legivel. description deve resumir o documento sem inventar: exemplo 'Nota fiscal de mercado' ou 'Conta de energia'.",
+      "items deve listar ate 60 itens ou linhas legiveis com name, amount, quantity, unit, unitPrice, code, ean, ncm, date, type, category, paymentMethod e paymentRecipient quando legiveis.",
+      "Em extrato bancario, use type income para entrada e expense para saida quando a propria linha sustentar essa classificacao.",
+      "Use datas no formato YYYY-MM-DD.",
+      "Para conta a pagar, dueDate e a data de vencimento. Para renda, entryDate e a data de entrada.",
+      "Use categoria em portugues apenas quando a imagem sustentar essa classificacao.",
+      "Preserve centavos e valores exatos. Nunca arredonde valor. Se o documento mostrar R$ 1.234,56, devolva 1234.56.",
+      "Nao invente titulo, descricao, valor, datas, codigo, estabelecimento ou categoria quando nao houver confianca.",
+      "Se um campo nao estiver legivel, use string vazia e inclua o nome dele em missingFields."
+    ].filter(Boolean).join(" ");
+    const content: Array<Record<string, unknown>> = [
+      {
+        type: "input_text",
+        text: promptText
+      }
+    ];
+
+    if (imageDataUrl) {
+      content.push({
+        type: "input_image",
+        detail: "high",
+        image_url: imageDataUrl
+      });
+    }
+
     const response = await fetchOpenAIResponse(apiKey, {
         model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: [
-                  "Voce e a MAYA. Leia esta imagem financeira com cuidado.",
-                  "O usuario quer um rascunho revisavel para o app Maya.",
-                  `Tipo solicitado: ${documentKind}.`,
-                  "A imagem pode ser nota, DANFE NF-e, DANFE NFC-e, cupom fiscal, boleto, Pix copia e cola, fatura, recibo, comprovante de renda ou conta a pagar.",
-                  qrContextText
-                    ? `Dados extraidos previamente do QR Code fiscal, use apenas se ajudarem a confirmar o documento: ${qrContextText}`
-                    : "",
-                  "Faca OCR minucioso antes de responder: leia cabecalho, emissor, CNPJ/CPF, datas, vencimento, favorecido, pagador, forma de pagamento, valor final, descontos, itens e linhas legiveis.",
-                  "Antes de classificar o documento, procure por palavras-chave brasileiras como VALOR TOTAL, VALOR PAGO, TOTAL DA NOTA, VENCIMENTO, DATA DE EMISSAO, EMITENTE, DESTINATARIO, FAVORECIDO, CHAVE DE ACESSO, LINHA DIGITAVEL, COPIA E COLA e PIX.",
-                  "Responda apenas JSON valido com: kind, title, description, amount, category, documentDate, dueDate, entryDate, paymentMethod, paymentCode, paymentRecipient, confidence, missingFields, items, fiscalDocument, notes.",
-                  "kind deve ser expense, income ou bill.",
-                  "paymentMethod deve ser cash, boleto, pix, card ou other quando existir.",
-                  "Quando paymentMethod for pix e houver destinatario/remetente legivel, preencha paymentRecipient.",
-                  "Se for DANFE, NF-e, NFC-e ou cupom fiscal, trate como documento fiscal brasileiro e extraia fiscalDocument com documentType, accessKey, issuerName, issuerCnpj, documentNumber, series, issueTime, protocolNumber, totalItemsAmount, discountAmount, taxAmount e paidAmount quando legiveis.",
-                  "documentType deve ser danfe_nfe, danfe_nfce, cupom_fiscal, boleto, pix, recibo, extrato ou unknown.",
-                  "accessKey deve ter somente os 44 digitos da chave de acesso quando estiver legivel; nunca invente chave de acesso nem leia conteudo interno de QR Code se ele nao estiver textual.",
-                  "Para DANFE/NF-e/NFC-e, amount deve ser o Valor Total da Nota ou Valor Pago quando esse for o total final; nao use impostos, desconto, troco, subtotal, base de calculo ou valor unitario como total.",
-                  "Quando a nota tiver total de produtos e total pago diferentes, use o valor efetivamente pago como amount e preserve o total de produtos em fiscalDocument.totalItemsAmount.",
-                  "Para boleto ou fatura, amount deve ser valor do documento/valor a pagar, dueDate deve ser vencimento e paymentCode deve ser linha digitavel/codigo de barras textual quando legivel.",
-                  "Para comprovante Pix, amount deve ser valor transferido, documentDate deve ser data do comprovante e paymentRecipient deve ser recebedor/favorecido quando legivel.",
-                  "title deve ser o emissor/estabelecimento quando legivel. description deve resumir o documento sem inventar: exemplo 'Nota fiscal de mercado' ou 'Conta de energia'.",
-                  "items deve listar ate 60 itens ou linhas legiveis com name, amount, quantity, unit, unitPrice, code, ean, ncm, date, type, category, paymentMethod e paymentRecipient quando legiveis.",
-                  "Em extrato bancario, use type income para entrada e expense para saida quando a propria linha sustentar essa classificacao.",
-                  "Use datas no formato YYYY-MM-DD.",
-                  "Para conta a pagar, dueDate e a data de vencimento. Para renda, entryDate e a data de entrada.",
-                  "Use categoria em portugues apenas quando a imagem sustentar essa classificacao.",
-                  "Preserve centavos e valores exatos. Nunca arredonde valor. Se o documento mostrar R$ 1.234,56, devolva 1234.56.",
-                  "Nao invente titulo, descricao, valor, datas, codigo, estabelecimento ou categoria quando nao houver confianca.",
-                  "Se um campo nao estiver legivel, use string vazia e inclua o nome dele em missingFields."
-                ].filter(Boolean).join(" ")
-              },
-              {
-                type: "input_image",
-                detail: "high",
-                image_url: imageDataUrl
-              }
-            ]
+            content
           }
         ],
         max_output_tokens: 3200,
@@ -1086,6 +1104,18 @@ function htmlToReadableText(html: string) {
     .trim();
 }
 
+function normalizeDocumentTextForPrompt(text: string | undefined) {
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .replace(/\u0000/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 14_000);
+}
+
 function firstDefined<T>(primary: T | undefined, fallback: T | undefined) {
   return primary !== undefined && primary !== "" ? primary : fallback;
 }
@@ -1466,167 +1496,6 @@ function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: Time
     punches,
     notes: toCleanString(parsed.notes) || fallback.notes
   };
-}
-
-function parseTimeClockReportText(text: string, fileName?: string): TimeClockDraft[] {
-  const bestByDate = new Map<string, TimeClockDraft>();
-
-  text
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/\s+/g, " "))
-    .forEach((line) => {
-      const dateMatch = line.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
-
-      if (!dateMatch || dateMatch.index === undefined) {
-        return;
-      }
-
-      const [, day, month, year] = dateMatch;
-      const date = `${year}-${month}-${day}`;
-      const timeMatches = Array.from(line.matchAll(/\b(?:[01]\d|2[0-3]):[0-5]\d\b/g));
-      const reportTimes = normalizeClockPunches(orderReportTimesForDateLine(timeMatches, dateMatch.index));
-      const { punches, expectedMinutes } = splitReportPunchesAndExpected(reportTimes, date);
-
-      if (punches.length === 0) {
-        return;
-      }
-
-      const parsed = buildTimeClockParsedObjectFromReportLine({
-        date,
-        punches,
-        expectedMinutes,
-        line,
-        fileName
-      });
-      const draft = normalizeTimeClockDraft(parsed, buildFallbackTimeClockDraft(date));
-      const current = bestByDate.get(date);
-
-      if (!current || draft.punches.length > current.punches.length || draft.missingFields.length < current.missingFields.length) {
-        bestByDate.set(date, draft);
-      }
-    });
-
-  return Array.from(bestByDate.values()).sort((left, right) => left.date.localeCompare(right.date));
-}
-
-function orderReportTimesForDateLine(timeMatches: RegExpMatchArray[], dateIndex: number) {
-  const times = timeMatches.map((match) => match[0]);
-
-  if (timeMatches.length >= 4 && (timeMatches[0].index ?? 0) < dateIndex) {
-    const firstPunchMovedToEnd = times[times.length - 1];
-    return [firstPunchMovedToEnd, ...times.slice(0, -1)];
-  }
-
-  return times;
-}
-
-function splitReportPunchesAndExpected(reportTimes: string[], date: string) {
-  if (reportTimes.length === 0) {
-    return { punches: [] as string[], expectedMinutes: getDefaultExpectedMinutesForDate(date) };
-  }
-
-  const times = [...reportTimes];
-  let expectedMinutes = getDefaultExpectedMinutesForDate(date);
-  const last = times[times.length - 1];
-  const secondLast = times[times.length - 2];
-
-  if (times.length >= 2 && isLikelyExpectedDuration(secondLast) && isLikelyMissingDuration(last)) {
-    expectedMinutes = timeToMinutes(secondLast);
-    times.splice(-2, 2);
-  } else if (times.length >= 3 && isLikelyExpectedDuration(last)) {
-    expectedMinutes = timeToMinutes(last);
-    times.splice(-1, 1);
-  }
-
-  if (times.length === 2 && isLikelyExpectedDuration(times[0]) && isLikelyExpectedDuration(times[1])) {
-    return { punches: [] as string[], expectedMinutes };
-  }
-
-  return { punches: times.slice(0, 4), expectedMinutes };
-}
-
-function buildTimeClockParsedObjectFromReportLine({
-  date,
-  punches,
-  expectedMinutes,
-  line,
-  fileName
-}: {
-  date: string;
-  punches: string[];
-  expectedMinutes: number;
-  line: string;
-  fileName?: string;
-}) {
-  const missingFields: string[] = [];
-  const fields = {
-    firstIn: "",
-    firstOut: "",
-    secondIn: "",
-    secondOut: ""
-  };
-
-  if (punches.length >= 4) {
-    fields.firstIn = punches[0];
-    fields.firstOut = punches[1];
-    fields.secondIn = punches[2];
-    fields.secondOut = punches[3];
-  } else if (punches.length === 3) {
-    fields.firstIn = punches[0];
-    fields.firstOut = punches[1];
-    fields.secondIn = punches[2];
-    missingFields.push("secondOut");
-  } else if (punches.length === 2) {
-    fields.firstIn = punches[0];
-    fields.secondOut = punches[1];
-    missingFields.push("firstOut", "secondIn", "lunchMinutes");
-  } else if (punches.length === 1) {
-    fields.firstIn = punches[0];
-    missingFields.push("firstOut", "secondIn", "secondOut", "endTime", "lunchMinutes");
-  }
-
-  const lunchMinutes =
-    fields.firstOut && fields.secondIn && timeToMinutes(fields.secondIn) > timeToMinutes(fields.firstOut)
-      ? timeToMinutes(fields.secondIn) - timeToMinutes(fields.firstOut)
-      : 72;
-  const notes = [
-    fileName ? `Importado do relatorio ${fileName}.` : "Importado de relatorio de ponto.",
-    `Linha lida: ${line}.`,
-    missingFields.length ? "Registro incompleto: revise os campos vazios." : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return {
-    date,
-    ...fields,
-    startTime: fields.firstIn,
-    endTime: fields.secondOut || punches[punches.length - 1] || "",
-    lunchMinutes,
-    expectedMinutes,
-    confidence: missingFields.length ? 0.74 : 0.94,
-    missingFields,
-    punches,
-    notes
-  };
-}
-
-function isLikelyExpectedDuration(value: string | undefined) {
-  if (!value) {
-    return false;
-  }
-
-  const minutes = timeToMinutes(value);
-  return minutes >= 420 && minutes <= 600;
-}
-
-function isLikelyMissingDuration(value: string | undefined) {
-  if (!value) {
-    return false;
-  }
-
-  const minutes = timeToMinutes(value);
-  return minutes >= 0 && minutes <= 420;
 }
 
 function inferTimeClockFieldsFromPunches(punches: string[]) {

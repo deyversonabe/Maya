@@ -5,6 +5,7 @@ import { toDateKey } from "@/lib/utils";
 
 const MAX_IMAGE_EDGE = 3000;
 const MAX_DATA_URL_LENGTH = 3_800_000;
+const MAX_DOCUMENT_DATA_URL_LENGTH = 7_000_000;
 const JPEG_QUALITY = 0.92;
 const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
 const WORKSPACE_ID =
@@ -12,6 +13,15 @@ const WORKSPACE_ID =
 
 export interface FinanceAttachmentUpload {
   imageDataUrl: string;
+  fileName: string;
+  storagePath?: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface FinanceDocumentAttachmentUpload {
+  imageDataUrl?: string;
+  fileDataUrl: string;
   fileName: string;
   storagePath?: string;
   mimeType: string;
@@ -84,10 +94,45 @@ export async function fileToFinanceAttachment(file: File): Promise<FinanceAttach
   const imageDataUrl = await fileToOptimizedImageDataUrl(file);
   const mimeType = getMimeTypeFromDataUrl(imageDataUrl) || "image/jpeg";
   const binary = dataUrlToBlob(imageDataUrl, mimeType);
-  const storagePath = await tryUploadAttachment(file.name, binary);
+  const storagePath = await tryUploadAttachment(file.name, binary, mimeType);
 
   return {
     imageDataUrl,
+    fileName: file.name,
+    storagePath,
+    mimeType,
+    size: binary.size
+  };
+}
+
+export async function fileToFinanceDocumentAttachment(file: File): Promise<FinanceDocumentAttachmentUpload> {
+  if (file.type.startsWith("image/")) {
+    const attachment = await fileToFinanceAttachment(file);
+
+    return {
+      ...attachment,
+      fileDataUrl: attachment.imageDataUrl
+    };
+  }
+
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+  if (!isPdf) {
+    throw new Error("invalid_finance_document_file");
+  }
+
+  const fileDataUrl = await fileToDataUrl(file);
+
+  if (fileDataUrl.length > MAX_DOCUMENT_DATA_URL_LENGTH) {
+    throw new Error("document_too_large");
+  }
+
+  const mimeType = getMimeTypeFromDataUrl(fileDataUrl) || "application/pdf";
+  const binary = dataUrlToBlob(fileDataUrl, mimeType);
+  const storagePath = await tryUploadAttachment(file.name, binary, mimeType);
+
+  return {
+    fileDataUrl,
     fileName: file.name,
     storagePath,
     mimeType,
@@ -158,7 +203,7 @@ function fitInside(width: number, height: number, maxEdge: number) {
   };
 }
 
-async function tryUploadAttachment(fileName: string, blob: Blob) {
+async function tryUploadAttachment(fileName: string, blob: Blob, mimeType: string) {
   const supabase = createBrowserSupabaseClient();
 
   if (!supabase) {
@@ -171,13 +216,11 @@ async function tryUploadAttachment(fileName: string, blob: Blob) {
     return undefined;
   }
 
-  const path = `${WORKSPACE_ID}/${toDateKey()}/${crypto.randomUUID()}-${sanitizeFileName(
-    fileName
-  )}.jpg`;
+  const path = `${WORKSPACE_ID}/${toDateKey()}/${crypto.randomUUID()}-${buildStoredFileName(fileName, mimeType)}`;
 
   const { error } = await supabase.storage.from(ATTACHMENT_BUCKET).upload(path, blob, {
     cacheControl: "31536000",
-    contentType: blob.type || "image/jpeg",
+    contentType: blob.type || mimeType,
     upsert: false
   });
 
@@ -213,4 +256,36 @@ function sanitizeFileName(fileName: string) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 70) || "anexo";
+}
+
+function buildStoredFileName(fileName: string, mimeType: string) {
+  const sanitized = sanitizeFileName(fileName);
+  const extension = extensionFromMimeType(mimeType) || extensionFromFileName(sanitized) || "bin";
+  const baseName = sanitized.replace(/\.[a-zA-Z0-9]{1,8}$/i, "") || "anexo";
+
+  return `${baseName}.${extension}`;
+}
+
+function extensionFromMimeType(mimeType: string) {
+  if (mimeType === "application/pdf") {
+    return "pdf";
+  }
+
+  if (mimeType === "image/png") {
+    return "png";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  if (mimeType === "image/jpeg" || mimeType === "image/jpg") {
+    return "jpg";
+  }
+
+  return "";
+}
+
+function extensionFromFileName(fileName: string) {
+  return fileName.match(/\.([a-zA-Z0-9]{1,8})$/)?.[1]?.toLowerCase() ?? "";
 }

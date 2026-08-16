@@ -23,7 +23,7 @@ import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, toInputDate } from "@/lib/utils";
 import { mayaFetch } from "@/lib/api-client";
 import { AttachmentLink } from "./attachment-link";
-import { fileToDataUrl, fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { Person, TimeClockDraft, WorkTimeEntry } from "../types";
 
@@ -57,7 +57,7 @@ export function WorkHoursPage() {
   const [feedback, setFeedback] = useState("Registre apenas horas trabalhadas. Esta aba nao altera saldos financeiros.");
   const [isReadingTimecard, setIsReadingTimecard] = useState(false);
   const [timeClockDraft, setTimeClockDraft] = useState<TimeClockDraft | null>(null);
-  const [pointAttachment, setPointAttachment] = useState<FinanceAttachmentUpload | null>(null);
+  const [pointAttachment, setPointAttachment] = useState<FinanceDocumentAttachmentUpload | null>(null);
   const [form, setForm] = useState({
     firstIn: DEFAULT_START,
     firstOut: "",
@@ -119,18 +119,17 @@ export function WorkHoursPage() {
 
     try {
       const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-      const attachment = isPdf ? null : await fileToFinanceAttachment(file);
-      const fileDataUrl = isPdf ? await fileToDataUrl(file) : "";
+      const attachment = await fileToFinanceDocumentAttachment(file);
       setPointAttachment(attachment);
 
       const response = await mayaFetch("/api/maya/timecard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment?.imageDataUrl,
-          fileDataUrl,
+          imageDataUrl: attachment.imageDataUrl,
+          fileDataUrl: isPdf ? attachment.fileDataUrl : undefined,
           mimeType: file.type,
-          fileName: attachment?.fileName ?? file.name,
+          fileName: attachment.fileName,
           targetDate: selectedDate
         })
       });
@@ -147,13 +146,13 @@ export function WorkHoursPage() {
       }
 
       if (isPdf || drafts.length > 1) {
-        const imported = importTimeClockDrafts(drafts, attachment?.fileName ?? file.name, attachment);
+        const imported = importTimeClockDrafts(drafts, attachment.fileName, attachment);
         setFeedback(
           result.message ||
             `${imported} dia(s) importado(s) para o calendario. Clique em qualquer dia para editar antes ou depois de salvar.`
         );
       } else {
-        applyTimeClockDraft(drafts[0], attachment?.fileName ?? file.name);
+        applyTimeClockDraft(drafts[0], attachment.fileName);
         setFeedback(result.message || "MAYA preencheu o ponto. Revise antes de salvar.");
       }
     } catch {
@@ -166,7 +165,11 @@ export function WorkHoursPage() {
     }
   }
 
-  function importTimeClockDrafts(drafts: TimeClockDraft[], fileName: string, attachment: FinanceAttachmentUpload | null) {
+  function importTimeClockDrafts(
+    drafts: TimeClockDraft[],
+    fileName: string,
+    attachment: FinanceDocumentAttachmentUpload | null
+  ) {
     const validDrafts = drafts.filter((draft) => draft.date && draft.punches.length > 0);
 
     validDrafts.forEach((draft) => {
@@ -204,7 +207,7 @@ export function WorkHoursPage() {
   function buildWorkTimeEntryFromDraft(
     draft: TimeClockDraft,
     fileName: string,
-    attachment: FinanceAttachmentUpload | null
+    attachment: FinanceDocumentAttachmentUpload | null
   ): Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt"> {
     const draftDate = draft.date || selectedDate;
     const existingForDraft = state.workTimeEntries.find((entry) => entry.person === selectedPerson && entry.date === draftDate);
@@ -236,7 +239,9 @@ export function WorkHoursPage() {
         .filter(Boolean)
         .join(" "),
       attachmentImageName: attachment?.fileName ?? existingForDraft?.attachmentImageName,
-      attachmentDataUrl: attachment?.storagePath ? existingForDraft?.attachmentDataUrl : attachment?.imageDataUrl ?? existingForDraft?.attachmentDataUrl,
+      attachmentDataUrl: attachment?.storagePath
+        ? existingForDraft?.attachmentDataUrl
+        : attachment?.imageDataUrl ?? attachment?.fileDataUrl ?? existingForDraft?.attachmentDataUrl,
       attachmentStoragePath: attachment?.storagePath ?? existingForDraft?.attachmentStoragePath,
       attachmentMimeType: attachment?.mimeType ?? existingForDraft?.attachmentMimeType,
       attachmentSize: attachment?.size ?? existingForDraft?.attachmentSize
@@ -307,7 +312,9 @@ export function WorkHoursPage() {
       expectedMinutes: Math.round(expectedMinutes),
       notes: form.notes.trim() || undefined,
       attachmentImageName: pointAttachment?.fileName ?? selectedEntry?.attachmentImageName,
-      attachmentDataUrl: pointAttachment?.storagePath ? selectedEntry?.attachmentDataUrl : pointAttachment?.imageDataUrl ?? selectedEntry?.attachmentDataUrl,
+      attachmentDataUrl: pointAttachment?.storagePath
+        ? selectedEntry?.attachmentDataUrl
+        : pointAttachment?.imageDataUrl ?? pointAttachment?.fileDataUrl ?? selectedEntry?.attachmentDataUrl,
       attachmentStoragePath: pointAttachment?.storagePath ?? selectedEntry?.attachmentStoragePath,
       attachmentMimeType: pointAttachment?.mimeType ?? selectedEntry?.attachmentMimeType,
       attachmentSize: pointAttachment?.size ?? selectedEntry?.attachmentSize
@@ -533,7 +540,11 @@ export function WorkHoursPage() {
             </p>
             {pointAttachment || selectedEntry?.attachmentImageName ? (
               <AttachmentLink
-                dataUrl={pointAttachment?.storagePath ? undefined : pointAttachment?.imageDataUrl ?? selectedEntry?.attachmentDataUrl}
+                dataUrl={
+                  pointAttachment?.storagePath
+                    ? undefined
+                    : pointAttachment?.imageDataUrl ?? pointAttachment?.fileDataUrl ?? selectedEntry?.attachmentDataUrl
+                }
                 storagePath={pointAttachment?.storagePath ?? selectedEntry?.attachmentStoragePath}
                 imageName={pointAttachment?.fileName ?? selectedEntry?.attachmentImageName}
               />

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Camera, Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
+import { Camera, Check, FileImage, FileText, Pencil, QrCode, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,13 @@ import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
-import { detectQrPayloadsFromImageDataUrl, fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import {
+  detectQrPayloadsFromImageDataUrl,
+  fileToFinanceAttachment,
+  fileToFinanceDocumentAttachment,
+  type FinanceAttachmentUpload,
+  type FinanceDocumentAttachmentUpload
+} from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BankStatementDraft,
@@ -57,10 +63,13 @@ type BillReconciliationMatch = {
   transactionIndex: number;
 };
 
+type ReceiptReadMode = "receipt" | "camera" | "fiscalQr";
+
 export function ExpensesPage() {
   const { state, actions } = useFinanceStore();
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const fiscalQrRef = useRef<HTMLInputElement>(null);
   const statementRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
@@ -154,18 +163,27 @@ export function ExpensesPage() {
     });
   }
 
-  async function handleReceiptFile(file: File) {
+  async function handleReceiptFile(file: File, mode: ReceiptReadMode = "receipt") {
+    const isFiscalQrMode = mode === "fiscalQr";
     setIsReadingReceipt(true);
-    setFeedback("MAYA esta lendo o comprovante e preparando um rascunho...");
+    setFeedback(
+      isFiscalQrMode
+        ? "MAYA esta procurando o QR Code fiscal e preparando os dados reais da nota..."
+        : "MAYA esta lendo o comprovante e preparando um rascunho..."
+    );
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
-      const qrPayloads = await detectQrPayloadsFromImageDataUrl(attachment.imageDataUrl);
+      const attachment = await fileToFinanceDocumentAttachment(file);
+      const qrPayloads = attachment.imageDataUrl
+        ? await detectQrPayloadsFromImageDataUrl(attachment.imageDataUrl)
+        : [];
       const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
+          fileDataUrl: attachment.mimeType === "application/pdf" ? attachment.fileDataUrl : undefined,
+          mimeType: attachment.mimeType,
           fileName: file.name,
           documentKind: "expense",
           qrPayloads
@@ -176,16 +194,32 @@ export function ExpensesPage() {
         message?: string;
       };
 
-      if (result.financialDraft) {
-        applyDraft(withStoredAttachment(result.financialDraft, attachment));
+      const storedDraft = result.financialDraft ? withStoredAttachment(result.financialDraft, attachment) : undefined;
+
+      if (storedDraft) {
+        applyDraft(storedDraft);
+        const draftDate = storedDraft.documentDate || storedDraft.dueDate || storedDraft.entryDate;
+
+        if (draftDate) {
+          setSelectedMonth(draftDate.slice(0, 7));
+        }
       }
 
-      setFeedback(buildDraftFeedback(result.message, result.financialDraft));
+      setFeedback(
+        buildDraftFeedback(result.message, storedDraft, {
+          isFiscalQrMode,
+          detectedQrCount: qrPayloads.length
+        })
+      );
     } catch (error) {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
-          : "Nao consegui ler a imagem. Voce pode preencher a despesa manualmente."
+          : error instanceof Error && error.message === "document_too_large"
+            ? "O PDF ficou grande demais para leitura. Envie uma versao menor ou uma imagem da nota."
+          : isFiscalQrMode
+            ? "Nao consegui ler o QR Code desta imagem. Tente uma foto mais perto do QR, bem iluminada, ou anexe o cupom inteiro."
+            : "Nao consegui ler o anexo. Voce pode preencher a despesa manualmente."
       );
     } finally {
       setIsReadingReceipt(false);
@@ -506,7 +540,7 @@ export function ExpensesPage() {
             action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Rascunho MAYA" : "Manual ou nota"}</Badge>}
           />
 
-          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
               <FileImage className="size-4" aria-hidden="true" />
               Anexar nota
@@ -514,6 +548,10 @@ export function ExpensesPage() {
             <Button variant="ghost" onClick={() => cameraRef.current?.click()} disabled={isReadingReceipt}>
               <Camera className="size-4" aria-hidden="true" />
               Abrir camera
+            </Button>
+            <Button variant="secondary" onClick={() => fiscalQrRef.current?.click()} disabled={isReadingReceipt}>
+              <QrCode className="size-4" aria-hidden="true" />
+              Ler QR Code
             </Button>
             <Button variant="secondary" onClick={() => statementRef.current?.click()} disabled={isReadingStatement}>
               <FileText className="size-4" aria-hidden="true" />
@@ -523,11 +561,11 @@ export function ExpensesPage() {
               ref={uploadRef}
               className="hidden"
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  void handleReceiptFile(file);
+                  void handleReceiptFile(file, "receipt");
                 }
                 event.target.value = "";
               }}
@@ -541,7 +579,21 @@ export function ExpensesPage() {
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  void handleReceiptFile(file);
+                  void handleReceiptFile(file, "camera");
+                }
+                event.target.value = "";
+              }}
+            />
+            <input
+              ref={fiscalQrRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void handleReceiptFile(file, "fiscalQr");
                 }
                 event.target.value = "";
               }}
@@ -560,6 +612,10 @@ export function ExpensesPage() {
               }}
             />
           </div>
+          <p className="mb-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-xs font-bold leading-5 text-cyan-50">
+            Para cupom fiscal/NFC-e, use <span className="text-bronze">Ler QR Code</span> e enquadre o QR ou o cupom
+            inteiro. A despesa so entra depois da sua revisao.
+          </p>
 
           <p className="mb-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
             {feedback}
@@ -809,44 +865,54 @@ export function ExpensesPage() {
                 onAction={() => window.scrollTo({ top: 0, behavior: "smooth" })}
               />
             ) : (
-              monthTransactions.map((transaction) => (
-                <div key={transaction.id} className="rounded-lg border border-cream/10 bg-cream/[0.04] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <strong className="text-cream">{transaction.description}</strong>
-                        {transaction.date > today ? <Badge tone="neutral">Futuro</Badge> : null}
+              monthTransactions.map((transaction) => {
+                const hasAttachment = Boolean(transaction.attachmentStoragePath || transaction.attachmentDataUrl || transaction.attachmentImageName);
+                const hasFiscalData = Boolean(transaction.fiscalDocument?.accessKey || transaction.fiscalDocument?.issuerCnpj || transaction.fiscalDocument?.qrCodeUrl);
+                const itemCount = transaction.documentItems?.length ?? 0;
+
+                return (
+                  <div key={transaction.id} className="rounded-lg border border-cream/10 bg-cream/[0.04] p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-cream">{transaction.description}</strong>
+                          {transaction.date > today ? <Badge tone="neutral">Futuro</Badge> : null}
+                          {hasAttachment ? <Badge tone="success">Nota anexada</Badge> : null}
+                          {hasFiscalData ? <Badge tone="info">Fiscal</Badge> : null}
+                          {itemCount > 0 ? <Badge tone="neutral">{itemCount} item(ns)</Badge> : null}
+                        </div>
+                        <p className="mt-1 text-sm text-muted">
+                          {transaction.category} - {transaction.date}
+                          {transaction.paymentMethod === "pix" && transaction.paymentRecipient
+                            ? ` - Pix para ${transaction.paymentRecipient}`
+                            : ""}
+                          {transaction.otherCategoryDescription ? ` - ${transaction.otherCategoryDescription}` : ""}
+                          {transaction.fiscalDocument?.issuerName ? ` - ${transaction.fiscalDocument.issuerName}` : ""}
+                          {transaction.installmentTotal
+                            ? ` - parcela ${transaction.installmentNumber}/${transaction.installmentTotal}`
+                            : ""}
+                          {transaction.recurring ? " - recorrente" : ""}
+                        </p>
                       </div>
-                      <p className="mt-1 text-sm text-muted">
-                        {transaction.category} - {transaction.date}
-                        {transaction.paymentMethod === "pix" && transaction.paymentRecipient
-                          ? ` - Pix para ${transaction.paymentRecipient}`
-                          : ""}
-                        {transaction.otherCategoryDescription ? ` - ${transaction.otherCategoryDescription}` : ""}
-                        {transaction.installmentTotal
-                          ? ` - parcela ${transaction.installmentNumber}/${transaction.installmentTotal}`
-                          : ""}
-                        {transaction.recurring ? " - recorrente" : ""}
-                      </p>
+                      <div className="flex shrink-0 gap-2">
+                        <Button variant="ghost" className="min-h-9 px-3" onClick={() => editExpense(transaction)}>
+                          <Pencil className="size-4" aria-hidden="true" />
+                        </Button>
+                        <Button variant="ghost" className="min-h-9 px-3" onClick={() => actions.removeTransaction(transaction.id)}>
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Button variant="ghost" className="min-h-9 px-3" onClick={() => editExpense(transaction)}>
-                        <Pencil className="size-4" aria-hidden="true" />
-                      </Button>
-                      <Button variant="ghost" className="min-h-9 px-3" onClick={() => actions.removeTransaction(transaction.id)}>
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </Button>
-                    </div>
+                    <strong className={cn("mt-2 block", financialValueClass(transaction.amount))}>{formatCurrency(transaction.amount)}</strong>
+                    <AttachmentLink
+                      dataUrl={transaction.attachmentDataUrl}
+                      storagePath={transaction.attachmentStoragePath}
+                      imageName={transaction.attachmentImageName}
+                    />
+                    <DocumentItemsPanel items={transaction.documentItems} title="Itens guardados da nota/extrato" />
                   </div>
-                  <strong className={cn("mt-2 block", financialValueClass(transaction.amount))}>{formatCurrency(transaction.amount)}</strong>
-                  <AttachmentLink
-                    dataUrl={transaction.attachmentDataUrl}
-                    storagePath={transaction.attachmentStoragePath}
-                    imageName={transaction.attachmentImageName}
-                  />
-                  <DocumentItemsPanel items={transaction.documentItems} title="Itens guardados da nota/extrato" />
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </Card>
@@ -1381,7 +1447,32 @@ function StatementDraftReview({
   );
 }
 
-function buildDraftFeedback(message?: string, draft?: FinancialDocumentDraft) {
+function buildDraftFeedback(
+  message?: string,
+  draft?: FinancialDocumentDraft,
+  options?: { isFiscalQrMode?: boolean; detectedQrCount?: number }
+) {
+  const hasFiscalQrEvidence = Boolean(draft?.fiscalDocument?.qrCodeUrl || draft?.fiscalDocument?.qrCodeContent);
+  const hasFiscalEvidence = Boolean(
+    hasFiscalQrEvidence || draft?.fiscalDocument?.accessKey || draft?.fiscalDocument?.issuerCnpj
+  );
+
+  if (options?.isFiscalQrMode && draft && hasFiscalQrEvidence) {
+    const prefix =
+      options.detectedQrCount && options.detectedQrCount > 0
+        ? "QR Code fiscal detectado."
+        : "Dados fiscais encontrados na imagem.";
+    const suffix = draft.missingFields.length > 0 ? ` Complete manualmente: ${draft.missingFields.join(", ")}.` : "";
+
+    return `${prefix} Revise os dados reais da nota antes de salvar.${suffix}`;
+  }
+
+  if (options?.isFiscalQrMode && draft && !hasFiscalEvidence) {
+    const suffix = draft.missingFields.length > 0 ? ` Complete manualmente: ${draft.missingFields.join(", ")}.` : "";
+
+    return `Nao encontrei um QR fiscal legivel nesta imagem, mas criei um rascunho com o que estava visivel.${suffix}`;
+  }
+
   if (!draft || draft.missingFields.length === 0) {
     return message ?? "Rascunho criado. Revise antes de salvar.";
   }
@@ -1459,12 +1550,12 @@ function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["item
 
 function withStoredAttachment(
   draft: FinancialDocumentDraft,
-  attachment: FinanceAttachmentUpload
+  attachment: FinanceDocumentAttachmentUpload
 ): FinancialDocumentDraft {
   return {
     ...draft,
     attachmentImageName: attachment.fileName,
-    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl ?? attachment.fileDataUrl,
     attachmentStoragePath: attachment.storagePath,
     attachmentMimeType: attachment.mimeType,
     attachmentSize: attachment.size
