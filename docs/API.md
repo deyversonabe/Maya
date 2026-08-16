@@ -244,6 +244,8 @@ Saida:
 - `timeClockDrafts`: array opcional quando o relatorio tiver varias datas legiveis.
 - `needsReview`: sempre `true`.
 
+Observacao: em relatorios mensais estruturados, a rota deve priorizar batidas reais por data e descartar horas de resumo do espelho de ponto, como jornada normal, faltas, saldo ou duracoes administrativas.
+
 Regras:
 
 - A rota deve ignorar cabecalhos, matricula, empresa, CNPJ, assinatura, totais legais e textos administrativos.

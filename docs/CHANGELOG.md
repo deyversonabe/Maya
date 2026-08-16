@@ -14,6 +14,11 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- `Anexar nota` em Despesas passa a aceitar PDF alem de imagem, preservando o PDF como anexo e lendo o texto extraido para criar rascunho revisavel.
+- Rascunhos de nota ficam marcados como `Aguardando salvar`, e despesas salvas com anexo passam a mostrar selos de nota, dados fiscais e quantidade de itens para nao parecerem escondidas.
+- Ao ler uma nota com data identificada, a aba Despesas muda para o mes correspondente antes do usuario confirmar, reduzindo confusao entre anexo lido e lancamento salvo.
+- Aba `Despesas` agora exibe um fluxo direto de `Ler QR Code` para cupom fiscal/NFC-e, com feedback quando o QR fiscal foi reconhecido ou quando a foto nao tem QR legivel.
+- Leitura de relatorio mensal de ponto em PDF reforcada para formatos Secullum/Romep, importando varias datas, preservando as quatro batidas editaveis e ignorando colunas de resumo como `NORMAIS`, `FALTAS` e saldos.
 - Salvamento online reforcado com controle de versao por RPC, merge seguro, retry curto com aviso visual e protecao contra perda de alteracoes entre dispositivos.
 - Campos monetarios de revisao de documentos e linhas de extrato agora mantem texto local durante a digitacao, evitando perda de cursor ao digitar virgula, centavos ou apagar valores.
 - Notas anexadas a despesas existentes por mesma data/valor agora exigem confirmacao antes de alterar o lancamento encontrado.

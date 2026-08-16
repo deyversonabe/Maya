@@ -236,6 +236,7 @@ Escopo:
 - Registro diario com quatro batidas: entrada, saida para almoco, retorno do almoco e saida final.
 - Upload ou camera para enviar foto do registro de ponto e preencher data/horarios automaticamente quando legivel.
 - Upload de relatorio de ponto em PDF com varias datas, importando os dias legiveis para o calendario sem bloquear edicao posterior.
+- Relatorios estruturados de ponto, como Secullum/Romep, devem ignorar colunas de resumo (`NORMAIS`, `FALTAS`, saldos e duracoes) para manter apenas batidas reais.
 - Comprovante individual de ponto pode preencher apenas uma batida provavel, mantendo as demais para conferencia manual antes de salvar.
 - Jornada padrao de segunda a sexta, das 08:00 as 18:00, com 72 minutos de almoco.
 - Carga esperada diaria padrao de 528 minutos em dias uteis, editavel por registro.
