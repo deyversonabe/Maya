@@ -159,7 +159,13 @@ function inferReportTimeClockFieldsFromPunches(punches: string[]) {
 
   if (sorted.length === 2) {
     fields.firstIn = sorted[0];
-    fields.secondOut = sorted[1];
+
+    if (timeToMinutes(sorted[1]) >= timeToMinutes("16:30")) {
+      fields.secondOut = sorted[1];
+    } else {
+      fields.firstOut = sorted[1];
+    }
+
     return fields;
   }
 

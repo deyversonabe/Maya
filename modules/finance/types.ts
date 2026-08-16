@@ -104,6 +104,7 @@ export interface Transaction {
   salonMaterialCost?: number;
   salonRecipeItemsSnapshot?: SalonSaleMaterialSnapshot[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SalonMaterial {
@@ -154,6 +155,7 @@ export interface SalonStockMovement {
   transactionId?: string;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SalonSaleInput {
@@ -176,6 +178,7 @@ export interface FinanceAccount {
   openingBalanceDate: string;
   color?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Goal {
@@ -188,6 +191,7 @@ export interface Goal {
   dueDate: string;
   priority: GoalPriority;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface GoalContribution {
@@ -205,6 +209,7 @@ export interface Budget {
   limitAmount: number;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface PayableBill {
@@ -237,6 +242,7 @@ export interface PayableBill {
   accountId?: string;
   paidAt?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface TaxDocument {

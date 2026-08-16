@@ -181,12 +181,7 @@ export function WorkHoursPage() {
     if (firstDraft) {
       const draftDate = firstDraft.date;
       const entry = buildWorkTimeEntryFromDraft(firstDraft, fileName, attachment);
-      const punchFields = {
-        firstIn: entry.firstIn || entry.punches?.[0] || entry.startTime,
-        firstOut: entry.firstOut || entry.punches?.[1] || "",
-        secondIn: entry.secondIn || entry.punches?.[2] || "",
-        secondOut: entry.secondOut || entry.punches?.[3] || entry.endTime
-      };
+      const punchFields = getEntryPunchFields(entry);
 
       setTimeClockDraft(firstDraft);
       setSelectedDate(draftDate);
@@ -1010,14 +1005,34 @@ function getFormPunchFields(form: PunchFields): PunchFields {
   };
 }
 
-function getEntryPunchFields(entry: WorkTimeEntry | undefined): PunchFields {
+function getEntryPunchFields(entry: Partial<WorkTimeEntry> | undefined): PunchFields {
+  if (!entry) {
+    return {
+      firstIn: DEFAULT_START,
+      firstOut: "",
+      secondIn: "",
+      secondOut: DEFAULT_END
+    };
+  }
+
+  const hasExplicitFields = Boolean(entry.firstIn || entry.firstOut || entry.secondIn || entry.secondOut);
+
+  if (hasExplicitFields) {
+    return {
+      firstIn: entry.firstIn || "",
+      firstOut: entry.firstOut || "",
+      secondIn: entry.secondIn || "",
+      secondOut: entry.secondOut || ""
+    };
+  }
+
   const punches = normalizePunches(entry?.punches ?? []);
 
   return {
-    firstIn: entry?.firstIn || punches[0] || entry?.startTime || DEFAULT_START,
-    firstOut: entry?.firstOut || punches[1] || "",
-    secondIn: entry?.secondIn || punches[2] || "",
-    secondOut: entry?.secondOut || punches[3] || entry?.endTime || DEFAULT_END
+    firstIn: punches[0] || entry.startTime || DEFAULT_START,
+    firstOut: punches[1] || "",
+    secondIn: punches[2] || "",
+    secondOut: punches[3] || entry.endTime || DEFAULT_END
   };
 }
 
@@ -1031,6 +1046,15 @@ function mergeTimeClockDraftIntoPunchFields(draft: TimeClockDraft, base: PunchFi
 
   if (arePunchFieldsComplete(explicitFields)) {
     return explicitFields;
+  }
+
+  if (Object.values(explicitFields).some(isValidTime)) {
+    return {
+      firstIn: explicitFields.firstIn || base.firstIn,
+      firstOut: explicitFields.firstOut || base.firstOut,
+      secondIn: explicitFields.secondIn || base.secondIn,
+      secondOut: explicitFields.secondOut || base.secondOut
+    };
   }
 
   const punches = normalizePunches([

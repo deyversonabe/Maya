@@ -269,7 +269,7 @@ function normalizeDeletedEntityIds(ids: unknown[] | undefined) {
     return [];
   }
 
-  return Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))).slice(-1000);
+  return Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))).slice(-5000);
 }
 
 function normalizeSalonMaterials(materials: SalonMaterial[] | undefined): SalonMaterial[] {
@@ -359,7 +359,8 @@ function normalizeSalonStockMovements(movements: SalonStockMovement[] | undefine
       serviceRecipeId: typeof movement.serviceRecipeId === "string" ? movement.serviceRecipeId : undefined,
       transactionId: typeof movement.transactionId === "string" ? movement.transactionId : undefined,
       notes: typeof movement.notes === "string" ? movement.notes.trim() || undefined : undefined,
-      createdAt: typeof movement.createdAt === "string" ? movement.createdAt : new Date().toISOString()
+      createdAt: typeof movement.createdAt === "string" ? movement.createdAt : new Date().toISOString(),
+      updatedAt: normalizeTimestamp(movement.updatedAt)
     }));
 }
 
@@ -529,7 +530,8 @@ function normalizeBudgets(budgets: Budget[] | undefined) {
     .map((budget): Budget => ({
       ...budget,
       month: typeof budget.month === "string" && /^\d{4}-\d{2}$/.test(budget.month) ? budget.month : getCurrentMonthKey(),
-      createdAt: normalizeTimestamp(budget.createdAt) ?? new Date().toISOString()
+      createdAt: normalizeTimestamp(budget.createdAt) ?? new Date().toISOString(),
+      updatedAt: normalizeTimestamp(budget.updatedAt)
     }));
 }
 
@@ -555,7 +557,8 @@ function normalizeAccounts(accounts: FinanceAccount[] | undefined): FinanceAccou
               ? account.openingBalanceDate
               : toDateKey(),
           color: typeof account.color === "string" ? account.color : undefined,
-          createdAt: typeof account.createdAt === "string" ? account.createdAt : new Date().toISOString()
+          createdAt: typeof account.createdAt === "string" ? account.createdAt : new Date().toISOString(),
+          updatedAt: normalizeTimestamp(account.updatedAt)
         }))
     : [];
 
@@ -580,6 +583,7 @@ function normalizeGoals(goals: Goal[] | undefined): Goal[] {
       return {
         ...goal,
         currentAmount,
+        updatedAt: normalizeTimestamp(goal.updatedAt),
         contributions:
           contributions.length > 0
             ? contributions
@@ -632,7 +636,8 @@ function normalizeBills(bills: PayableBill[] | undefined): PayableBill[] {
       paymentMethod: normalizePaymentMethod(bill.paymentMethod),
       source: bill.source === "attachment" || bill.source === "import" ? bill.source : "manual",
       paidAt: normalizeTimestamp(bill.paidAt),
-      createdAt: normalizeTimestamp(bill.createdAt) ?? new Date().toISOString()
+      createdAt: normalizeTimestamp(bill.createdAt) ?? new Date().toISOString(),
+      updatedAt: normalizeTimestamp(bill.updatedAt)
     }));
 
   return resetAccidentallyPaidFutureBills(normalized);
@@ -752,7 +757,8 @@ function stripLegacyDemoTransactions(transactions: Transaction[]) {
       date: normalizeDateOnly(transaction.date) ?? toDateKey(),
       person: normalizePerson(transaction.person),
       paymentMethod: transaction.paymentMethod ? normalizePaymentMethod(transaction.paymentMethod) : undefined,
-      createdAt: normalizeTimestamp(transaction.createdAt) ?? new Date().toISOString()
+      createdAt: normalizeTimestamp(transaction.createdAt) ?? new Date().toISOString(),
+      updatedAt: normalizeTimestamp(transaction.updatedAt)
     }));
 }
 

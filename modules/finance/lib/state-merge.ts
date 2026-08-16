@@ -1,7 +1,7 @@
 import { DEFAULT_FINANCE_ACCOUNT_ID, createEmptyFinanceState } from "../data/defaults";
 import type { FinanceAccount, FinanceState } from "../types";
 
-export const MAX_DELETED_ENTITY_IDS = 1000;
+export const MAX_DELETED_ENTITY_IDS = 5000;
 export const MAX_ACTIVITY_LOGS = 200;
 
 export type MergeableFinanceItem = {
@@ -15,6 +15,7 @@ export type MergeableFinanceItem = {
   documentItems?: unknown[];
   fiscalDocument?: unknown;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 export function prepareFinanceStateForCloud(state: FinanceState): FinanceState {
@@ -108,7 +109,7 @@ export function mergeById<T extends MergeableFinanceItem>(base: T[], incoming: T
   base.forEach((item) => merged.set(item.id, item));
   incoming.forEach((item) => {
     const existing = merged.get(item.id);
-    merged.set(item.id, existing ? preserveDocumentFields(existing, item) : item);
+    merged.set(item.id, existing ? mergeLatestItemPreservingDocuments(existing, item) : item);
   });
 
   return Array.from(merged.values());
@@ -131,6 +132,21 @@ export function preserveDocumentFields<T extends MergeableFinanceItem>(base: T, 
     documentItems: incoming.documentItems?.length ? incoming.documentItems : base.documentItems,
     fiscalDocument: incoming.fiscalDocument || base.fiscalDocument
   };
+}
+
+export function mergeLatestItemPreservingDocuments<T extends MergeableFinanceItem>(existing: T, incoming: T): T {
+  const existingTime = getItemMutationTime(existing);
+  const incomingTime = getItemMutationTime(incoming);
+
+  if (incomingTime >= existingTime) {
+    return preserveDocumentFields(existing, incoming);
+  }
+
+  return preserveDocumentFields(incoming, existing);
+}
+
+export function getItemMutationTime(item: MergeableFinanceItem) {
+  return Math.max(getTime(item.updatedAt ?? ""), getTime(item.createdAt ?? ""));
 }
 
 export function sortByCreatedAtDesc(left: { createdAt?: string }, right: { createdAt?: string }) {

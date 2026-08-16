@@ -73,7 +73,7 @@ export function ExpensesPage() {
   const statementRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
-  const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA revisar.");
+  const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA salvar como despesa.");
   const [receiptDraft, setReceiptDraft] = useState<FinancialDocumentDraft | null>(null);
   const [statementDraft, setStatementDraft] = useState<BankStatementDraft | null>(null);
   const [duplicateReview, setDuplicateReview] = useState<ExpenseDuplicateReview | null>(null);
@@ -163,13 +163,113 @@ export function ExpensesPage() {
     });
   }
 
+  function buildReceiptTransaction(draft: FinancialDocumentDraft) {
+    const missingFields = getReceiptDraftMissingSaveFields(draft);
+
+    if (missingFields.length > 0) {
+      return null;
+    }
+
+    return createPlannedExpenses({
+      description: (draft.description || draft.title).trim(),
+      amount: draft.amount,
+      category: draft.category?.trim() || "Outros",
+      otherCategoryDescription: draft.category === "Outros" ? draft.otherCategoryDescription?.trim() : undefined,
+      person: draft.person,
+      accountId: selectedExpenseAccountId,
+      date: draft.documentDate || draft.dueDate || draft.entryDate || today,
+      paymentMethod: draft.paymentMethod ?? "other",
+      paymentRecipient: draft.paymentRecipient?.trim() ?? "",
+      plan: "single",
+      months: 1,
+      installments: 1,
+      notes: draft.notes,
+      attachmentImageName: draft.attachmentImageName,
+      attachmentDataUrl: draft.attachmentDataUrl,
+      attachmentStoragePath: draft.attachmentStoragePath,
+      attachmentMimeType: draft.attachmentMimeType,
+      attachmentSize: draft.attachmentSize,
+      documentItems: draft.items,
+      fiscalDocument: draft.fiscalDocument,
+      source: "receipt"
+    })[0];
+  }
+
+  function saveReceiptDraftAsExpense(
+    draft: FinancialDocumentDraft,
+    options?: { message?: string; isFiscalQrMode?: boolean; detectedQrCount?: number }
+  ) {
+    const transaction = buildReceiptTransaction(draft);
+
+    if (!transaction) {
+      applyDraft(draft);
+      const missingFields = getReceiptDraftMissingSaveFields(draft);
+      const partialMessage = options?.isFiscalQrMode
+        ? "MAYA leu parte da nota fiscal, mas ainda precisa de conferencia."
+        : options?.message ?? "MAYA leu parte da nota, mas ainda precisa de conferencia.";
+      setFeedback(
+        `${partialMessage} Complete os campos para salvar como despesa: ${missingFields.join(", ")}.`
+      );
+      return;
+    }
+
+    const receiptAttachmentMatch = findSameDaySameAmountExpense(state.transactions, transaction);
+
+    if (receiptAttachmentMatch) {
+      const shouldAttachToExisting = window.confirm(
+        [
+          "Ja existe uma despesa no mesmo dia e com o mesmo valor.",
+          "",
+          `Lancamento encontrado: ${receiptAttachmentMatch.date} - ${formatCurrency(receiptAttachmentMatch.amount)} - ${receiptAttachmentMatch.description}`,
+          `Nota lida agora: ${transaction.date} - ${formatCurrency(transaction.amount)} - ${transaction.description}`,
+          "",
+          "OK: vincular os dados da nota nesse lancamento existente sem criar novo valor.",
+          "Cancelar: salvar a nota como uma nova despesa mesmo assim."
+        ].join("\n")
+      );
+
+      if (shouldAttachToExisting) {
+        attachReceiptToExistingExpense(receiptAttachmentMatch, transaction);
+        return;
+      }
+    }
+
+    const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
+
+    if (duplicates.length > 0) {
+      setReceiptDraft(draft);
+      setDuplicateReview({ transactions: [transaction], matches: duplicates, origin: "expense" });
+      setFeedback("Suspeita de duplicidade encontrada. Aprove para computar a nota como despesa ou exclua o novo lancamento.");
+      return;
+    }
+
+    actions.addTransaction(transaction);
+    setSelectedMonth(transaction.date.slice(0, 7));
+    setReceiptDraft(null);
+    setDuplicateReview(null);
+    setEditingExpenseId(null);
+    setForm((current) => ({
+      ...current,
+      description: "",
+      amount: "",
+      otherCategoryDescription: "",
+      paymentMethod: "other",
+      paymentRecipient: "",
+      notes: "",
+      plan: "single"
+    }));
+    setFeedback(
+      `Nota enviada e salva como despesa em ${transaction.date.slice(0, 7)}: ${transaction.description} - ${formatCurrency(transaction.amount)}.`
+    );
+  }
+
   async function handleReceiptFile(file: File, mode: ReceiptReadMode = "receipt") {
     const isFiscalQrMode = mode === "fiscalQr";
     setIsReadingReceipt(true);
     setFeedback(
       isFiscalQrMode
         ? "MAYA esta procurando o QR Code fiscal e preparando os dados reais da nota..."
-        : "MAYA esta lendo o comprovante e preparando um rascunho..."
+        : "MAYA esta lendo a nota para salvar como despesa..."
     );
 
     try {
@@ -197,20 +297,18 @@ export function ExpensesPage() {
       const storedDraft = result.financialDraft ? withStoredAttachment(result.financialDraft, attachment) : undefined;
 
       if (storedDraft) {
-        applyDraft(storedDraft);
-        const draftDate = storedDraft.documentDate || storedDraft.dueDate || storedDraft.entryDate;
-
-        if (draftDate) {
-          setSelectedMonth(draftDate.slice(0, 7));
-        }
-      }
-
-      setFeedback(
-        buildDraftFeedback(result.message, storedDraft, {
+        saveReceiptDraftAsExpense(storedDraft, {
+          message: result.message,
           isFiscalQrMode,
           detectedQrCount: qrPayloads.length
-        })
-      );
+        });
+      } else {
+        setFeedback(
+          isFiscalQrMode
+            ? "Nao encontrei dados fiscais suficientes nesta imagem. Tente enquadrar melhor o QR Code ou envie o cupom inteiro."
+            : "Nao consegui ler a nota. Voce pode cadastrar a despesa manualmente."
+        );
+      }
     } catch (error) {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
@@ -219,7 +317,7 @@ export function ExpensesPage() {
             ? "O PDF ficou grande demais para leitura. Envie uma versao menor ou uma imagem da nota."
           : isFiscalQrMode
             ? "Nao consegui ler o QR Code desta imagem. Tente uma foto mais perto do QR, bem iluminada, ou anexe o cupom inteiro."
-            : "Nao consegui ler o anexo. Voce pode preencher a despesa manualmente."
+            : "Nao consegui ler a nota. Voce pode preencher a despesa manualmente."
       );
     } finally {
       setIsReadingReceipt(false);
@@ -405,7 +503,7 @@ export function ExpensesPage() {
           `Lancamento encontrado: ${receiptAttachmentMatch.date} - ${formatCurrency(receiptAttachmentMatch.amount)} - ${receiptAttachmentMatch.description}`,
           `Nota lida agora: ${transactions[0].date} - ${formatCurrency(transactions[0].amount)} - ${transactions[0].description}`,
           "",
-          "OK: anexar os dados da nota nesse lancamento existente.",
+          "OK: vincular os dados da nota nesse lancamento existente sem criar novo valor.",
           "Cancelar: continuar e criar uma despesa separada."
         ].join("\n")
       );
@@ -437,7 +535,7 @@ export function ExpensesPage() {
     setDuplicateReview(null);
     setEditingExpenseId(null);
     setFeedback(
-      `Nota anexada a despesa existente "${existing.description}" sem gerar novo valor. Os itens lidos ficam disponiveis no detalhe do lancamento.`
+      `Nota vinculada a despesa existente "${existing.description}" sem gerar novo valor. Os itens lidos ficam disponiveis no detalhe do lancamento.`
     );
     setForm((current) => ({
       ...current,
@@ -458,16 +556,24 @@ export function ExpensesPage() {
       actions.addTransactions(transactions);
     }
 
+    const firstTransactionDate = transactions[0]?.date ?? form.date;
+    const savedPlan =
+      !editId && transactions.length > 1 && transactions.every((transaction) => Boolean(transaction.installmentGroupId))
+        ? "installment"
+        : !editId && transactions.length > 1 && transactions.every((transaction) => transaction.recurring)
+          ? "recurring"
+          : "single";
+
     setFeedback(
       editId
         ? "Despesa atualizada com sucesso."
-        : form.plan === "installment"
+        : savedPlan === "installment"
         ? `${transactions.length} parcelas foram criadas nos meses futuros.`
-        : form.plan === "recurring"
+        : savedPlan === "recurring"
           ? `${transactions.length} despesas recorrentes foram criadas.`
           : "Despesa salva com sucesso."
     );
-    setSelectedMonth(form.date.slice(0, 7));
+    setSelectedMonth(firstTransactionDate.slice(0, 7));
     setReceiptDraft(null);
     setDuplicateReview(null);
     setEditingExpenseId(null);
@@ -537,17 +643,17 @@ export function ExpensesPage() {
           <CardHeader
             eyebrow="Despesas"
             title="Cadastro inteligente"
-            action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Rascunho MAYA" : "Manual ou nota"}</Badge>}
+            action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Revisao MAYA" : "Manual ou nota"}</Badge>}
           />
 
           <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
               <FileImage className="size-4" aria-hidden="true" />
-              Anexar nota
+              Enviar nota
             </Button>
             <Button variant="ghost" onClick={() => cameraRef.current?.click()} disabled={isReadingReceipt}>
               <Camera className="size-4" aria-hidden="true" />
-              Abrir camera
+              Enviar pela camera
             </Button>
             <Button variant="secondary" onClick={() => fiscalQrRef.current?.click()} disabled={isReadingReceipt}>
               <QrCode className="size-4" aria-hidden="true" />
@@ -555,7 +661,7 @@ export function ExpensesPage() {
             </Button>
             <Button variant="secondary" onClick={() => statementRef.current?.click()} disabled={isReadingStatement}>
               <FileText className="size-4" aria-hidden="true" />
-              Anexar extrato
+              Enviar extrato
             </Button>
             <input
               ref={uploadRef}
@@ -613,8 +719,8 @@ export function ExpensesPage() {
             />
           </div>
           <p className="mb-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-xs font-bold leading-5 text-cyan-50">
-            Para cupom fiscal/NFC-e, use <span className="text-bronze">Ler QR Code</span> e enquadre o QR ou o cupom
-            inteiro. A despesa so entra depois da sua revisao.
+            Envie nota, cupom ou PDF. Quando a MAYA encontrar data, valor e descricao, a despesa entra no mes da nota.
+            Se faltar dado ou houver duplicidade, ela pede confirmacao antes de salvar.
           </p>
 
           <p className="mb-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
@@ -996,6 +1102,30 @@ function createPlannedExpenses({
     fiscalDocument,
     notes
   }));
+}
+
+function getReceiptDraftMissingSaveFields(draft: FinancialDocumentDraft) {
+  const missingFields = new Set(draft.missingFields ?? []);
+  const description = (draft.description || draft.title).trim();
+  const date = draft.documentDate || draft.dueDate || draft.entryDate;
+
+  if (!description) {
+    missingFields.add("titulo ou descricao");
+  }
+
+  if (!Number.isFinite(draft.amount) || draft.amount <= 0) {
+    missingFields.add("valor");
+  }
+
+  if (!date) {
+    missingFields.add("data da nota");
+  }
+
+  if (draft.paymentMethod === "pix" && !draft.paymentRecipient?.trim()) {
+    missingFields.add("destinatario do Pix");
+  }
+
+  return Array.from(missingFields);
 }
 
 function buildTransactionsFromStatement(draft: BankStatementDraft): Array<Omit<Transaction, "id" | "createdAt">> {
@@ -1445,39 +1575,6 @@ function StatementDraftReview({
       </div>
     </div>
   );
-}
-
-function buildDraftFeedback(
-  message?: string,
-  draft?: FinancialDocumentDraft,
-  options?: { isFiscalQrMode?: boolean; detectedQrCount?: number }
-) {
-  const hasFiscalQrEvidence = Boolean(draft?.fiscalDocument?.qrCodeUrl || draft?.fiscalDocument?.qrCodeContent);
-  const hasFiscalEvidence = Boolean(
-    hasFiscalQrEvidence || draft?.fiscalDocument?.accessKey || draft?.fiscalDocument?.issuerCnpj
-  );
-
-  if (options?.isFiscalQrMode && draft && hasFiscalQrEvidence) {
-    const prefix =
-      options.detectedQrCount && options.detectedQrCount > 0
-        ? "QR Code fiscal detectado."
-        : "Dados fiscais encontrados na imagem.";
-    const suffix = draft.missingFields.length > 0 ? ` Complete manualmente: ${draft.missingFields.join(", ")}.` : "";
-
-    return `${prefix} Revise os dados reais da nota antes de salvar.${suffix}`;
-  }
-
-  if (options?.isFiscalQrMode && draft && !hasFiscalEvidence) {
-    const suffix = draft.missingFields.length > 0 ? ` Complete manualmente: ${draft.missingFields.join(", ")}.` : "";
-
-    return `Nao encontrei um QR fiscal legivel nesta imagem, mas criei um rascunho com o que estava visivel.${suffix}`;
-  }
-
-  if (!draft || draft.missingFields.length === 0) {
-    return message ?? "Rascunho criado. Revise antes de salvar.";
-  }
-
-  return `${message ?? "Rascunho criado."} Complete manualmente: ${draft.missingFields.join(", ")}.`;
 }
 
 function buildAvailableMonths(transactions: Transaction[]) {

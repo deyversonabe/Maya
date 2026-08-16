@@ -752,13 +752,15 @@ export function useFinanceStore() {
   const actions = useMemo(
     () => ({
       addTransaction(transaction: Omit<Transaction, "id" | "createdAt">) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           transactions: [
             {
               ...transaction,
               id: `txn_${crypto.randomUUID()}`,
-              createdAt: new Date().toISOString()
+              createdAt: now,
+              updatedAt: now
             },
             ...current.transactions
           ],
@@ -779,7 +781,8 @@ export function useFinanceStore() {
             ...transactions.map((transaction) => ({
               ...transaction,
               id: `txn_${crypto.randomUUID()}`,
-              createdAt: now
+              createdAt: now,
+              updatedAt: now
             })),
             ...current.transactions
           ],
@@ -793,13 +796,14 @@ export function useFinanceStore() {
         }));
       },
       updateTransaction(id: string, patch: Partial<Omit<Transaction, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
         setState((current) => {
           const existing = current.transactions.find((transaction) => transaction.id === id);
 
           return {
             ...current,
             transactions: current.transactions.map((transaction) =>
-              transaction.id === id ? { ...transaction, ...patch } : transaction
+              transaction.id === id ? { ...transaction, ...patch, updatedAt: now } : transaction
             ),
             activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
               action: "Editou transacao",
@@ -807,7 +811,7 @@ export function useFinanceStore() {
               entityLabel: existing?.description ?? patch.description ?? id,
               details: `${patch.date ?? existing?.date ?? ""} - ${patch.type ?? existing?.type ?? ""}`
             }),
-            updatedAt: new Date().toISOString()
+            updatedAt: now
           };
         });
       },
@@ -859,7 +863,8 @@ export function useFinanceStore() {
             {
               ...account,
               id: `account_${crypto.randomUUID()}`,
-              createdAt: now
+              createdAt: now,
+              updatedAt: now
             },
             ...current.accounts
           ],
@@ -872,15 +877,16 @@ export function useFinanceStore() {
         }));
       },
       updateAccount(id: string, account: Partial<Omit<FinanceAccount, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
-          accounts: current.accounts.map((item) => (item.id === id ? { ...item, ...account } : item)),
+          accounts: current.accounts.map((item) => (item.id === id ? { ...item, ...account, updatedAt: now } : item)),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Atualizou carteira",
             entityType: "account",
             entityLabel: current.accounts.find((item) => item.id === id)?.name ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       removeAccount(id: string) {
@@ -888,11 +894,14 @@ export function useFinanceStore() {
           return;
         }
 
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           accounts: current.accounts.filter((account) => account.id !== id),
           transactions: current.transactions.map((transaction) =>
-            transaction.accountId === id ? { ...transaction, accountId: DEFAULT_FINANCE_ACCOUNT_ID } : transaction
+            transaction.accountId === id
+              ? { ...transaction, accountId: DEFAULT_FINANCE_ACCOUNT_ID, updatedAt: now }
+              : transaction
           ),
           deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
@@ -900,7 +909,7 @@ export function useFinanceStore() {
             entityType: "account",
             entityLabel: current.accounts.find((account) => account.id === id)?.name ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       addGoal(goal: Omit<Goal, "id" | "createdAt" | "contributions"> & { contributions?: GoalContribution[] }) {
@@ -925,7 +934,8 @@ export function useFinanceStore() {
               ...goal,
               contributions: goal.contributions ?? initialContribution,
               id: `goal_${crypto.randomUUID()}`,
-              createdAt: now
+              createdAt: now,
+              updatedAt: now
             },
             ...current.goals
           ],
@@ -954,6 +964,7 @@ export function useFinanceStore() {
             return {
               ...goal,
               currentAmount,
+              updatedAt: now,
               contributions:
                 delta !== 0
                   ? [
@@ -993,7 +1004,8 @@ export function useFinanceStore() {
               ? {
                   ...goal,
                   currentAmount: Math.max(0, goal.currentAmount + entry.amount),
-                  contributions: [entry, ...goal.contributions]
+                  contributions: [entry, ...goal.contributions],
+                  updatedAt: now
                 }
               : goal
           ),
@@ -1020,13 +1032,15 @@ export function useFinanceStore() {
         }));
       },
       addBudget(budget: Omit<Budget, "id" | "createdAt">) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           budgets: [
             {
               ...budget,
               id: `budget_${crypto.randomUUID()}`,
-              createdAt: new Date().toISOString()
+              createdAt: now,
+              updatedAt: now
             },
             ...current.budgets.filter(
               (item) => !(item.month === budget.month && item.category === budget.category)
@@ -1037,7 +1051,7 @@ export function useFinanceStore() {
             entityType: "budget",
             entityLabel: `${budget.category} - ${budget.month}`
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       removeBudget(id: string) {
@@ -1054,13 +1068,15 @@ export function useFinanceStore() {
         }));
       },
       addBill(bill: Omit<PayableBill, "id" | "createdAt">) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           bills: [
             {
               ...bill,
               id: `bill_${crypto.randomUUID()}`,
-              createdAt: new Date().toISOString()
+              createdAt: now,
+              updatedAt: now
             },
             ...current.bills
           ],
@@ -1070,7 +1086,7 @@ export function useFinanceStore() {
             entityLabel: bill.title,
             details: bill.dueDate
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       addBills(bills: Array<Omit<PayableBill, "id" | "createdAt">>) {
@@ -1081,7 +1097,8 @@ export function useFinanceStore() {
             ...bills.map((bill) => ({
               ...bill,
               id: `bill_${crypto.randomUUID()}`,
-              createdAt: now
+              createdAt: now,
+              updatedAt: now
             })),
             ...current.bills
           ],
@@ -1095,18 +1112,20 @@ export function useFinanceStore() {
         }));
       },
       updateBill(id: string, bill: Partial<Omit<PayableBill, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
-          bills: current.bills.map((item) => (item.id === id ? { ...item, ...bill } : item)),
+          bills: current.bills.map((item) => (item.id === id ? { ...item, ...bill, updatedAt: now } : item)),
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Atualizou conta",
             entityType: "bill",
             entityLabel: current.bills.find((item) => item.id === id)?.title ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       markBillPaid(id: string) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           bills: current.bills.map((bill) =>
@@ -1114,7 +1133,8 @@ export function useFinanceStore() {
               ? {
                   ...bill,
                   status: "paid",
-                  paidAt: new Date().toISOString()
+                  paidAt: now,
+                  updatedAt: now
                 }
               : bill
           ),
@@ -1123,10 +1143,11 @@ export function useFinanceStore() {
             entityType: "bill",
             entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       removeBill(id: string) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           bills: current.bills.filter((bill) => bill.id !== id),
@@ -1136,7 +1157,7 @@ export function useFinanceStore() {
             entityType: "bill",
             entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       addTaxDocument(document: Omit<TaxDocument, "id" | "createdAt" | "updatedAt">) {
@@ -1177,6 +1198,7 @@ export function useFinanceStore() {
         }));
       },
       removeTaxDocument(id: string) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           taxDocuments: current.taxDocuments.filter((document) => document.id !== id),
@@ -1186,7 +1208,7 @@ export function useFinanceStore() {
             entityType: "tax_document",
             entityLabel: current.taxDocuments.find((document) => document.id === id)?.title ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       addLaborBenefit(benefit: Omit<LaborBenefit, "id" | "createdAt" | "updatedAt">) {
@@ -1227,6 +1249,7 @@ export function useFinanceStore() {
         }));
       },
       removeLaborBenefit(id: string) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           laborBenefits: current.laborBenefits.filter((benefit) => benefit.id !== id),
@@ -1236,7 +1259,7 @@ export function useFinanceStore() {
             entityType: "labor_benefit",
             entityLabel: current.laborBenefits.find((benefit) => benefit.id === id)?.employer ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       addPayrollRecord(record: Omit<PayrollRecord, "id" | "createdAt" | "updatedAt">) {
@@ -1277,6 +1300,7 @@ export function useFinanceStore() {
         }));
       },
       removePayrollRecord(id: string) {
+        const now = new Date().toISOString();
         setState((current) => ({
           ...current,
           payrollRecords: current.payrollRecords.filter((record) => record.id !== id),
@@ -1286,7 +1310,7 @@ export function useFinanceStore() {
             entityType: "payroll_record",
             entityLabel: current.payrollRecords.find((record) => record.id === id)?.referenceMonth ?? id
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       upsertWorkTimeEntry(entry: Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt">) {
@@ -1462,7 +1486,8 @@ export function useFinanceStore() {
             quantity,
             unitCost: getSalonMaterialUnitCost(material),
             id: `salon_stock_${crypto.randomUUID()}`,
-            createdAt: now
+            createdAt: now,
+            updatedAt: now
           };
 
           return {
@@ -1520,7 +1545,8 @@ export function useFinanceStore() {
             reason: "Inventario",
             date: input.date,
             notes: input.notes?.trim() || undefined,
-            createdAt: now
+            createdAt: now,
+            updatedAt: now
           };
 
           return {
@@ -1615,7 +1641,8 @@ export function useFinanceStore() {
             salonRecipeVersion: freshRecipe.version ?? 1,
             salonMaterialCost: materialCost,
             salonRecipeItemsSnapshot: materialSnapshot,
-            createdAt: now
+            createdAt: now,
+            updatedAt: now
           };
           const usageMovements = freshRecipe.items.map((item): SalonStockMovement => {
             const material = materialsById.get(item.materialId);
@@ -1631,7 +1658,8 @@ export function useFinanceStore() {
               serviceRecipeId: freshRecipe.id,
               transactionId,
               notes: input.clientName.trim(),
-              createdAt: now
+              createdAt: now,
+              updatedAt: now
             };
           });
           const consumedByMaterial = freshRecipe.items.reduce<Record<string, number>>((totals, item) => {
@@ -1663,15 +1691,22 @@ export function useFinanceStore() {
         });
       },
       importTransactions(transactions: Transaction[]) {
+        const now = new Date().toISOString();
+        const normalizedTransactions = transactions.map((transaction) => ({
+          ...transaction,
+          createdAt: transaction.createdAt || now,
+          updatedAt: transaction.updatedAt || transaction.createdAt || now
+        }));
+
         setState((current) => ({
           ...current,
-          transactions: [...transactions, ...current.transactions],
+          transactions: [...normalizedTransactions, ...current.transactions],
           activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
             action: "Importou CSV",
             entityType: "transaction",
             entityLabel: `${transactions.length} transacao(oes)`
           }),
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }));
       },
       resetLocalCache() {
