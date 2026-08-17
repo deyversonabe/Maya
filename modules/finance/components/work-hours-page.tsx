@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useRef, useState } from "react";
 import {
@@ -127,7 +127,8 @@ export function WorkHoursPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl: isPdf ? attachment.fileDataUrl : undefined,
+          fileDataUrl: isPdf && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
+          fileUrl: isPdf ? attachment.signedUrl : undefined,
           mimeType: file.type,
           fileName: attachment.fileName,
           targetDate: selectedDate
@@ -172,9 +173,8 @@ export function WorkHoursPage() {
   ) {
     const validDrafts = drafts.filter((draft) => draft.date && draft.punches.length > 0);
 
-    validDrafts.forEach((draft) => {
-      actions.upsertWorkTimeEntry(buildWorkTimeEntryFromDraft(draft, fileName, attachment));
-    });
+    const entries = validDrafts.map((draft) => buildWorkTimeEntryFromDraft(draft, fileName, attachment));
+    actions.upsertWorkTimeEntries(entries);
 
     const firstDraft = validDrafts[0];
 
@@ -221,8 +221,8 @@ export function WorkHoursPage() {
       secondIn: punchFields.secondIn,
       secondOut: punchFields.secondOut,
       punches,
-      startTime: punchFields.firstIn || draft.startTime || punches[0] || "",
-      endTime: punchFields.secondOut || draft.endTime || punches[punches.length - 1] || "",
+      startTime: punchFields.firstIn || "",
+      endTime: punchFields.secondOut || "",
       lunchMinutes: Number.isFinite(lunchMinutes) && lunchMinutes >= 0 ? lunchMinutes : draft.lunchMinutes ?? DEFAULT_LUNCH_MINUTES,
       expectedMinutes: draft.expectedMinutes ?? getExpectedMinutesForDate(draftDate),
       notes: [
@@ -247,7 +247,10 @@ export function WorkHoursPage() {
     const draftDate = draft.date || selectedDate;
     const expectedMinutes = draft.expectedMinutes ?? getExpectedMinutesForDate(draftDate);
     const existingForDraft = entriesByDate.get(draftDate);
-    const punchFields = mergeTimeClockDraftIntoPunchFields(draft, getEntryPunchFields(existingForDraft));
+    const punchFields = mergeTimeClockDraftIntoPunchFields(
+      draft,
+      existingForDraft ? getEntryPunchFields(existingForDraft) : EMPTY_PUNCH_FIELDS
+    );
     const lunchMinutes = calculateLunchMinutesFromPunchFields(punchFields);
 
     setTimeClockDraft(draft);
@@ -883,7 +886,7 @@ async function exportWorkHoursPdf({
       const status = getDayStatus(day.date, entry, today);
       const worked = entry ? calculateWorkedMinutesFromEntry(entry) : 0;
       const expected = entry?.expectedMinutes ?? getExpectedMinutesForDate(day.date);
-      const punchFields = getEntryPunchFields(entry);
+      const punchFields = entry ? getEntryPunchFields(entry) : EMPTY_PUNCH_FIELDS;
 
       return [
         formatDate(day.date),
@@ -1029,10 +1032,10 @@ function getEntryPunchFields(entry: Partial<WorkTimeEntry> | undefined): PunchFi
   const punches = normalizePunches(entry?.punches ?? []);
 
   return {
-    firstIn: punches[0] || entry.startTime || DEFAULT_START,
+    firstIn: punches[0] || entry.startTime || "",
     firstOut: punches[1] || "",
     secondIn: punches[2] || "",
-    secondOut: punches[3] || entry.endTime || DEFAULT_END
+    secondOut: punches[3] || entry.endTime || ""
   };
 }
 

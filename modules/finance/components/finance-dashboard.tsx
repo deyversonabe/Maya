@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -40,8 +40,17 @@ import {
   getGoalProgress
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
-import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
-import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import {
+  findTransactionByFiscalAccessKey,
+  findTransactionDuplicateMatches,
+  type TransactionDuplicateMatch
+} from "../lib/duplicates";
+import {
+  buildReceiptExpenseDescription,
+  getReceiptDraftDate,
+  getReceiptDraftMissingSaveFields
+} from "../lib/receipt-validation";
+import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   FinancialDocumentDraft,
@@ -133,13 +142,17 @@ export function FinanceDashboard() {
     setFeedback("MAYA esta lendo o anexo e preparando um rascunho...");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       const documentKind = transactionForm.type === "income" ? "income" : "expense";
       const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
+          fileDataUrl:
+            attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
+          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
+          mimeType: attachment.mimeType,
           fileName: file.name,
           documentKind
         })
@@ -156,6 +169,55 @@ export function FinanceDashboard() {
 
       const draft = withStoredAttachment(result.financialDraft, attachment);
       const date = draft.entryDate || draft.documentDate || draft.dueDate || "";
+
+      if (draft.kind === "expense" && getReceiptDraftMissingSaveFields(draft).length === 0) {
+        const transaction = {
+          type: "expense" as const,
+          description: buildReceiptExpenseDescription(draft),
+          amount: draft.amount,
+          category: draft.category || "Outros",
+          otherCategoryDescription: draft.category === "Outros" ? draft.otherCategoryDescription : undefined,
+          person: draft.person,
+          date: getReceiptDraftDate(draft) || date,
+          recurring: false,
+          source: "receipt" as const,
+          paymentMethod: draft.paymentMethod ?? "other",
+          paymentRecipient: draft.paymentRecipient?.trim() || undefined,
+          receiptImageName: draft.attachmentImageName,
+          attachmentImageName: draft.attachmentImageName,
+          attachmentDataUrl: draft.attachmentDataUrl,
+          attachmentStoragePath: draft.attachmentStoragePath,
+          attachmentMimeType: draft.attachmentMimeType,
+          attachmentSize: draft.attachmentSize,
+          documentItems: draft.items,
+          fiscalDocument: draft.fiscalDocument,
+          notes: draft.notes
+        } satisfies Omit<Transaction, "id" | "createdAt">;
+        const fiscalIdentityMatch = findTransactionByFiscalAccessKey(
+          state.transactions,
+          transaction.fiscalDocument?.accessKey,
+          "expense"
+        );
+
+        if (fiscalIdentityMatch) {
+          mergeReceiptIntoExistingExpense(fiscalIdentityMatch, transaction);
+          return;
+        }
+
+        const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
+
+        if (duplicates.length > 0) {
+          setTransactionDraft(draft);
+          setDuplicateReview({ transaction, matches: duplicates });
+          setFeedback("Nota lida, mas encontrei possivel duplicidade. Confirme antes de computar novamente.");
+          return;
+        }
+
+        saveTransaction(transaction);
+        setFeedback(`Nota salva como despesa em ${transaction.date}. Os indicadores do mes foram recalculados.`);
+        return;
+      }
+
       setTransactionDraft(draft);
       setTransactionForm((current) => ({
         ...current,
@@ -174,7 +236,9 @@ export function FinanceDashboard() {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
-          : "Nao consegui ler o anexo. Preencha a transacao manualmente."
+          : error instanceof Error && error.message === "document_too_large"
+            ? "O PDF ficou grande demais para leitura. Envie uma versao menor."
+            : "Nao consegui ler o anexo. Preencha a transacao manualmente."
       );
     }
   }
@@ -252,6 +316,19 @@ export function FinanceDashboard() {
       notes: transactionDraft?.notes
     } satisfies Omit<Transaction, "id" | "createdAt">;
 
+    if (transaction.type === "expense" && transactionDraft) {
+      const fiscalIdentityMatch = findTransactionByFiscalAccessKey(
+        state.transactions,
+        transaction.fiscalDocument?.accessKey,
+        "expense"
+      );
+
+      if (fiscalIdentityMatch) {
+        mergeReceiptIntoExistingExpense(fiscalIdentityMatch, transaction);
+        return;
+      }
+    }
+
     const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
 
     if (duplicates.length > 0) {
@@ -261,6 +338,48 @@ export function FinanceDashboard() {
     }
 
     saveTransaction(transaction);
+  }
+
+  function mergeReceiptIntoExistingExpense(
+    existing: Transaction,
+    incoming: Omit<Transaction, "id" | "createdAt">
+  ) {
+    actions.updateTransaction(existing.id, {
+      date: incoming.date,
+      amount: incoming.amount,
+      description: incoming.description || existing.description,
+      category: incoming.category || existing.category,
+      otherCategoryDescription: incoming.otherCategoryDescription || existing.otherCategoryDescription,
+      paymentMethod: incoming.paymentMethod || existing.paymentMethod,
+      paymentRecipient: incoming.paymentRecipient || existing.paymentRecipient,
+      source: "receipt",
+      receiptImageName: incoming.receiptImageName || existing.receiptImageName,
+      attachmentImageName: incoming.attachmentImageName || existing.attachmentImageName,
+      attachmentDataUrl: incoming.attachmentDataUrl || existing.attachmentDataUrl,
+      attachmentStoragePath: incoming.attachmentStoragePath || existing.attachmentStoragePath,
+      attachmentMimeType: incoming.attachmentMimeType || existing.attachmentMimeType,
+      attachmentSize: incoming.attachmentSize || existing.attachmentSize,
+      documentItems: incoming.documentItems?.length ? incoming.documentItems : existing.documentItems,
+      fiscalDocument: incoming.fiscalDocument || existing.fiscalDocument,
+      notes: [
+        existing.notes,
+        incoming.notes,
+        "Nota fiscal reimportada: documento existente atualizado sem duplicar a despesa."
+      ]
+        .filter(Boolean)
+        .join(" ")
+    });
+    setTransactionDraft(null);
+    setDuplicateReview(null);
+    setTransactionForm((current) => ({
+      ...current,
+      description: "",
+      amount: "",
+      otherCategoryDescription: "",
+      paymentMethod: "other",
+      paymentRecipient: ""
+    }));
+    setFeedback("Nota fiscal ja existente: dados e anexo foram atualizados sem duplicar a despesa.");
   }
 
   function saveTransaction(transaction: Omit<Transaction, "id" | "createdAt">) {
@@ -524,7 +643,7 @@ export function FinanceDashboard() {
                     ref={transactionImageRef}
                     className="hidden"
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.pdf,application/pdf"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (file) {
@@ -1075,12 +1194,12 @@ function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["item
 
 function withStoredAttachment(
   draft: FinancialDocumentDraft,
-  attachment: FinanceAttachmentUpload
+  attachment: FinanceDocumentAttachmentUpload
 ): FinancialDocumentDraft {
   return {
     ...draft,
     attachmentImageName: attachment.fileName,
-    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentDataUrl: attachment.storagePath ? undefined : attachment.fileDataUrl,
     attachmentStoragePath: attachment.storagePath,
     attachmentMimeType: attachment.mimeType,
     attachmentSize: attachment.size

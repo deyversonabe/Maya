@@ -15,12 +15,14 @@ import type {
   TimeClockDraft,
   TransactionType
 } from "@/modules/finance/types";
+import { normalizeFiscalDocumentDate } from "@/modules/finance/lib/fiscal-date";
 import { parseTimeClockReportText } from "./timecard-report-parser";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5-mini";
 const DEFAULT_VISION_MODEL = "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 18_000;
+const OPENAI_PDF_TIMEOUT_MS = 50_000;
 const FISCAL_QR_FETCH_TIMEOUT_MS = 4_000;
 const FISCAL_QR_MAX_REDIRECTS = 3;
 const FISCAL_QR_ALLOWED_HOSTS = [
@@ -173,12 +175,16 @@ export async function generateMayaAnalysis({
 export async function readReceiptWithMaya({
   imageDataUrl,
   documentText,
+  pdfBase64,
+  pdfUrl,
   fileName,
   documentKind = "expense",
   qrPayloads = []
 }: {
   imageDataUrl?: string;
   documentText?: string;
+  pdfBase64?: string;
+  pdfUrl?: string;
   fileName?: string;
   documentKind?: FinancialDocumentKind;
   qrPayloads?: string[];
@@ -260,18 +266,29 @@ export async function readReceiptWithMaya({
       });
     }
 
+    if (pdfUrl || pdfBase64) {
+      content.push({
+        type: "input_file",
+        ...(pdfUrl ? { file_url: pdfUrl } : { file_data: pdfBase64 }),
+        filename: fileName || "documento-financeiro.pdf"
+      });
+    }
+
+    const hasPdf = Boolean(pdfUrl || pdfBase64);
     const response = await fetchOpenAIResponse(apiKey, {
-        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+        model: hasPdf
+          ? process.env.OPENAI_PDF_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL
+          : process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
             content
           }
         ],
-        max_output_tokens: 3200,
+        max_output_tokens: hasPdf ? 5000 : 3200,
         store: false,
         text: { format: { type: "json_object" } }
-    });
+    }, hasPdf ? OPENAI_PDF_TIMEOUT_MS : OPENAI_TIMEOUT_MS);
 
     if (!response.ok) {
       const error = await parseOpenAIError(response);
@@ -429,15 +446,27 @@ export async function readBankStatementWithMaya({
 
 export async function readTimeClockWithMaya({
   imageDataUrl,
+  pdfBase64,
+  pdfUrl,
   fileName,
   targetDate
 }: {
-  imageDataUrl: string;
+  imageDataUrl?: string;
+  pdfBase64?: string;
+  pdfUrl?: string;
   fileName?: string;
   targetDate?: string;
 }): Promise<TimeClockReadResult> {
   const fallbackDraft = buildFallbackTimeClockDraft(targetDate);
   const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!imageDataUrl && !pdfBase64 && !pdfUrl) {
+    return {
+      timeClockDraft: fallbackDraft,
+      needsReview: true,
+      message: "MAYA nao recebeu um arquivo de ponto valido."
+    };
+  }
 
   if (!apiKey) {
     return {
@@ -448,46 +477,73 @@ export async function readTimeClockWithMaya({
   }
 
   try {
-    const response = await fetchOpenAIResponse(apiKey, {
-        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+    const isMultiDayPdf = Boolean(pdfBase64 || pdfUrl);
+    const promptText = [
+      "Voce e a MAYA. Leia este registro de ponto, comprovante de REP ou espelho de ponto brasileiro com extrema fidelidade.",
+      "O objetivo e preencher registros revisaveis de horas trabalhadas; nunca crie lancamento financeiro.",
+      isMultiDayPdf
+        ? "O arquivo e um PDF possivelmente com varias paginas. Leia TODAS as paginas e retorne TODAS as datas que tiverem ao menos uma batida real."
+        : targetDate
+          ? `Data alvo selecionada pelo usuario: ${targetDate}. Se essa data aparecer, priorize os horarios dessa data.`
+          : "Se houver mais de uma data visivel na imagem, retorne todas em entries.",
+      "Ignore cabecalho, nome da empresa, CNPJ, matricula, assinatura, linha 'Emitido em', periodo do relatorio, numero de pagina, totais legais, banco de horas, horario de emissao e observacoes administrativas.",
+      "Em comprovante individual de REP/relogio de ponto, procure principalmente os rotulos DATA ou TA e HORA. Exemplo comum: DATA: 03/08/2026 HORA: 18:13.",
+      "Procure somente batidas reais: primeira entrada, saida para intervalo, retorno do intervalo e saida final.",
+      "Preserve exatamente os minutos impressos. Nao arredonde, nao complete e NUNCA invente horarios ausentes.",
+      "Quando houver quatro batidas, mapeie como firstIn, firstOut, secondIn e secondOut.",
+      "Quando houver menos de quatro batidas, preencha somente os campos sustentados pelo documento e deixe os demais vazios.",
+      "Quando houver apenas uma batida, classifique-a pelo contexto/horario no campo mais provavel entre firstIn, firstOut, secondIn ou secondOut; nunca replique a mesma batida em entrada e saida.",
+      "Nao use carga horaria esperada, saldo, total trabalhado, intervalo calculado ou horario de emissao como batida.",
+      "Use data YYYY-MM-DD e horarios HH:mm em 24 horas.",
+      "startTime deve existir somente quando firstIn estiver identificado. endTime deve existir somente quando secondOut estiver identificado.",
+      "expectedMinutes deve ser 528 em dia util comum e 0 em sabado/domingo, salvo quando o proprio relatorio informar outra carga esperada confiavel.",
+      "lunchMinutes deve ser a diferenca real entre firstOut e secondIn quando ambas existirem; caso contrario use 72 apenas como expectativa e inclua lunchMinutes em missingFields.",
+      "Retorne somente JSON valido com: entries, detectedDates, notes e, para imagem de um unico registro, tambem os campos do registro no nivel principal.",
+      "Cada item de entries deve conter date, firstIn, firstOut, secondIn, secondOut, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
+      "punches deve conter somente batidas reais do documento. detectedDates deve ser a quantidade de datas com ao menos uma batida real encontradas no documento inteiro.",
+      "Nao omita uma data apenas porque esta incompleta; retorne-a com campos ausentes vazios e listados em missingFields."
+    ].join(" ");
+    const content: Array<Record<string, unknown>> = [
+      {
+        type: "input_text",
+        text: promptText
+      }
+    ];
+
+    if (imageDataUrl) {
+      content.push({
+        type: "input_image",
+        detail: "high",
+        image_url: imageDataUrl
+      });
+    }
+
+    if (pdfUrl || pdfBase64) {
+      content.push({
+        type: "input_file",
+        ...(pdfUrl ? { file_url: pdfUrl } : { file_data: pdfBase64 }),
+        filename: fileName || "cartao-de-ponto.pdf"
+      });
+    }
+
+    const response = await fetchOpenAIResponse(
+      apiKey,
+      {
+        model: isMultiDayPdf
+          ? process.env.OPENAI_PDF_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL
+          : process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: [
-                  "Voce e a MAYA. Leia esta imagem de registro de ponto ou espelho de ponto brasileiro.",
-                  "O objetivo e preencher um rascunho revisavel de horas trabalhadas, nao criar lancamento financeiro.",
-                  targetDate ? `Data alvo selecionada pelo usuario: ${targetDate}. Se essa data aparecer no documento, use somente os horarios dessa data.` : "Se houver varias datas, escolha a data mais legivel e mais completa.",
-                  "Ignore cabecalho, nome da empresa, CNPJ, matricula, assinatura, totais legais, banco de horas antigo, observacoes administrativas, linhas de escala e qualquer texto que nao seja data/horario do dia.",
-                  "Em comprovante individual de REP/relógio de ponto, procure principalmente os rotulos DATA ou TA e HORA. Exemplo comum: DATA: 03/08/2026 HORA: 18:13.",
-                  "Quando a imagem tiver apenas uma batida, retorne essa batida em punches e preencha somente o campo mais provavel entre firstIn, firstOut, secondIn ou secondOut. Nao use o mesmo horario como entrada e saida.",
-                  "Procure horarios reais de batida do ponto: entrada, inicio do intervalo, fim do intervalo e saida.",
-                  "Mapeie as quatro batidas como firstIn, firstOut, secondIn e secondOut quando for possivel.",
-                  "Se houver quatro batidas no dia, use startTime como a primeira batida, endTime como a ultima batida e lunchMinutes como a diferenca entre segunda e terceira batida.",
-                  "Se houver duas batidas no dia, use primeira e ultima batida, e deixe lunchMinutes como 72 apenas se o documento nao mostrar intervalo; inclua lunchMinutes em missingFields.",
-                  "Se houver mais de quatro batidas, use a primeira e a ultima como jornada total e use as batidas intermediarias mais provaveis para intervalo; explique em notes.",
-                  "Use formato de data YYYY-MM-DD e horarios HH:mm em 24 horas.",
-                  "Preserve os horarios exatos. Nunca arredonde minutos.",
-                  "Nao invente data ou horario. Se nao enxergar com confianca, deixe vazio e inclua o campo em missingFields.",
-                  "expectedMinutes deve ser 528 para dia util comum quando a data for segunda a sexta, 0 para sabado/domingo, salvo se o documento mostrar carga esperada diferente.",
-                  "Responda apenas JSON valido com: date, firstIn, firstOut, secondIn, secondOut, startTime, endTime, lunchMinutes, expectedMinutes, confidence, missingFields, punches, notes.",
-                  "punches deve listar todos os horarios de batida usados ou relevantes no formato HH:mm."
-                ].join(" ")
-              },
-              {
-                type: "input_image",
-                detail: "high",
-                image_url: imageDataUrl
-              }
-            ]
+            content
           }
         ],
-        max_output_tokens: 1200,
+        max_output_tokens: isMultiDayPdf ? 6500 : 1800,
         store: false,
         text: { format: { type: "json_object" } }
-    });
+      },
+      isMultiDayPdf ? OPENAI_PDF_TIMEOUT_MS : OPENAI_TIMEOUT_MS
+    );
 
     if (!response.ok) {
       const error = await parseOpenAIError(response);
@@ -502,23 +558,46 @@ export async function readTimeClockWithMaya({
 
     const data = (await response.json()) as OpenAIResponse;
     const parsed = parseJsonObject(getOutputText(data));
-    const parsedEntries = Array.isArray(parsed.entries) ? parsed.entries : Array.isArray(parsed.dias) ? parsed.dias : [];
+    const parsedEntries = Array.isArray(parsed.entries)
+      ? parsed.entries
+      : Array.isArray(parsed.dias)
+        ? parsed.dias
+        : [];
     const timeClockDrafts = parsedEntries
       .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-      .map((entry) => normalizeTimeClockDraft(entry, buildFallbackTimeClockDraft(toDateString(entry.date ?? entry.data) || targetDate)))
+      .map((entry) =>
+        normalizeTimeClockDraft(
+          entry,
+          buildFallbackTimeClockDraft(toDateString(entry.date ?? entry.data) || targetDate)
+        )
+      )
       .filter((draft) => draft.date && draft.punches.length > 0);
-    const timeClockDraft = timeClockDrafts[0] ?? normalizeTimeClockDraft(parsed, fallbackDraft);
+    const singleDraft = normalizeTimeClockDraft(parsed, fallbackDraft);
+    const usableDrafts =
+      timeClockDrafts.length > 0
+        ? timeClockDrafts
+        : singleDraft.date && singleDraft.punches.length > 0
+          ? [singleDraft]
+          : [];
+    const timeClockDraft = usableDrafts[0] ?? fallbackDraft;
+    const detectedDates = Math.max(
+      usableDrafts.length,
+      Number.isFinite(Number(parsed.detectedDates)) ? Math.max(0, Math.round(Number(parsed.detectedDates))) : 0
+    );
+    const reviewDates = usableDrafts.filter((draft) => draft.missingFields.length > 0).length;
 
     return {
       timeClockDraft,
-      timeClockDrafts: timeClockDrafts.length > 1 ? timeClockDrafts : undefined,
+      timeClockDrafts: usableDrafts.length > 1 ? usableDrafts : undefined,
       needsReview: true,
       message:
-        timeClockDrafts.length > 1
-          ? `MAYA encontrou ${timeClockDrafts.length} dia(s) no relatorio. Revise os registros importados.`
-          : timeClockDraft.startTime && timeClockDraft.endTime
-          ? "MAYA leu o ponto e preencheu o rascunho. Revise os horarios antes de salvar."
-          : "MAYA nao encontrou horarios suficientes no ponto. Complete manualmente antes de salvar."
+        usableDrafts.length > 1
+          ? `MAYA identificou ${detectedDates || usableDrafts.length} data(s), preparou ${usableDrafts.length} registro(s) e marcou ${reviewDates} para revisao.`
+          : timeClockDraft.firstIn && timeClockDraft.secondOut
+            ? "MAYA leu o ponto e preencheu o rascunho. Revise os horarios antes de salvar."
+            : usableDrafts.length === 1
+              ? "MAYA encontrou uma batida/registro parcial. Os campos ausentes ficaram vazios para revisao."
+              : "MAYA nao encontrou batidas confiaveis no ponto. Confira o arquivo ou preencha manualmente."
     };
   } catch (error) {
     const failure = normalizeCaughtFailure(error);
@@ -587,9 +666,13 @@ interface OpenAIFailure {
   message?: string;
 }
 
-async function fetchOpenAIResponse(apiKey: string, payload: Record<string, unknown>) {
+async function fetchOpenAIResponse(
+  apiKey: string,
+  payload: Record<string, unknown>,
+  timeoutMs = OPENAI_TIMEOUT_MS
+) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(OPENAI_RESPONSES_URL, {
@@ -1202,12 +1285,14 @@ function normalizeFinancialDraft(
     9999999,
     fiscalDocument?.paidAmount ?? fiscalDocument?.totalItemsAmount ?? 0
   );
-  const documentDate =
+  const rawDocumentDate =
     toDateString(parsed.documentDate) ||
     toDateString(parsed.issueDate) ||
     toDateString(parsed.emissionDate) ||
     toDateString(parsed.dataEmissao) ||
     toDateString(parsed.date);
+  const normalizedDocumentDate = normalizeFiscalDocumentDate(rawDocumentDate, fiscalDocument?.accessKey);
+  const documentDate = normalizedDocumentDate.date;
   const dueDate =
     toDateString(parsed.dueDate) ||
     toDateString(parsed.vencimento) ||
@@ -1301,7 +1386,11 @@ function normalizeFinancialDraft(
     missingFields: Array.from(missingFields),
     items,
     fiscalDocument,
-    notes: buildFinancialDocumentNotes(toCleanString(parsed.notes), fiscalDocument, fallback.notes)
+    notes: buildFinancialDocumentNotes(
+      [toCleanString(parsed.notes), normalizedDocumentDate.note].filter(Boolean).join(" "),
+      fiscalDocument,
+      fallback.notes
+    )
   };
 }
 
@@ -1389,39 +1478,29 @@ function buildFallbackTimeClockDraft(targetDate?: string): TimeClockDraft {
 
 function normalizeTimeClockDraft(parsed: Record<string, unknown>, fallback: TimeClockDraft): TimeClockDraft {
   const date = toDateString(parsed.date ?? parsed.data ?? parsed.workDate ?? parsed.referenceDate) || fallback.date;
+  const explicitFirstIn = normalizeClockTime(parsed.firstIn ?? parsed.entrada1 ?? parsed.primeiraEntrada);
+  const explicitFirstOut = normalizeClockTime(parsed.firstOut ?? parsed.saidaAlmoco ?? parsed.inicioIntervalo ?? parsed.intervalStart);
+  const explicitSecondIn = normalizeClockTime(parsed.secondIn ?? parsed.retornoAlmoco ?? parsed.fimIntervalo ?? parsed.intervalEnd);
+  const explicitSecondOut = normalizeClockTime(parsed.secondOut ?? parsed.saidaFinal);
   const rawPunches = parsed.punches ?? parsed.batidas ?? parsed.times ?? parsed.horarios;
-  const punches = normalizeClockPunches(rawPunches);
-  const inferredFields = inferTimeClockFieldsFromPunches(punches);
-  const firstIn =
-    normalizeClockTime(parsed.firstIn ?? parsed.entrada1 ?? parsed.primeiraEntrada) ||
-    inferredFields.firstIn ||
-    fallback.firstIn ||
-    "";
-  const firstOut =
-    normalizeClockTime(parsed.firstOut ?? parsed.saidaAlmoco ?? parsed.inicioIntervalo ?? parsed.intervalStart) ||
-    inferredFields.firstOut ||
-    fallback.firstOut ||
-    "";
-  const secondIn =
-    normalizeClockTime(parsed.secondIn ?? parsed.retornoAlmoco ?? parsed.fimIntervalo ?? parsed.intervalEnd) ||
-    inferredFields.secondIn ||
-    fallback.secondIn ||
-    "";
-  const secondOut =
-    normalizeClockTime(parsed.secondOut ?? parsed.saidaFinal ?? parsed.endTime ?? parsed.saida) ||
-    inferredFields.secondOut ||
-    fallback.secondOut ||
-    "";
-  const startTime =
-    (firstIn && secondOut ? firstIn : "") ||
-    (punches.length >= 2 ? punches[0] : "") ||
-    normalizeClockTime(parsed.startTime ?? parsed.entrada ?? parsed.firstPunch ?? parsed.inicio) ||
-    fallback.startTime;
-  const endTime =
-    (firstIn && secondOut ? secondOut : "") ||
-    (punches.length >= 2 ? punches[punches.length - 1] : "") ||
-    normalizeClockTime(parsed.endTime ?? parsed.saida ?? parsed.lastPunch ?? parsed.fim) ||
-    fallback.endTime;
+  const listedPunches = normalizeClockPunches(rawPunches);
+  const fallbackCandidates = normalizeClockPunches([
+    explicitFirstIn,
+    explicitFirstOut,
+    explicitSecondIn,
+    explicitSecondOut,
+    normalizeClockTime(parsed.startTime ?? parsed.entrada ?? parsed.firstPunch ?? parsed.inicio),
+    normalizeClockTime(parsed.endTime ?? parsed.saida ?? parsed.lastPunch ?? parsed.fim)
+  ]);
+  const sourcePunches = listedPunches.length > 0 ? listedPunches : fallbackCandidates;
+  const inferredFields = inferTimeClockFieldsFromPunches(sourcePunches);
+  const firstIn = explicitFirstIn || inferredFields.firstIn || fallback.firstIn || "";
+  const firstOut = explicitFirstOut || inferredFields.firstOut || fallback.firstOut || "";
+  const secondIn = explicitSecondIn || inferredFields.secondIn || fallback.secondIn || "";
+  const secondOut = explicitSecondOut || inferredFields.secondOut || fallback.secondOut || "";
+  const punches = normalizeClockPunches([firstIn, firstOut, secondIn, secondOut].filter(Boolean));
+  const startTime = firstIn || "";
+  const endTime = secondOut || "";
   const secondPunch = firstOut ? timeToMinutes(firstOut) : Number.NaN;
   const thirdPunch = secondIn ? timeToMinutes(secondIn) : Number.NaN;
   const lunchFromPunches =

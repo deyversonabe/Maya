@@ -88,8 +88,8 @@ export function findDuplicateTransaction(
 }
 
 export function isPossibleTransactionDuplicate(
-  existing: Pick<Transaction, "type" | "amount" | "date">,
-  incoming: Pick<Transaction, "type" | "amount" | "date">
+  existing: Pick<Transaction, "type" | "amount" | "date"> & Partial<Pick<Transaction, "fiscalDocument">>,
+  incoming: Pick<Transaction, "type" | "amount" | "date"> & Partial<Pick<Transaction, "fiscalDocument">>
 ) {
   if (!isTrackedTransactionType(existing.type) || !isTrackedTransactionType(incoming.type)) {
     return false;
@@ -97,6 +97,13 @@ export function isPossibleTransactionDuplicate(
 
   if (existing.type !== incoming.type) {
     return false;
+  }
+
+  const existingAccessKey = normalizeFiscalAccessKey(existing.fiscalDocument?.accessKey);
+  const incomingAccessKey = normalizeFiscalAccessKey(incoming.fiscalDocument?.accessKey);
+
+  if (existingAccessKey && incomingAccessKey && existingAccessKey === incomingAccessKey) {
+    return true;
   }
 
   if (!areSameMoneyValue(existing.amount, incoming.amount)) {
@@ -138,4 +145,25 @@ function areDatesNear(left: string, right: string) {
   }
 
   return Math.abs(leftTime - rightTime) <= 2 * 86_400_000;
+}
+
+export function normalizeFiscalAccessKey(value: string | undefined) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length === 44 ? digits : "";
+}
+
+export function findTransactionByFiscalAccessKey(
+  transactions: Transaction[],
+  accessKey: string | undefined,
+  type: Transaction["type"] = "expense"
+) {
+  const normalized = normalizeFiscalAccessKey(accessKey);
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  return transactions.find(
+    (transaction) => transaction.type === type && normalizeFiscalAccessKey(transaction.fiscalDocument?.accessKey) === normalized
+  );
 }

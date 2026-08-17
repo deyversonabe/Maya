@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { Camera, Check, FileImage, FileText, Pencil, QrCode, Trash2 } from "lucide-react";
@@ -31,6 +31,11 @@ import {
   type FinanceDocumentAttachmentUpload
 } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
+import {
+  buildReceiptExpenseDescription,
+  getReceiptDraftDate,
+  getReceiptDraftMissingSaveFields
+} from "../lib/receipt-validation";
 import type {
   BankStatementDraft,
   FinancialDocumentDraft,
@@ -171,13 +176,13 @@ export function ExpensesPage() {
     }
 
     return createPlannedExpenses({
-      description: (draft.description || draft.title).trim(),
+      description: buildReceiptExpenseDescription(draft),
       amount: draft.amount,
       category: draft.category?.trim() || "Outros",
       otherCategoryDescription: draft.category === "Outros" ? draft.otherCategoryDescription?.trim() : undefined,
       person: draft.person,
       accountId: selectedExpenseAccountId,
-      date: draft.documentDate || draft.dueDate || draft.entryDate || today,
+      date: getReceiptDraftDate(draft) || today,
       paymentMethod: draft.paymentMethod ?? "other",
       paymentRecipient: draft.paymentRecipient?.trim() ?? "",
       plan: "single",
@@ -210,6 +215,13 @@ export function ExpensesPage() {
       setFeedback(
         `${partialMessage} Complete os campos para salvar como despesa: ${missingFields.join(", ")}.`
       );
+      return;
+    }
+
+    const fiscalIdentityMatch = findSameFiscalAccessKeyExpense(state.transactions, transaction);
+
+    if (fiscalIdentityMatch) {
+      attachReceiptToExistingExpense(fiscalIdentityMatch, transaction, true);
       return;
     }
 
@@ -282,7 +294,9 @@ export function ExpensesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl: attachment.mimeType === "application/pdf" ? attachment.fileDataUrl : undefined,
+          fileDataUrl:
+            attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
+          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
           mimeType: attachment.mimeType,
           fileName: file.name,
           documentKind: "expense",
@@ -490,6 +504,16 @@ export function ExpensesPage() {
     const comparableTransactions = editingExpenseId
       ? state.transactions.filter((transaction) => transaction.id !== editingExpenseId)
       : state.transactions;
+    const fiscalIdentityMatch =
+      receiptDraft && !editingExpenseId && form.plan === "single"
+        ? findSameFiscalAccessKeyExpense(comparableTransactions, transactions[0])
+        : null;
+
+    if (fiscalIdentityMatch) {
+      attachReceiptToExistingExpense(fiscalIdentityMatch, transactions[0], true);
+      return;
+    }
+
     const receiptAttachmentMatch =
       receiptDraft && !editingExpenseId && form.plan === "single"
         ? findSameDaySameAmountExpense(comparableTransactions, transactions[0])
@@ -527,10 +551,12 @@ export function ExpensesPage() {
 
   function attachReceiptToExistingExpense(
     existing: Transaction,
-    incoming: Omit<Transaction, "id" | "createdAt">
+    incoming: Omit<Transaction, "id" | "createdAt">,
+    synchronizeFiscalIdentity = false
   ) {
-    actions.updateTransaction(existing.id, buildReceiptAttachmentPatch(existing, incoming));
-    setSelectedMonth(existing.date.slice(0, 7));
+    actions.updateTransaction(existing.id, buildReceiptAttachmentPatch(existing, incoming, synchronizeFiscalIdentity));
+    const selectedDate = synchronizeFiscalIdentity ? incoming.date : existing.date;
+    setSelectedMonth(selectedDate.slice(0, 7));
     setReceiptDraft(null);
     setDuplicateReview(null);
     setEditingExpenseId(null);
@@ -1104,30 +1130,6 @@ function createPlannedExpenses({
   }));
 }
 
-function getReceiptDraftMissingSaveFields(draft: FinancialDocumentDraft) {
-  const missingFields = new Set(draft.missingFields ?? []);
-  const description = (draft.description || draft.title).trim();
-  const date = draft.documentDate || draft.dueDate || draft.entryDate;
-
-  if (!description) {
-    missingFields.add("titulo ou descricao");
-  }
-
-  if (!Number.isFinite(draft.amount) || draft.amount <= 0) {
-    missingFields.add("valor");
-  }
-
-  if (!date) {
-    missingFields.add("data da nota");
-  }
-
-  if (draft.paymentMethod === "pix" && !draft.paymentRecipient?.trim()) {
-    missingFields.add("destinatario do Pix");
-  }
-
-  return Array.from(missingFields);
-}
-
 function buildTransactionsFromStatement(draft: BankStatementDraft): Array<Omit<Transaction, "id" | "createdAt">> {
   return draft.lines.map((line) => ({
     type: line.type,
@@ -1161,6 +1163,24 @@ function buildTransactionsFromStatement(draft: BankStatementDraft): Array<Omit<T
   }));
 }
 
+function findSameFiscalAccessKeyExpense(
+  existingTransactions: Transaction[],
+  incoming?: Omit<Transaction, "id" | "createdAt">
+) {
+  const accessKey = incoming?.fiscalDocument?.accessKey?.replace(/\D/g, "");
+
+  if (!incoming || incoming.type !== "expense" || !accessKey || accessKey.length !== 44) {
+    return null;
+  }
+
+  return (
+    existingTransactions.find((existing) => {
+      const existingAccessKey = existing.fiscalDocument?.accessKey?.replace(/\D/g, "");
+      return existing.type === "expense" && existingAccessKey === accessKey;
+    }) ?? null
+  );
+}
+
 function findSameDaySameAmountExpense(
   existingTransactions: Transaction[],
   incoming?: Omit<Transaction, "id" | "createdAt">
@@ -1181,9 +1201,11 @@ function findSameDaySameAmountExpense(
 
 function buildReceiptAttachmentPatch(
   existing: Transaction,
-  incoming: Omit<Transaction, "id" | "createdAt">
+  incoming: Omit<Transaction, "id" | "createdAt">,
+  synchronizeFiscalIdentity = false
 ): Partial<Omit<Transaction, "id" | "createdAt">> {
   return {
+    ...(synchronizeFiscalIdentity ? { date: incoming.date, amount: incoming.amount } : {}),
     description: chooseReceiptEnhancedDescription(existing.description, incoming.description, existing.source),
     category: incoming.category || existing.category,
     otherCategoryDescription: incoming.otherCategoryDescription || existing.otherCategoryDescription,

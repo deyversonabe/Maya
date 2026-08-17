@@ -1344,6 +1344,54 @@ export function useFinanceStore() {
           };
         });
       },
+      upsertWorkTimeEntries(entries: Array<Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt">>) {
+        if (entries.length === 0) {
+          return;
+        }
+
+        const now = new Date().toISOString();
+        setState((current) => {
+          const workTimeEntries = [...current.workTimeEntries];
+          const indexByKey = new Map<string, number>(
+            workTimeEntries.map((item, index) => [`${item.person}::${item.date}`, index])
+          );
+
+          entries.forEach((entry) => {
+            const key = `${entry.person}::${entry.date}`;
+            const existingIndex = indexByKey.get(key);
+
+            if (existingIndex !== undefined) {
+              workTimeEntries[existingIndex] = {
+                ...workTimeEntries[existingIndex],
+                ...entry,
+                updatedAt: now
+              };
+              return;
+            }
+
+            const created: WorkTimeEntry = {
+              ...entry,
+              id: `work_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            };
+            indexByKey.set(key, workTimeEntries.length);
+            workTimeEntries.push(created);
+          });
+
+          return {
+            ...current,
+            workTimeEntries,
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Importou pontos em lote",
+              entityType: "work_time_entry",
+              entityLabel: `${entries.length} dia(s)`,
+              details: `${entries[0]?.person ?? "Pessoa"} - ${entries[0]?.date ?? ""}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
       removeWorkTimeEntry(id: string) {
         setState((current) => ({
           ...current,

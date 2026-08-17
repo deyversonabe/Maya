@@ -5,7 +5,7 @@ import { toDateKey } from "@/lib/utils";
 
 const MAX_IMAGE_EDGE = 3000;
 const MAX_DATA_URL_LENGTH = 3_800_000;
-const MAX_DOCUMENT_DATA_URL_LENGTH = 7_000_000;
+const MAX_DOCUMENT_DATA_URL_LENGTH = 3_900_000;
 const JPEG_QUALITY = 0.92;
 const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
 const WORKSPACE_ID =
@@ -15,15 +15,17 @@ export interface FinanceAttachmentUpload {
   imageDataUrl: string;
   fileName: string;
   storagePath?: string;
+  signedUrl?: string;
   mimeType: string;
   size: number;
 }
 
 export interface FinanceDocumentAttachmentUpload {
   imageDataUrl?: string;
-  fileDataUrl: string;
+  fileDataUrl?: string;
   fileName: string;
   storagePath?: string;
+  signedUrl?: string;
   mimeType: string;
   size: number;
 }
@@ -94,12 +96,13 @@ export async function fileToFinanceAttachment(file: File): Promise<FinanceAttach
   const imageDataUrl = await fileToOptimizedImageDataUrl(file);
   const mimeType = getMimeTypeFromDataUrl(imageDataUrl) || "image/jpeg";
   const binary = dataUrlToBlob(imageDataUrl, mimeType);
-  const storagePath = await tryUploadAttachment(file.name, binary, mimeType);
+  const uploaded = await tryUploadAttachment(file.name, binary, mimeType);
 
   return {
     imageDataUrl,
     fileName: file.name,
-    storagePath,
+    storagePath: uploaded?.storagePath,
+    signedUrl: uploaded?.signedUrl,
     mimeType,
     size: binary.size
   };
@@ -121,22 +124,31 @@ export async function fileToFinanceDocumentAttachment(file: File): Promise<Finan
     throw new Error("invalid_finance_document_file");
   }
 
+  const mimeType = file.type || "application/pdf";
+  const uploaded = await tryUploadAttachment(file.name, file, mimeType);
+
+  if (uploaded?.signedUrl) {
+    return {
+      fileName: file.name,
+      storagePath: uploaded.storagePath,
+      signedUrl: uploaded.signedUrl,
+      mimeType,
+      size: file.size
+    };
+  }
+
   const fileDataUrl = await fileToDataUrl(file);
 
   if (fileDataUrl.length > MAX_DOCUMENT_DATA_URL_LENGTH) {
     throw new Error("document_too_large");
   }
 
-  const mimeType = getMimeTypeFromDataUrl(fileDataUrl) || "application/pdf";
-  const binary = dataUrlToBlob(fileDataUrl, mimeType);
-  const storagePath = await tryUploadAttachment(file.name, binary, mimeType);
-
   return {
     fileDataUrl,
     fileName: file.name,
-    storagePath,
-    mimeType,
-    size: binary.size
+    storagePath: uploaded?.storagePath,
+    mimeType: getMimeTypeFromDataUrl(fileDataUrl) || mimeType,
+    size: file.size
   };
 }
 
@@ -233,7 +245,20 @@ async function tryUploadAttachment(fileName: string, blob: Blob, mimeType: strin
     return undefined;
   }
 
-  return path;
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .createSignedUrl(path, 10 * 60);
+
+  if (signedError || !signedData?.signedUrl) {
+    console.warn("maya_attachment_signed_url_failed", {
+      bucket: ATTACHMENT_BUCKET,
+      code: signedError?.name,
+      message: signedError?.message
+    });
+    return { storagePath: path };
+  }
+
+  return { storagePath: path, signedUrl: signedData.signedUrl };
 }
 
 function dataUrlToBlob(dataUrl: string, mimeType: string) {

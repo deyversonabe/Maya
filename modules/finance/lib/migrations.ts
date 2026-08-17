@@ -1,5 +1,7 @@
 ﻿import { DEFAULT_FINANCE_ACCOUNT_ID, createDefaultFinanceAccount, createEmptyFinanceState } from "../data/defaults";
 import { getCurrentMonthKey, toDateKey } from "../../../lib/utils";
+import { normalizeFiscalDocumentDate } from "./fiscal-date";
+import { mergeTransactionsByFiscalIdentity } from "./state-merge";
 import type {
   Budget,
   FinanceActivityLog,
@@ -154,7 +156,7 @@ export function migrateFinanceState(value: unknown): FinanceState {
       schemaVersion: 7,
       profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
       accounts: [createDefaultFinanceAccount()],
-      transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
+      transactions: normalizeTransactions(Array.isArray(state.transactions) ? state.transactions : []),
       goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
       budgets: [],
       bills: [],
@@ -201,7 +203,7 @@ function normalizeV7(state: PersistedFinanceStateV7): FinanceState {
     schemaVersion: 7,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
     accounts: normalizeAccounts(state.accounts),
-    transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
+    transactions: normalizeTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
     budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
     bills: normalizeBills(state.bills),
@@ -255,7 +257,7 @@ function normalizeV3(state: PersistedFinanceStateV3) {
   return {
     schemaVersion: 3 as const,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
-    transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
+    transactions: normalizeTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
     budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
     bills: normalizeBills(state.bills),
@@ -468,10 +470,15 @@ function normalizeWorkTimeEntries(entries: WorkTimeEntry[] | undefined): WorkTim
       const legacyStart = normalizeOptionalTime(entry.startTime);
       const legacyEnd = normalizeOptionalTime(entry.endTime);
       const punches = normalizeWorkPunches(entry.punches, legacyStart, legacyEnd);
-      const firstIn = normalizeOptionalTime(entry.firstIn) || punches[0] || legacyStart || "08:00";
-      const firstOut = normalizeOptionalTime(entry.firstOut) || punches[1];
-      const secondIn = normalizeOptionalTime(entry.secondIn) || punches[2];
-      const secondOut = normalizeOptionalTime(entry.secondOut) || punches[3] || legacyEnd || "18:00";
+      const explicitFirstIn = normalizeOptionalTime(entry.firstIn);
+      const explicitFirstOut = normalizeOptionalTime(entry.firstOut);
+      const explicitSecondIn = normalizeOptionalTime(entry.secondIn);
+      const explicitSecondOut = normalizeOptionalTime(entry.secondOut);
+      const hasStructuredPunches = Boolean(explicitFirstIn || explicitFirstOut || explicitSecondIn || explicitSecondOut);
+      const firstIn = explicitFirstIn || (!hasStructuredPunches ? punches[0] || legacyStart : "") || "";
+      const firstOut = explicitFirstOut || (!hasStructuredPunches ? punches[1] : "") || "";
+      const secondIn = explicitSecondIn || (!hasStructuredPunches ? punches[2] : "") || "";
+      const secondOut = explicitSecondOut || (!hasStructuredPunches ? punches[3] || legacyEnd : "") || "";
       const lunchFromPunches = firstOut && secondIn ? Math.max(0, timeToMinutes(secondIn) - timeToMinutes(firstOut)) : Number.NaN;
 
       return {
@@ -513,7 +520,7 @@ function normalizeV2(state: PersistedFinanceStateV2) {
   return {
     schemaVersion: 2 as const,
     profile: isHouseholdProfile(state.profile) ? state.profile : createEmptyFinanceState().profile,
-    transactions: stripLegacyDemoTransactions(Array.isArray(state.transactions) ? state.transactions : []),
+    transactions: normalizeTransactions(Array.isArray(state.transactions) ? state.transactions : []),
     goals: normalizeGoals(stripLegacyDemoGoals(Array.isArray(state.goals) ? state.goals : [])),
     budgets: stripLegacyDemoBudgets(normalizeBudgets(state.budgets)),
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : new Date().toISOString()
@@ -745,6 +752,34 @@ const legacyDemoTransactionFingerprints = new Set([
 const legacyDemoGoalFingerprints = new Set([1670746555, 1374139306, 223302076]);
 
 const legacyDemoBudgetFingerprints = new Set([3156547588, 341645336, 3781375277]);
+
+function normalizeTransactions(transactions: Transaction[]) {
+  const now = new Date().toISOString();
+  const normalized = stripLegacyDemoTransactions(transactions).map((transaction): Transaction => {
+    const accessKey = transaction.fiscalDocument?.accessKey?.replace(/\D/g, "") ?? "";
+
+    if (accessKey.length !== 44) {
+      return transaction;
+    }
+
+    const normalizedDate = normalizeFiscalDocumentDate(transaction.date, accessKey);
+
+    if (!normalizedDate.date || normalizedDate.date === transaction.date) {
+      return transaction;
+    }
+
+    return {
+      ...transaction,
+      date: normalizedDate.date,
+      notes: [transaction.notes, normalizedDate.note, "Data fiscal reconciliada automaticamente pela chave de acesso." ]
+        .filter(Boolean)
+        .join(" "),
+      updatedAt: now
+    };
+  });
+
+  return mergeTransactionsByFiscalIdentity(normalized);
+}
 
 function stripLegacyDemoTransactions(transactions: Transaction[]) {
   return transactions

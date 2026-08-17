@@ -1,5 +1,5 @@
 import { DEFAULT_FINANCE_ACCOUNT_ID, createEmptyFinanceState } from "../data/defaults";
-import type { FinanceAccount, FinanceState } from "../types";
+import type { FinanceAccount, FinanceState, Transaction, WorkTimeEntry } from "../types";
 
 export const MAX_DELETED_ENTITY_IDS = 5000;
 export const MAX_ACTIVITY_LOGS = 200;
@@ -62,7 +62,9 @@ export function mergeFinanceStates(cloudState: FinanceState, localState: Finance
     schemaVersion: 7,
     profile: localTime >= cloudTime ? localState.profile : cloudState.profile,
     accounts: ensureDefaultAccount(filterDeletedItems(mergeById(cloudState.accounts, localState.accounts), deletedEntityIdSet)).sort(sortByCreatedAtDesc),
-    transactions: filterDeletedItems(mergeById(cloudState.transactions, localState.transactions), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    transactions: mergeTransactionsByFiscalIdentity(
+      filterDeletedItems(mergeById(cloudState.transactions, localState.transactions), deletedEntityIdSet)
+    ).sort(sortByCreatedAtDesc),
     goals: filterDeletedItems(mergeById(cloudState.goals, localState.goals), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     budgets: filterDeletedItems(mergeById(cloudState.budgets, localState.budgets), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     bills: filterDeletedItems(mergeById(cloudState.bills, localState.bills), deletedEntityIdSet).sort(sortByCreatedAtDesc),
@@ -72,7 +74,9 @@ export function mergeFinanceStates(cloudState: FinanceState, localState: Finance
     taxDocuments: filterDeletedItems(mergeById(cloudState.taxDocuments, localState.taxDocuments), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     laborBenefits: filterDeletedItems(mergeById(cloudState.laborBenefits, localState.laborBenefits), deletedEntityIdSet).sort(sortByCreatedAtDesc),
     payrollRecords: filterDeletedItems(mergeById(cloudState.payrollRecords, localState.payrollRecords), deletedEntityIdSet).sort(sortByCreatedAtDesc),
-    workTimeEntries: filterDeletedItems(mergeById(cloudState.workTimeEntries, localState.workTimeEntries), deletedEntityIdSet).sort(sortByCreatedAtDesc),
+    workTimeEntries: mergeWorkTimeEntriesByPersonDate(
+      filterDeletedItems(mergeById(cloudState.workTimeEntries, localState.workTimeEntries), deletedEntityIdSet)
+    ).sort(sortByCreatedAtDesc),
     activityLogs: filterDeletedItems(mergeById(cloudState.activityLogs, localState.activityLogs), deletedEntityIdSet)
       .sort(sortByCreatedAtDesc)
       .slice(0, MAX_ACTIVITY_LOGS),
@@ -110,6 +114,31 @@ export function mergeById<T extends MergeableFinanceItem>(base: T[], incoming: T
   incoming.forEach((item) => {
     const existing = merged.get(item.id);
     merged.set(item.id, existing ? mergeLatestItemPreservingDocuments(existing, item) : item);
+  });
+
+  return Array.from(merged.values());
+}
+
+export function mergeWorkTimeEntriesByPersonDate(items: WorkTimeEntry[]) {
+  const merged = new Map<string, WorkTimeEntry>();
+
+  items.forEach((item) => {
+    const key = `${item.person}::${item.date}`;
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergeLatestItemPreservingDocuments(existing, item) : item);
+  });
+
+  return Array.from(merged.values());
+}
+
+export function mergeTransactionsByFiscalIdentity(items: Transaction[]) {
+  const merged = new Map<string, Transaction>();
+
+  items.forEach((item) => {
+    const accessKey = item.fiscalDocument?.accessKey?.replace(/\D/g, "");
+    const key = accessKey && accessKey.length === 44 ? `fiscal:${item.type}:${accessKey}` : `id:${item.id}`;
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergeLatestItemPreservingDocuments(existing, item) : item);
   });
 
   return Array.from(merged.values());
