@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireWorkspaceMember } from "@/app/api/_shared/require-member";
-import { readTimeClockReportText, readTimeClockWithMaya } from "@/modules/ai/maya";
+import { normalizeAllowedAttachmentUrl } from "@/app/api/_shared/attachment-url";
+import { readTimeClockWithMaya } from "@/modules/ai/maya";
 
-const MAX_IMAGE_DATA_URL_LENGTH = 7_000_000;
-const MAX_PDF_DATA_URL_LENGTH = 10_000_000;
+const MAX_IMAGE_DATA_URL_LENGTH = 4_000_000;
+const MAX_PDF_DATA_URL_LENGTH = 4_000_000;
 
-export const maxDuration = 25;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
@@ -15,34 +16,37 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       imageDataUrl?: string;
       fileDataUrl?: string;
+      fileUrl?: string;
       mimeType?: string;
       fileName?: string;
       targetDate?: string;
     };
 
-    if (body.fileDataUrl?.startsWith("data:application/pdf")) {
-      if (body.fileDataUrl.length > MAX_PDF_DATA_URL_LENGTH) {
-        return NextResponse.json({ error: "PDF maior que o limite permitido." }, { status: 413 });
+    const pdfUrl = normalizeAllowedAttachmentUrl(body.fileUrl);
+
+    if (body.fileUrl && !pdfUrl) {
+      return NextResponse.json({ error: "URL de PDF invalida ou nao autorizada." }, { status: 400 });
+    }
+
+    if (pdfUrl || body.fileDataUrl?.startsWith("data:application/pdf")) {
+      if (body.fileDataUrl && body.fileDataUrl.length > MAX_PDF_DATA_URL_LENGTH) {
+        return NextResponse.json({ error: "PDF maior que o limite permitido para envio direto." }, { status: 413 });
       }
 
-      const { PDFParse } = await import("pdf-parse");
-      const base64 = body.fileDataUrl.split(",")[1] ?? "";
-      const parser = new PDFParse({ data: new Uint8Array(Buffer.from(base64, "base64")) });
-      let pdfText = "";
+      const pdfBase64 = body.fileDataUrl?.split(",")[1] ?? "";
 
-      try {
-        pdfText = (await parser.getText()).text;
-      } finally {
-        await parser.destroy();
+      if (!pdfUrl && !pdfBase64) {
+        return NextResponse.json({ error: "PDF vazio ou invalido." }, { status: 400 });
       }
 
-      return NextResponse.json(
-        readTimeClockReportText({
-          text: pdfText,
-          fileName: body.fileName,
-          targetDate: body.targetDate
-        })
-      );
+      const result = await readTimeClockWithMaya({
+        pdfBase64: pdfBase64 || undefined,
+        pdfUrl,
+        fileName: body.fileName,
+        targetDate: body.targetDate
+      });
+
+      return NextResponse.json(result);
     }
 
     if (!body.imageDataUrl?.startsWith("data:image/")) {

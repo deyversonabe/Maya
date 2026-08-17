@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireWorkspaceMember } from "@/app/api/_shared/require-member";
+import { normalizeAllowedAttachmentUrl } from "@/app/api/_shared/attachment-url";
 import { readReceiptWithMaya } from "@/modules/ai/maya";
 import type { FinancialDocumentKind } from "@/modules/finance/types";
 
-const MAX_IMAGE_DATA_URL_LENGTH = 7_000_000;
-const MAX_PDF_DATA_URL_LENGTH = 10_000_000;
+const MAX_IMAGE_DATA_URL_LENGTH = 4_000_000;
+const MAX_PDF_DATA_URL_LENGTH = 4_000_000;
 
-export const maxDuration = 25;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       imageDataUrl?: string;
       fileDataUrl?: string;
+      fileUrl?: string;
       mimeType?: string;
       fileName?: string;
       documentKind?: FinancialDocumentKind;
@@ -23,7 +25,13 @@ export async function POST(request: Request) {
     };
 
     const hasImage = body.imageDataUrl?.startsWith("data:image/");
-    const hasPdf = body.fileDataUrl?.startsWith("data:application/pdf");
+    const pdfUrl = normalizeAllowedAttachmentUrl(body.fileUrl);
+    const hasPdfData = body.fileDataUrl?.startsWith("data:application/pdf");
+    const hasPdf = Boolean(pdfUrl || hasPdfData);
+
+    if (body.fileUrl && !pdfUrl) {
+      return NextResponse.json({ error: "URL de PDF invalida ou nao autorizada." }, { status: 400 });
+    }
 
     if (!hasImage && !hasPdf) {
       return NextResponse.json({ error: "Arquivo invalido. Envie imagem ou PDF." }, { status: 400 });
@@ -33,33 +41,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Imagem maior que o limite permitido." }, { status: 413 });
     }
 
-    if (hasPdf && body.fileDataUrl && body.fileDataUrl.length > MAX_PDF_DATA_URL_LENGTH) {
-      return NextResponse.json({ error: "PDF maior que o limite permitido." }, { status: 413 });
+    if (hasPdfData && body.fileDataUrl && body.fileDataUrl.length > MAX_PDF_DATA_URL_LENGTH) {
+      return NextResponse.json({ error: "PDF maior que o limite permitido para envio direto." }, { status: 413 });
     }
 
-    const documentText = hasPdf && body.fileDataUrl ? await extractPdfText(body.fileDataUrl) : undefined;
+    const pdfBase64 = hasPdfData && body.fileDataUrl ? body.fileDataUrl.split(",")[1] ?? "" : undefined;
+
+    if (hasPdf && !pdfUrl && !pdfBase64) {
+      return NextResponse.json({ error: "PDF vazio ou invalido." }, { status: 400 });
+    }
+
     const result = await readReceiptWithMaya({
       imageDataUrl: hasImage ? body.imageDataUrl : undefined,
-      documentText,
+      pdfBase64,
+      pdfUrl,
       fileName: body.fileName,
       documentKind: body.documentKind,
       qrPayloads: body.qrPayloads
     });
 
     return NextResponse.json(result);
-  } catch {
+  } catch (error) {
+    console.error("maya_receipt_read_failed", error);
     return NextResponse.json({ error: "Nao foi possivel ler o comprovante." }, { status: 500 });
-  }
-}
-
-async function extractPdfText(fileDataUrl: string) {
-  const { PDFParse } = await import("pdf-parse");
-  const base64 = fileDataUrl.split(",")[1] ?? "";
-  const parser = new PDFParse({ data: new Uint8Array(Buffer.from(base64, "base64")) });
-
-  try {
-    return (await parser.getText()).text;
-  } finally {
-    await parser.destroy();
   }
 }
