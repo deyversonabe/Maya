@@ -23,3 +23,13 @@ describe("duplicate detection", () => {
     expect(isPossibleTransactionDuplicate(base, { type: "expense", amount: base.amount, date: base.date })).toBe(true);
   });
 });
+
+  it("flags the same fiscal access key even when OCR produced a different date/year", () => {
+    const accessKey = "35260812345678000123550010000012341000012345";
+    expect(
+      isPossibleTransactionDuplicate(
+        { ...base, date: "2022-08-15", fiscalDocument: { documentType: "danfe_nfe", accessKey } },
+        { type: "expense", amount: 61.69, date: "2026-08-15", fiscalDocument: { documentType: "danfe_nfe", accessKey } }
+      )
+    ).toBe(true);
+  });

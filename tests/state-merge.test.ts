@@ -121,3 +121,74 @@ describe("state merge", () => {
     expect(prepareFinanceStateForCloud(state).transactions[0].attachmentDataUrl).toBeUndefined();
   });
 });
+
+  it("deduplicates work time semantically by person and date across devices", () => {
+    const cloud = createEmptyFinanceState();
+    const local = createEmptyFinanceState();
+    cloud.workTimeEntries = [{
+      id: "cloud-work",
+      person: "Deyverson",
+      date: "2026-08-03",
+      firstIn: "08:18",
+      firstOut: "13:10",
+      secondIn: "14:32",
+      secondOut: "18:13",
+      punches: ["08:18", "13:10", "14:32", "18:13"],
+      startTime: "08:18",
+      endTime: "18:13",
+      lunchMinutes: 82,
+      expectedMinutes: 528,
+      createdAt: "2026-08-03T12:00:00.000Z",
+      updatedAt: "2026-08-16T12:00:00.000Z"
+    }];
+    local.workTimeEntries = [{
+      id: "local-work",
+      person: "Deyverson",
+      date: "2026-08-03",
+      firstIn: "08:18",
+      firstOut: "13:10",
+      secondIn: "14:32",
+      secondOut: "18:13",
+      punches: ["08:18", "13:10", "14:32", "18:13"],
+      startTime: "08:18",
+      endTime: "18:13",
+      lunchMinutes: 82,
+      expectedMinutes: 528,
+      createdAt: "2026-08-03T12:00:00.000Z",
+      updatedAt: "2026-08-16T12:01:00.000Z"
+    }];
+
+    expect(mergeFinanceStates(cloud, local).workTimeEntries).toHaveLength(1);
+  });
+
+  it("deduplicates fiscal transactions by the 44-digit access key", () => {
+    const cloud = createEmptyFinanceState();
+    const local = createEmptyFinanceState();
+    const accessKey = "35260812345678000123550010000012341000012345";
+    cloud.transactions = [{
+      id: "cloud-note",
+      type: "expense",
+      description: "Nota",
+      amount: 100,
+      category: "Outros",
+      person: "Casal",
+      date: "2026-08-15",
+      recurring: false,
+      fiscalDocument: { documentType: "danfe_nfe", accessKey },
+      createdAt: "2026-08-16T12:00:00.000Z"
+    }];
+    local.transactions = [{
+      id: "local-note",
+      type: "expense",
+      description: "Nota atualizada",
+      amount: 100,
+      category: "Outros",
+      person: "Casal",
+      date: "2026-08-15",
+      recurring: false,
+      fiscalDocument: { documentType: "danfe_nfe", accessKey },
+      createdAt: "2026-08-16T12:01:00.000Z"
+    }];
+
+    expect(mergeFinanceStates(cloud, local).transactions).toHaveLength(1);
+  });
