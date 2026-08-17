@@ -58,11 +58,13 @@ Para ativar a MAYA com OpenAI:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` opcional
 - `OPENAI_VISION_MODEL` opcional
+- `OPENAI_PDF_MODEL` opcional (fallback para `OPENAI_MODEL`)
 
 Para colocar o produto no ar sem WhatsApp:
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL=gpt-5-mini`
+- `OPENAI_PDF_MODEL=gpt-5-mini`
 - `OPENAI_VISION_MODEL=gpt-4o-mini`
 - `NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app`
 - `WHATSAPP_ENABLED=false`
@@ -77,7 +79,7 @@ Se a leitura de nota cair no rascunho manual mesmo com chave configurada, confer
 4. O deploy foi refeito depois de alterar variaveis.
 5. Os logs da Vercel mostram `maya_receipt_read_failed` com categoria segura da falha.
 
-Se a requisicao `/api/maya/receipt` retornar 503/504, o codigo deve garantir que a chamada externa seja abortada antes do limite da funcao. A rota atual declara `maxDuration = 25` e usa timeout interno controlado para devolver rascunho manual controlado quando o provedor externo falhar.
+As rotas `/api/maya/receipt` e `/api/maya/timecard` declaram `maxDuration = 60` e usam timeout interno menor para a leitura de IA. PDFs usam preferencialmente upload direto para o bucket privado `maya-finance-attachments`; a Function recebe apenas uma URL assinada temporaria. O envio em base64 permanece apenas como fallback para arquivos pequenos. Isso evita depender de parser PDF nativo no serverless e reduz risco de exceder o limite de payload da Function.
 
 Para ativar WhatsApp no futuro:
 
@@ -119,7 +121,7 @@ NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES=15
 9. No app, abra `Dados` e entre na conta.
 10. Usuarios autorizados passam a ver a mesma base financeira.
 
-Observacao: os dados financeiros sincronizam online; anexos usam Supabase Storage privado quando a migration de Storage estiver aplicada e fallback local quando o bucket ainda nao estiver pronto.
+Observacao: os dados financeiros sincronizam online; anexos usam Supabase Storage privado quando a migration de Storage estiver aplicada. Para PDF de nota/ponto, o Storage e tambem o caminho preferencial de leitura: o navegador envia o arquivo diretamente ao bucket e a API recebe uma URL assinada de curta duracao. Se o Storage nao estiver disponivel, existe fallback local/base64 apenas dentro do limite seguro do request.
 
 ## Build esperado
 
@@ -129,4 +131,4 @@ Com a estrutura correta, o comando de build deve ser:
 npm run build
 ```
 
-No projeto local, este build foi validado antes da entrega.
+O repositorio inclui `.github/workflows/quality.yml`, que executa `npm ci`, `npm run typecheck`, `npm test` e `npm run build` em cada push para `main` e em pull requests. O deploy deve ser considerado apto somente quando esse Quality Gate estiver verde.

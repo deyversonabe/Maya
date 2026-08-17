@@ -6,6 +6,20 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ## [Unreleased]
 
+### Reliability hardening — notas e horas (2026-08-16)
+
+- PDFs de nota e ponto deixam de depender de `pdf-parse`/canvas nativo no serverless; a leitura passa pelo `input_file` da OpenAI.
+- PDF usa preferencialmente upload direto ao Storage privado e URL assinada temporaria, com base64 somente como fallback pequeno.
+- URL de PDF aceita pela API fica limitada ao host Supabase configurado, ao bucket de anexos da Maya, a caminho assinado com token e a arquivo `.pdf`.
+- Registros de ponto incompletos nao recebem mais `08:00`/`18:00` artificiais em migration, sync ou PDF exportado.
+- Parser de ponto passa a lidar com linhas Secullum no inicio/fim, extracao vertical, comprovante REP de uma batida, cabecalhos e folgas sem criar dia fantasma.
+- Importacao de ponto em massa usa uma operacao de lote e o merge online deduplica semanticamente por pessoa + data.
+- Nota fiscal completa segue o mesmo efeito financeiro de uma despesa manual (`Transaction expense`), inclusive no Dashboard.
+- `missingFields` informativo da IA nao bloqueia mais salvamento quando os requisitos financeiros validos estiverem presentes.
+- Data fiscal e reconciliada com AAMM da chave NF-e/NFC-e de 44 digitos; datas implausiveis sem evidencia fiscal sao enviadas para revisao em vez de serem salvas silenciosamente.
+- Reimportacao com a mesma chave fiscal reconcilia/enriquece a transacao existente e o merge de nuvem preserva unicidade por tipo + chave.
+- Quality Gate do GitHub Actions adicionado com install, typecheck, testes e build de producao.
+
 ### Security
 
 - Rotas internas da MAYA (`analyze`, `receipt`, `statement`, `timecard`, `validate`), status do sistema e inscricao push reforcadas para exigir sessao Supabase autorizada antes de processar dados ou consumir IA.
@@ -14,6 +28,8 @@ O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e c
 
 ### Fixed
 
+- Envio de nota em `Despesas` deixa de depender de descricao perfeita da IA para entrar no mes: com valor e data reais, a nota passa a virar despesa visivel e somavel, usando emissor, titulo fiscal ou nome do arquivo como descricao segura quando necessario.
+- Parser da aba `Horas` reforcado com leitura por blocos para relatorios Secullum/Romep e comprovantes individuais `DATA/HORA`; o PDF real de referencia agora esta coberto por teste automatico.
 - Merge online endurecido para resolver conflitos por registro usando `updatedAt`/`createdAt`, evitando que uma edicao antiga de outro aparelho sobrescreva uma versao mais nova.
 - RPC de salvamento restaurada com tombstones de exclusao em todos os arrays atuais do estado financeiro, impedindo que itens apagados voltem por cache local ou abas antigas.
 - Envio de nota em `Despesas` deixa de ficar apenas como rascunho/anexo: quando a MAYA identifica titulo, data e valor, a nota e salva automaticamente como despesa no mes correspondente.
