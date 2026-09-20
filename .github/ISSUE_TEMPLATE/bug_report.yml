@@ -1,0 +1,38 @@
+name: Bug report
+about: Relatar um problema reproduzivel na MAYA
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: O que aconteceu e o que era esperado?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir
+      description: Liste os passos, sem colar dados financeiros sensiveis.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Captura / documento
+        - WhatsApp
+        - Open Finance / OFX
+        - Dashboard / saldo
+        - MAYA / IA
+        - Contas / despesas / receitas
+        - Outro
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacidade
+      options:
+        - label: Removi CPF, CNPJ, dados bancarios, tokens e outros segredos das evidencias.
+          required: true
