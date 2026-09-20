@@ -1,0 +1,263 @@
+import type { FinanceState, LaborBenefit, PayableBill, PayrollRecord, TaxDocument, Transaction, WorkTimeEntry } from "../types";
+import { getCurrentMonthKey, getMonthEndDate, toDateKey } from "@/lib/utils";
+import { getBillEffectiveStatus, getBillPaymentDate } from "./calculations";
+import { buildAccountBalanceSummaries } from "./balance";
+
+export type FinanceReportPeriod = {
+  start: string;
+  end: string;
+  label: string;
+};
+
+export type FinanceReport = {
+  generatedAt: string;
+  period: FinanceReportPeriod;
+  summary: {
+    income: number;
+    expenses: number;
+    investments: number;
+    transfers: number;
+    periodResult: number;
+    currentBalance: number;
+    projectedBalance: number;
+    /** Alias legado: agora representa saldo acumulado real. */
+    balance: number;
+    pendingBills: number;
+    paidBills: number;
+    overdueBills: number;
+    goalsCurrent: number;
+    goalsTarget: number;
+  };
+  transactions: Transaction[];
+  bills: PayableBill[];
+  taxDocuments: TaxDocument[];
+  laborBenefits: LaborBenefit[];
+  payrollRecords: PayrollRecord[];
+  workTimeEntries: WorkTimeEntry[];
+  recurring: Array<{
+    key: string;
+    label: string;
+    total: number;
+    count: number;
+  }>;
+  incomeByCategory: Array<{
+    category: string;
+    total: number;
+    count: number;
+  }>;
+  expensesByCategory: Array<{
+    category: string;
+    total: number;
+    count: number;
+  }>;
+};
+
+export function createCurrentMonthReportPeriod(date = new Date()): FinanceReportPeriod {
+  const month = getCurrentMonthKey(date);
+  return createMonthReportPeriod(month);
+}
+
+export function createMonthReportPeriod(month: string): FinanceReportPeriod {
+  const start = `${month}-01`;
+
+  return {
+    start,
+    end: getMonthEndDate(month),
+    label: month
+  };
+}
+
+export function buildFinanceReport(state: FinanceState, period: FinanceReportPeriod): FinanceReport {
+  const transactions = state.transactions
+    .filter((transaction) => isDateInsidePeriod(transaction.date, period))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  const bills = state.bills
+    .filter((bill) => isDateInsidePeriod(getBillReportDate(bill), period))
+    .sort((left, right) => getBillReportDate(left).localeCompare(getBillReportDate(right)));
+  const fiscalYear = Number(period.start.slice(0, 4));
+  const taxDocuments = state.taxDocuments
+    .filter((document) => document.year === fiscalYear)
+    .sort((left, right) => (left.documentDate ?? "").localeCompare(right.documentDate ?? ""));
+  const laborBenefits = state.laborBenefits
+    .filter((benefit) => benefit.referenceMonth.startsWith(String(fiscalYear)))
+    .sort((left, right) => left.referenceMonth.localeCompare(right.referenceMonth));
+  const payrollRecords = state.payrollRecords
+    .filter((record) => record.referenceMonth.startsWith(String(fiscalYear)))
+    .sort((left, right) => left.referenceMonth.localeCompare(right.referenceMonth));
+  const workTimeEntries = state.workTimeEntries
+    .filter((entry) => isDateInsidePeriod(entry.date, period))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  const balanceCutoff = period.end < toDateKey() ? period.end : toDateKey();
+  const realizedTransactions = transactions.filter((transaction) => transaction.date <= balanceCutoff);
+  const paidBills = bills.filter(
+    (bill) => getBillEffectiveStatus(bill) === "paid" && getBillReportDate(bill) <= balanceCutoff
+  );
+  const income = sumTransactions(realizedTransactions, "income");
+  const transactionExpenses = sumTransactions(realizedTransactions, "expense");
+  const billExpenses = paidBills.reduce((total, bill) => total + bill.amount, 0);
+  const expenses = transactionExpenses + billExpenses;
+  const investments = sumTransactions(realizedTransactions, "investment");
+  const transfers = sumTransactions(realizedTransactions, "transfer");
+  const periodResult = income - expenses - investments;
+  const currentBalance = buildAccountBalanceSummaries(
+    state.accounts,
+    state.transactions,
+    state.bills,
+    balanceCutoff
+  ).reduce((total, account) => total + account.balance, 0);
+  const pendingBills = sumBillsByEffectiveStatus(bills, "pending");
+  const overdueBills = sumBillsByEffectiveStatus(bills, "overdue");
+  const projectedBalance = currentBalance - pendingBills - overdueBills;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    period,
+    summary: {
+      income,
+      expenses,
+      investments,
+      transfers,
+      periodResult,
+      currentBalance,
+      projectedBalance,
+      balance: currentBalance,
+      pendingBills,
+      paidBills: paidBills.reduce((total, bill) => total + bill.amount, 0),
+      overdueBills,
+      goalsCurrent: state.goals.reduce((total, goal) => total + goal.currentAmount, 0),
+      goalsTarget: state.goals.reduce((total, goal) => total + goal.targetAmount, 0)
+    },
+    transactions,
+    bills,
+    taxDocuments,
+    laborBenefits,
+    payrollRecords,
+    workTimeEntries,
+    recurring: buildRecurringReport(transactions, bills),
+    incomeByCategory: buildCategoryReport(realizedTransactions.filter((transaction) => transaction.type === "income")),
+    expensesByCategory: buildExpenseCategoryReport(
+      realizedTransactions.filter((transaction) => transaction.type === "expense"),
+      paidBills
+    )
+  };
+}
+
+export function buildReportFilename(report: FinanceReport, extension: "pdf" | "xls" | "json") {
+  const safeLabel = report.period.label.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
+  return `maya-relatorio-${safeLabel}-${toDateKey()}.${extension}`;
+}
+
+function isDateInsidePeriod(date: string, period: FinanceReportPeriod) {
+  return date >= period.start && date <= period.end;
+}
+
+function sumTransactions(transactions: Transaction[], type: Transaction["type"]) {
+  return transactions
+    .filter((transaction) => transaction.type === type)
+    .reduce((total, transaction) => total + transaction.amount, 0);
+}
+
+function sumBillsByEffectiveStatus(bills: PayableBill[], status: PayableBill["status"]) {
+  return bills
+    .filter((bill) => getBillEffectiveStatus(bill) === status)
+    .reduce((total, bill) => total + bill.amount, 0);
+}
+
+
+function getBillReportDate(bill: PayableBill) {
+  return getBillEffectiveStatus(bill) === "paid" ? getBillPaymentDate(bill) : bill.dueDate;
+}
+
+function buildCategoryReport(transactions: Transaction[]) {
+  const grouped = transactions.reduce<Record<string, { category: string; total: number; count: number }>>(
+    (groups, transaction) => {
+      const current = groups[transaction.category] ?? {
+        category: transaction.category,
+        total: 0,
+        count: 0
+      };
+
+      current.total += transaction.amount;
+      current.count += 1;
+      groups[transaction.category] = current;
+      return groups;
+    },
+    {}
+  );
+
+  return Object.values(grouped).sort((left, right) => right.total - left.total);
+}
+
+function buildExpenseCategoryReport(transactions: Transaction[], bills: PayableBill[]) {
+  const grouped = transactions.reduce<Record<string, { category: string; total: number; count: number }>>(
+    (groups, transaction) => {
+      const current = groups[transaction.category] ?? {
+        category: transaction.category,
+        total: 0,
+        count: 0
+      };
+
+      current.total += transaction.amount;
+      current.count += 1;
+      groups[transaction.category] = current;
+      return groups;
+    },
+    {}
+  );
+
+  bills.forEach((bill) => {
+    const current = grouped[bill.category] ?? {
+      category: bill.category,
+      total: 0,
+      count: 0
+    };
+
+    current.total += bill.amount;
+    current.count += 1;
+    grouped[bill.category] = current;
+  });
+
+  return Object.values(grouped).sort((left, right) => right.total - left.total);
+}
+
+function buildRecurringReport(transactions: Transaction[], bills: PayableBill[]) {
+  const groups = new Map<string, { key: string; label: string; total: number; count: number }>();
+
+  transactions
+    .filter((transaction) => transaction.type === "expense")
+    .forEach((transaction) => {
+      const label = transaction.paymentRecipient || transaction.description || transaction.category;
+      addRecurringGroup(groups, `txn_${label}`, label, transaction.amount);
+    });
+
+  bills.forEach((bill) => {
+    const label = bill.paymentRecipient || bill.title || bill.category;
+    addRecurringGroup(groups, `bill_${label}`, label, bill.amount);
+  });
+
+  return Array.from(groups.values())
+    .filter((group) => group.count > 1)
+    .sort((left, right) => right.total - left.total)
+    .slice(0, 20);
+}
+
+function addRecurringGroup(
+  groups: Map<string, { key: string; label: string; total: number; count: number }>,
+  key: string,
+  label: string,
+  amount: number
+) {
+  const normalizedKey = key.toLowerCase().trim();
+  const current = groups.get(normalizedKey) ?? {
+    key: normalizedKey,
+    label,
+    total: 0,
+    count: 0
+  };
+
+  current.total += amount;
+  current.count += 1;
+  groups.set(normalizedKey, current);
+}

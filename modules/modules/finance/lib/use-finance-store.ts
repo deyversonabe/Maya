@@ -1,0 +1,1915 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { emitSyncStatus } from "@/lib/sync-events";
+import { DEFAULT_FINANCE_ACCOUNT_ID, createEmptyFinanceState } from "../data/defaults";
+import {
+  addDeletedEntityIds,
+  hasDifferentCloudPayload,
+  hasFinanceContent,
+  mergeFinanceStates,
+  prepareFinanceStateForCloud
+} from "./state-merge";
+import { migrateFinanceState } from "./migrations";
+import type {
+  Budget,
+  FinanceActivityEntity,
+  FinanceActivityLog,
+  FinanceAccount,
+  FinanceState,
+  Goal,
+  GoalContribution,
+  LaborBenefit,
+  PayableBill,
+  PayrollRecord,
+  SalonMaterial,
+  SalonSaleInput,
+  SalonServiceRecipe,
+  SalonStockMovement,
+  TaxDocument,
+  Transaction,
+  WorkTimeEntry
+} from "../types";
+
+const STORAGE_KEY = "maya.finance.v1";
+const LEGACY_STORAGE_KEY = ["jun", "tos.finance.v1"].join("");
+const CLOUD_TABLE = "finance_workspace_states";
+const CLOUD_WORKSPACE_ID =
+  process.env.NEXT_PUBLIC_MAYA_WORKSPACE_ID || "00000000-0000-4000-8000-000000000001";
+const CLOUD_SYNC_DELAY_MS = 150;
+const CLOUD_RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
+const SESSION_LOCK_KEY = "maya.finance.session_locked.v1";
+const SESSION_LAST_ACTIVITY_KEY = "maya.finance.last_activity.v1";
+const BEFORE_SIGN_OUT_EVENT = "maya:before-sign-out";
+const DEFAULT_SESSION_IDLE_MINUTES = 15;
+const SESSION_IDLE_MS = getSessionIdleMilliseconds();
+
+type CloudSyncStatus = "unconfigured" | "signed_out" | "loading" | "online" | "syncing" | "error";
+
+interface CloudSyncState {
+  isConfigured: boolean;
+  status: CloudSyncStatus;
+  email: string | null;
+  message: string;
+  lastSyncedAt: string | null;
+}
+
+interface FinanceCloudRow {
+  state: unknown;
+  updated_at: string | null;
+  version?: number | null;
+}
+
+interface SafeWorkspaceStateSaveRow {
+  state: unknown;
+  updated_at: string | null;
+  version?: number | null;
+}
+
+export function useFinanceStore() {
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const [state, setState] = useState<FinanceState>(() => createEmptyFinanceState());
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloud, setCloud] = useState<CloudSyncState>(() => ({
+    isConfigured: Boolean(supabase),
+    status: supabase ? "loading" : "unconfigured",
+    email: null,
+    message: supabase
+      ? "Verificando sua conta para sincronizar os dados."
+      : "Sincronizacao online ainda nao esta ativa neste deploy.",
+    lastSyncedAt: null
+  }));
+  const stateRef = useRef(state);
+  const userIdRef = useRef<string | null>(null);
+  const userEmailRef = useRef<string | null>(null);
+  const skipNextCloudSaveRef = useRef(false);
+  const lastCloudPayloadRef = useRef("");
+  const cloudVersionRef = useRef<number | null>(null);
+  const supportsOptimisticLockRef = useRef(true);
+  const lastCloudRefetchAtRef = useRef(0);
+  const cloudRetryAttemptRef = useRef(0);
+  const cloudRetryTimeoutRef = useRef<number | null>(null);
+  const cloudChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
+
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as unknown;
+        const migrated = migrateFinanceState(parsed);
+        setState(migrated);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        setState(createEmptyFinanceState());
+      }
+    }
+
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    persistFinanceStateLocally(state);
+  }, [isHydrated, state]);
+
+  const saveStateToCloud = useCallback(
+    async (nextState: FinanceState) => {
+      if (!supabase || !userIdRef.current) {
+        return;
+      }
+
+      let pendingState = nextState;
+      let cloudState = prepareFinanceStateForCloud(pendingState);
+      let payload = JSON.stringify(cloudState);
+
+      if (payload === lastCloudPayloadRef.current) {
+        return;
+      }
+
+      emitSyncStatus({ status: "syncing", message: "Salvando alteracoes online." });
+
+      let data: unknown = null;
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const params = supportsOptimisticLockRef.current
+          ? {
+              p_workspace_id: CLOUD_WORKSPACE_ID,
+              p_state: cloudState,
+              p_expected_version: cloudVersionRef.current
+            }
+          : {
+              p_workspace_id: CLOUD_WORKSPACE_ID,
+              p_state: cloudState
+            };
+        const result = await supabase.rpc("save_finance_workspace_state_locked", params).maybeSingle();
+
+        if (!result.error) {
+          data = result.data;
+          lastError = null;
+          break;
+        }
+
+        const errorCode = result.error.code;
+        const errorText = `${result.error.code ?? ""} ${result.error.message ?? ""}`.toLowerCase();
+
+        if (supportsOptimisticLockRef.current && (errorCode === "PGRST202" || errorCode === "42703" || errorText.includes("p_expected_version"))) {
+          supportsOptimisticLockRef.current = false;
+          continue;
+        }
+
+        if (errorCode === "40001") {
+          const { data: remoteRow, error: reloadError } = await supabase
+            .from(CLOUD_TABLE)
+            .select(supportsOptimisticLockRef.current ? "state, updated_at, version" : "state, updated_at")
+            .eq("workspace_id", CLOUD_WORKSPACE_ID)
+            .maybeSingle();
+
+          if (reloadError) {
+            lastError = reloadError;
+            break;
+          }
+
+          const remote = remoteRow as FinanceCloudRow | null;
+          const remoteState = remote?.state ? migrateFinanceState(remote.state) : createEmptyFinanceState();
+          cloudVersionRef.current = typeof remote?.version === "number" ? remote.version : cloudVersionRef.current;
+          pendingState = mergeFinanceStates(remoteState, stateRef.current);
+          cloudState = prepareFinanceStateForCloud(pendingState);
+          payload = JSON.stringify(cloudState);
+          continue;
+        }
+
+        lastError = result.error;
+        break;
+      }
+
+      if (lastError) {
+        throw new Error(formatCloudError(lastError as { message?: string; code?: string }));
+      }
+
+      if (!data) {
+        throw new Error("Nao consegui confirmar a sincronizacao online agora.");
+      }
+
+      const savedRow = data as SafeWorkspaceStateSaveRow | null;
+      const savedState = savedRow?.state ? migrateFinanceState(savedRow.state) : cloudState;
+      const savedPayload = JSON.stringify(prepareFinanceStateForCloud(savedState));
+      cloudVersionRef.current = typeof savedRow?.version === "number" ? savedRow.version : cloudVersionRef.current;
+
+      lastCloudPayloadRef.current = savedPayload || payload;
+      cloudRetryAttemptRef.current = 0;
+      if (cloudRetryTimeoutRef.current) {
+        window.clearTimeout(cloudRetryTimeoutRef.current);
+        cloudRetryTimeoutRef.current = null;
+      }
+
+      if (savedPayload && savedPayload !== payload) {
+        skipNextCloudSaveRef.current = true;
+        setState(savedState);
+        persistFinanceStateLocally(savedState);
+      }
+
+      setCloud((current) => ({
+        ...current,
+        status: "online",
+        message: "Dados sincronizados online.",
+        lastSyncedAt: new Date().toISOString()
+      }));
+      emitSyncStatus({ status: "online", message: "Dados sincronizados online." });
+    },
+    [supabase]
+  );
+
+  const applyRemoteState = useCallback((remoteValue: unknown, version?: unknown) => {
+    const remoteState = migrateFinanceState(remoteValue);
+    const remotePayload = JSON.stringify(prepareFinanceStateForCloud(remoteState));
+
+    if (remotePayload === lastCloudPayloadRef.current) {
+      cloudVersionRef.current = typeof version === "number" ? version : cloudVersionRef.current;
+      return;
+    }
+
+    const localState = stateRef.current;
+    const nextState = mergeFinanceStates(remoteState, localState);
+    const shouldResaveMergedState = hasDifferentCloudPayload(nextState, remoteState);
+
+    skipNextCloudSaveRef.current = !shouldResaveMergedState;
+    cloudVersionRef.current = typeof version === "number" ? version : cloudVersionRef.current;
+    lastCloudPayloadRef.current = remotePayload;
+    setState(nextState);
+    persistFinanceStateLocally(nextState);
+    setCloud((current) => ({
+      ...current,
+      status: shouldResaveMergedState ? "syncing" : "online",
+      message: shouldResaveMergedState
+        ? "Mesclando alteracoes deste aparelho com a conta compartilhada."
+        : "Dados atualizados pela conta compartilhada.",
+      lastSyncedAt: new Date().toISOString()
+    }));
+  }, []);
+
+  const closeCloudChannel = useCallback(() => {
+    if (!supabase || !cloudChannelRef.current) {
+      return;
+    }
+
+    void supabase.removeChannel(cloudChannelRef.current);
+    cloudChannelRef.current = null;
+  }, [supabase]);
+
+  const subscribeToWorkspaceChanges = useCallback(() => {
+    if (!supabase || cloudChannelRef.current) {
+      return;
+    }
+
+    cloudChannelRef.current = supabase
+      .channel(`finance-workspace-${CLOUD_WORKSPACE_ID}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: CLOUD_TABLE,
+          filter: `workspace_id=eq.${CLOUD_WORKSPACE_ID}`
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE" || !("state" in payload.new)) {
+            return;
+          }
+
+          applyRemoteState(payload.new.state, (payload.new as { version?: unknown }).version);
+        }
+      )
+      .subscribe();
+  }, [applyRemoteState, supabase]);
+
+  const lockSession = useCallback(
+    async (message = "Sessao bloqueada por seguranca. Digite a senha para continuar.") => {
+      if (!supabase) {
+        return;
+      }
+
+      markSessionLocked();
+      closeCloudChannel();
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.warn("Nao foi possivel encerrar a sessao remota durante o bloqueio local.", error);
+      }
+      userIdRef.current = null;
+      userEmailRef.current = null;
+      setCloudReady(false);
+      setCloud((current) => ({
+        ...current,
+        status: "signed_out",
+        email: null,
+        message
+      }));
+    },
+    [closeCloudChannel, supabase]
+  );
+
+  const loadCloudForUser = useCallback(
+    async (userId: string, email: string | null) => {
+      if (!supabase) {
+        return;
+      }
+
+      userIdRef.current = userId;
+      userEmailRef.current = email;
+      setCloudReady(false);
+      setCloud((current) => ({
+        ...current,
+        status: "loading",
+        email,
+        message: "Carregando dados salvos online."
+      }));
+
+      try {
+        const firstQuery = await supabase
+          .from(CLOUD_TABLE)
+          .select("state, updated_at, version")
+          .eq("workspace_id", CLOUD_WORKSPACE_ID)
+          .maybeSingle();
+        let data: unknown = firstQuery.data;
+        let error = firstQuery.error;
+
+        if (error?.code === "42703") {
+          supportsOptimisticLockRef.current = false;
+          const retry = await supabase
+            .from(CLOUD_TABLE)
+            .select("state, updated_at")
+            .eq("workspace_id", CLOUD_WORKSPACE_ID)
+            .maybeSingle();
+          data = retry.data;
+          error = retry.error;
+        }
+
+        if (error) {
+          throw new Error(formatCloudError(error));
+        }
+
+        const localState = stateRef.current;
+        const localHasData = hasFinanceContent(localState);
+        const cloudRow = data as FinanceCloudRow | null;
+        let nextState = localState;
+        let shouldSaveCloud = false;
+
+        if (cloudRow?.state) {
+          const remoteState = migrateFinanceState(cloudRow.state);
+          cloudVersionRef.current = typeof cloudRow.version === "number" ? cloudRow.version : null;
+          nextState = localHasData ? mergeFinanceStates(remoteState, localState) : remoteState;
+          shouldSaveCloud = localHasData && hasDifferentCloudPayload(nextState, remoteState);
+        } else {
+          shouldSaveCloud = true;
+        }
+
+        skipNextCloudSaveRef.current = true;
+        setState(nextState);
+        persistFinanceStateLocally(nextState);
+        lastCloudPayloadRef.current = shouldSaveCloud ? "" : JSON.stringify(prepareFinanceStateForCloud(nextState));
+
+        setCloudReady(true);
+        setCloud((current) => ({
+          ...current,
+          status: shouldSaveCloud ? "syncing" : "online",
+          email,
+          message: shouldSaveCloud
+            ? "Enviando dados deste aparelho para a conta compartilhada."
+            : "Dados carregados da conta compartilhada.",
+          lastSyncedAt: shouldSaveCloud ? current.lastSyncedAt : new Date().toISOString()
+        }));
+
+        subscribeToWorkspaceChanges();
+
+        if (shouldSaveCloud) {
+          await saveStateToCloud(nextState);
+        }
+      } catch (error) {
+        setCloudReady(false);
+        setCloud((current) => ({
+          ...current,
+          status: "error",
+          email,
+          message: error instanceof Error ? error.message : "Nao consegui sincronizar seus dados agora."
+        }));
+      }
+    },
+    [saveStateToCloud, subscribeToWorkspaceChanges, supabase]
+  );
+
+  useEffect(() => {
+    if (!supabase || !isHydrated) {
+      return;
+    }
+
+    function refetchIfNeeded() {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastCloudRefetchAtRef.current < 30_000) {
+        return;
+      }
+
+      lastCloudRefetchAtRef.current = now;
+      void loadCloudForUser(userIdRef.current, userEmailRef.current);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refetchIfNeeded();
+      }
+    }
+
+    window.addEventListener("online", refetchIfNeeded);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("online", refetchIfNeeded);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isHydrated, loadCloudForUser, supabase]);
+
+  useEffect(() => {
+    if (!supabase || !isHydrated) {
+      return;
+    }
+
+    const client = supabase;
+    let isMounted = true;
+
+    async function boot() {
+      const { data } = await client.auth.getSession();
+      const user = data.session?.user;
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (user) {
+        if (shouldAskPasswordAgain()) {
+          await client.auth.signOut();
+          markSessionLocked();
+          userIdRef.current = null;
+          userEmailRef.current = null;
+          setCloudReady(false);
+          setCloud((current) => ({
+            ...current,
+            status: "signed_out",
+            email: null,
+            message: "Sessao bloqueada por seguranca. Digite a senha para continuar."
+          }));
+          return;
+        }
+
+        recordSessionActivity();
+        await loadCloudForUser(user.id, user.email ?? null);
+        return;
+      }
+
+      userIdRef.current = null;
+      userEmailRef.current = null;
+      setCloudReady(false);
+      setCloud((current) => ({
+        ...current,
+        status: "signed_out",
+        email: null,
+        message: "Entre na sua conta para ver os mesmos dados no celular e no computador."
+      }));
+    }
+
+    void boot();
+
+    const {
+      data: { subscription }
+    } = client.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user;
+
+      if (user) {
+        void loadCloudForUser(user.id, user.email ?? null);
+        return;
+      }
+
+      userIdRef.current = null;
+      userEmailRef.current = null;
+      setCloudReady(false);
+      setCloud((current) => ({
+        ...current,
+        status: "signed_out",
+        email: null,
+        message: "Sessao encerrada. Seus dados continuam neste aparelho."
+      }));
+    });
+
+    return () => {
+      isMounted = false;
+      closeCloudChannel();
+      subscription.unsubscribe();
+    };
+  }, [closeCloudChannel, isHydrated, loadCloudForUser, supabase]);
+
+  useEffect(() => {
+    if (!supabase || !isHydrated) {
+      return;
+    }
+
+    const activityEvents: Array<keyof WindowEventMap> = ["keydown", "pointerdown", "scroll", "touchstart"];
+
+    function handleActivity() {
+      if (userIdRef.current) {
+        recordSessionActivity();
+      }
+    }
+
+    function handlePageHide() {
+      if (userIdRef.current) {
+        markSessionLocked();
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const lastActivity = getLastSessionActivity();
+
+      if (Date.now() - lastActivity >= SESSION_IDLE_MS) {
+        void lockSession();
+      }
+    }, 30_000);
+
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      window.clearInterval(interval);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [isHydrated, lockSession, supabase]);
+
+  useEffect(() => {
+    if (!supabase || !isHydrated || !cloudReady || !userIdRef.current) {
+      return;
+    }
+
+    if (skipNextCloudSaveRef.current) {
+      skipNextCloudSaveRef.current = false;
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setCloud((current) => ({
+        ...current,
+        status: "syncing",
+        message: "Salvando alteracoes online."
+      }));
+      emitSyncStatus({ status: "syncing", message: "Salvando alteracoes online." });
+
+      function handleSaveError(error: unknown) {
+        const message = error instanceof Error ? error.message : "Nao consegui salvar online agora.";
+        setCloud((current) => ({
+          ...current,
+          status: "error",
+          message
+        }));
+        emitSyncStatus({ status: "error", message: `${message} A Maya vai tentar novamente.` });
+
+        const retryDelay = CLOUD_RETRY_DELAYS_MS[cloudRetryAttemptRef.current];
+        if (typeof retryDelay !== "number") {
+          return;
+        }
+
+        cloudRetryAttemptRef.current += 1;
+        if (cloudRetryTimeoutRef.current) {
+          window.clearTimeout(cloudRetryTimeoutRef.current);
+        }
+
+        cloudRetryTimeoutRef.current = window.setTimeout(() => {
+          setCloud((current) => ({
+            ...current,
+            status: "syncing",
+            message: "Tentando sincronizar novamente."
+          }));
+          emitSyncStatus({ status: "syncing", message: "Tentando sincronizar novamente." });
+          void saveStateToCloud(stateRef.current).catch(handleSaveError);
+        }, retryDelay);
+      }
+
+      void saveStateToCloud(stateRef.current).catch(handleSaveError);
+    }, CLOUD_SYNC_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+      if (cloudRetryTimeoutRef.current) {
+        window.clearTimeout(cloudRetryTimeoutRef.current);
+        cloudRetryTimeoutRef.current = null;
+      }
+    };
+  }, [cloudReady, isHydrated, saveStateToCloud, state, supabase]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    function handleBeforeSignOut(event: Event) {
+      if (!userIdRef.current) {
+        return;
+      }
+
+      const customEvent = event as CustomEvent<{ waitUntil?: (promise: Promise<unknown>) => void }>;
+      customEvent.detail?.waitUntil?.(
+        saveStateToCloud({
+          ...stateRef.current,
+          updatedAt: new Date().toISOString()
+        }).catch((error) => {
+          setCloud((current) => ({
+            ...current,
+            status: "error",
+            message: error instanceof Error ? error.message : "Nao consegui salvar online antes de sair."
+          }));
+        })
+      );
+    }
+
+    window.addEventListener(BEFORE_SIGN_OUT_EVENT, handleBeforeSignOut);
+
+    return () => window.removeEventListener(BEFORE_SIGN_OUT_EVENT, handleBeforeSignOut);
+  }, [saveStateToCloud, supabase]);
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      if (!supabase) {
+        throw new Error("Sincronizacao online ainda nao esta ativa neste deploy.");
+      }
+
+      setCloud((current) => ({
+        ...current,
+        status: "loading",
+        message: "Entrando na sua conta."
+      }));
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
+      });
+
+      if (error) {
+        const message = formatAuthError(error);
+        setCloud((current) => ({ ...current, status: "error", message }));
+        throw new Error(message);
+      }
+
+      if (data.user) {
+        clearSessionLocked();
+        recordSessionActivity();
+        await loadCloudForUser(data.user.id, data.user.email ?? null);
+      }
+    },
+    [loadCloudForUser, supabase]
+  );
+
+  const signUp = useCallback(
+    async () => {
+      const message = "Cadastro publico desativado. O administrador precisa criar e autorizar este usuario.";
+      setCloud((current) => ({
+        ...current,
+        status: "signed_out",
+        message
+      }));
+      throw new Error(message);
+    },
+    []
+  );
+
+  const signOut = useCallback(async () => {
+    if (!supabase) {
+      return;
+    }
+
+    if (userIdRef.current) {
+      try {
+        await saveStateToCloud({
+          ...stateRef.current,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        console.warn("Nao foi possivel sincronizar antes de sair; encerrando a sessao mesmo assim.", error);
+      }
+    }
+
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Nao foi possivel encerrar a sessao remota.", error);
+    }
+    markSessionLocked();
+    closeCloudChannel();
+    userIdRef.current = null;
+    userEmailRef.current = null;
+    setCloudReady(false);
+    setCloud((current) => ({
+      ...current,
+      status: "signed_out",
+      email: null,
+      message: "Voce saiu da conta. Os dados deste aparelho continuam disponiveis."
+    }));
+  }, [closeCloudChannel, saveStateToCloud, supabase]);
+
+  const syncNow = useCallback(async () => {
+    if (!supabase || !userIdRef.current) {
+      throw new Error("Entre na sua conta para sincronizar.");
+    }
+
+    setCloud((current) => ({
+      ...current,
+      status: "syncing",
+      message: "Sincronizando agora."
+    }));
+
+    await saveStateToCloud({
+      ...stateRef.current,
+      updatedAt: new Date().toISOString()
+    });
+  }, [saveStateToCloud, supabase]);
+
+  const actions = useMemo(
+    () => ({
+      addTransaction(transaction: Omit<Transaction, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          transactions: [
+            {
+              ...transaction,
+              id: `txn_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.transactions
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Lancou transacao",
+            entityType: "transaction",
+            entityLabel: transaction.description,
+            details: `${transaction.date} - ${transaction.type}`
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addTransactions(transactions: Array<Omit<Transaction, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          transactions: [
+            ...transactions.map((transaction) => ({
+              ...transaction,
+              id: `txn_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            })),
+            ...current.transactions
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Importou transacoes",
+            entityType: "transaction",
+            entityLabel: `${transactions.length} lancamento(s)`,
+            details: transactions[0]?.source ?? "lote"
+          }),
+          updatedAt: now
+        }));
+      },
+      updateTransaction(id: string, patch: Partial<Omit<Transaction, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const existing = current.transactions.find((transaction) => transaction.id === id);
+
+          return {
+            ...current,
+            transactions: current.transactions.map((transaction) =>
+              transaction.id === id ? { ...transaction, ...patch, updatedAt: now } : transaction
+            ),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Editou transacao",
+              entityType: "transaction",
+              entityLabel: existing?.description ?? patch.description ?? id,
+              details: `${patch.date ?? existing?.date ?? ""} - ${patch.type ?? existing?.type ?? ""}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      removeTransaction(id: string) {
+        setState((current) => {
+          const transaction = current.transactions.find((item) => item.id === id);
+          const stockMovementsToRemove = current.salonStockMovements.filter(
+            (movement) => movement.transactionId === id && movement.type === "usage"
+          );
+          const returnedByMaterial = stockMovementsToRemove.reduce<Record<string, number>>((totals, movement) => {
+            totals[movement.materialId] = (totals[movement.materialId] ?? 0) + movement.quantity;
+            return totals;
+          }, {});
+
+          return {
+            ...current,
+            transactions: current.transactions.filter((item) => item.id !== id),
+            salonMaterials: current.salonMaterials.map((material) =>
+              returnedByMaterial[material.id]
+                ? {
+                    ...material,
+                    stockQuantity: material.stockQuantity + returnedByMaterial[material.id],
+                    updatedAt: new Date().toISOString()
+                  }
+                : material
+            ),
+            salonStockMovements: current.salonStockMovements.filter(
+              (movement) => !stockMovementsToRemove.some((removed) => removed.id === movement.id)
+            ),
+            deletedEntityIds: addDeletedEntityIds(
+              current.deletedEntityIds,
+              id,
+              ...stockMovementsToRemove.map((movement) => movement.id)
+            ),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Removeu transacao",
+              entityType: "transaction",
+              entityLabel: transaction?.description ?? id
+            }),
+            updatedAt: new Date().toISOString()
+          };
+        });
+      },
+      addAccount(account: Omit<FinanceAccount, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          accounts: [
+            {
+              ...account,
+              id: `account_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.accounts
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou carteira",
+            entityType: "account",
+            entityLabel: account.name
+          }),
+          updatedAt: now
+        }));
+      },
+      updateAccount(id: string, account: Partial<Omit<FinanceAccount, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.map((item) => (item.id === id ? { ...item, ...account, updatedAt: now } : item)),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou carteira",
+            entityType: "account",
+            entityLabel: current.accounts.find((item) => item.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeAccount(id: string) {
+        if (id === DEFAULT_FINANCE_ACCOUNT_ID) {
+          return;
+        }
+
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.filter((account) => account.id !== id),
+          transactions: current.transactions.map((transaction) =>
+            transaction.accountId === id
+              ? { ...transaction, accountId: DEFAULT_FINANCE_ACCOUNT_ID, updatedAt: now }
+              : transaction
+          ),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu carteira",
+            entityType: "account",
+            entityLabel: current.accounts.find((account) => account.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      addGoal(goal: Omit<Goal, "id" | "createdAt" | "contributions"> & { contributions?: GoalContribution[] }) {
+        const now = new Date().toISOString();
+        const initialContribution =
+          goal.currentAmount > 0
+            ? [
+                {
+                  id: `goal_entry_${crypto.randomUUID()}`,
+                  amount: goal.currentAmount,
+                  date: now.slice(0, 10),
+                  notes: "Saldo inicial.",
+                  createdAt: now
+                }
+              ]
+            : [];
+
+        setState((current) => ({
+          ...current,
+          goals: [
+            {
+              ...goal,
+              contributions: goal.contributions ?? initialContribution,
+              id: `goal_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.goals
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou meta",
+            entityType: "goal",
+            entityLabel: goal.name
+          }),
+          updatedAt: now
+        }));
+      },
+      updateGoalAmount(id: string, currentAmount: number) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const goalLabel = current.goals.find((goal) => goal.id === id)?.name ?? id;
+
+          return {
+            ...current,
+            goals: current.goals.map((goal) => {
+            if (goal.id !== id) {
+              return goal;
+            }
+
+            const delta = currentAmount - goal.currentAmount;
+
+            return {
+              ...goal,
+              currentAmount,
+              updatedAt: now,
+              contributions:
+                delta !== 0
+                  ? [
+                      {
+                        id: `goal_entry_${crypto.randomUUID()}`,
+                        amount: delta,
+                        date: now.slice(0, 10),
+                        notes: "Ajuste manual de saldo.",
+                        createdAt: now
+                      },
+                      ...goal.contributions
+                    ]
+                  : goal.contributions
+            };
+          }),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Atualizou saldo da meta",
+              entityType: "goal",
+              entityLabel: goalLabel
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      addGoalContribution(id: string, contribution: Omit<GoalContribution, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        const entry: GoalContribution = {
+          ...contribution,
+          id: `goal_entry_${crypto.randomUUID()}`,
+          createdAt: now
+        };
+
+        setState((current) => ({
+          ...current,
+          goals: current.goals.map((goal) =>
+            goal.id === id
+              ? {
+                  ...goal,
+                  currentAmount: Math.max(0, goal.currentAmount + entry.amount),
+                  contributions: [entry, ...goal.contributions],
+                  updatedAt: now
+                }
+              : goal
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Adicionou saldo na meta",
+            entityType: "goal",
+            entityLabel: current.goals.find((goal) => goal.id === id)?.name ?? id,
+            details: contribution.date
+          }),
+          updatedAt: now
+        }));
+      },
+      removeGoal(id: string) {
+        setState((current) => ({
+          ...current,
+          goals: current.goals.filter((goal) => goal.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu meta",
+            entityType: "goal",
+            entityLabel: current.goals.find((goal) => goal.id === id)?.name ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addBudget(budget: Omit<Budget, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          budgets: [
+            {
+              ...budget,
+              id: `budget_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.budgets.filter(
+              (item) => !(item.month === budget.month && item.category === budget.category)
+            )
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Salvou orcamento",
+            entityType: "budget",
+            entityLabel: `${budget.category} - ${budget.month}`
+          }),
+          updatedAt: now
+        }));
+      },
+      removeBudget(id: string) {
+        setState((current) => ({
+          ...current,
+          budgets: current.budgets.filter((budget) => budget.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu orcamento",
+            entityType: "budget",
+            entityLabel: current.budgets.find((budget) => budget.id === id)?.category ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addBill(bill: Omit<PayableBill, "id" | "createdAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          bills: [
+            {
+              ...bill,
+              id: `bill_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.bills
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou conta",
+            entityType: "bill",
+            entityLabel: bill.title,
+            details: bill.dueDate
+          }),
+          updatedAt: now
+        }));
+      },
+      addBills(bills: Array<Omit<PayableBill, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          bills: [
+            ...bills.map((bill) => ({
+              ...bill,
+              id: `bill_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            })),
+            ...current.bills
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou contas",
+            entityType: "bill",
+            entityLabel: `${bills.length} conta(s)`,
+            details: bills[0]?.title
+          }),
+          updatedAt: now
+        }));
+      },
+      updateBill(id: string, bill: Partial<Omit<PayableBill, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          bills: current.bills.map((item) => (item.id === id ? { ...item, ...bill, updatedAt: now } : item)),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou conta",
+            entityType: "bill",
+            entityLabel: current.bills.find((item) => item.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      markBillPaid(id: string) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          bills: current.bills.map((bill) =>
+            bill.id === id
+              ? {
+                  ...bill,
+                  status: "paid",
+                  paidAt: now,
+                  updatedAt: now
+                }
+              : bill
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Marcou conta como paga",
+            entityType: "bill",
+            entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeBill(id: string) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          bills: current.bills.filter((bill) => bill.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu conta",
+            entityType: "bill",
+            entityLabel: current.bills.find((bill) => bill.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      addTaxDocument(document: Omit<TaxDocument, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          taxDocuments: [
+            {
+              ...document,
+              id: `tax_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.taxDocuments
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou documento fiscal",
+            entityType: "tax_document",
+            entityLabel: document.title,
+            details: `${document.year} - ${document.person}`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateTaxDocument(id: string, patch: Partial<Omit<TaxDocument, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          taxDocuments: current.taxDocuments.map((document) =>
+            document.id === id ? { ...document, ...patch, updatedAt: now } : document
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou documento fiscal",
+            entityType: "tax_document",
+            entityLabel: current.taxDocuments.find((document) => document.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeTaxDocument(id: string) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          taxDocuments: current.taxDocuments.filter((document) => document.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu documento fiscal",
+            entityType: "tax_document",
+            entityLabel: current.taxDocuments.find((document) => document.id === id)?.title ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      addLaborBenefit(benefit: Omit<LaborBenefit, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          laborBenefits: [
+            {
+              ...benefit,
+              id: `labor_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.laborBenefits
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: benefit.employer ?? benefit.type,
+            details: `${benefit.referenceMonth} - ${benefit.person}`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateLaborBenefit(id: string, patch: Partial<Omit<LaborBenefit, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          laborBenefits: current.laborBenefits.map((benefit) =>
+            benefit.id === id ? { ...benefit, ...patch, updatedAt: now } : benefit
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: current.laborBenefits.find((benefit) => benefit.id === id)?.employer ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeLaborBenefit(id: string) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          laborBenefits: current.laborBenefits.filter((benefit) => benefit.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu dado trabalhista",
+            entityType: "labor_benefit",
+            entityLabel: current.laborBenefits.find((benefit) => benefit.id === id)?.employer ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      addPayrollRecord(record: Omit<PayrollRecord, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          payrollRecords: [
+            {
+              ...record,
+              id: `payroll_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.payrollRecords
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Registrou holerite",
+            entityType: "payroll_record",
+            entityLabel: `${record.referenceMonth} - ${record.person}`,
+            details: record.employer
+          }),
+          updatedAt: now
+        }));
+      },
+      updatePayrollRecord(id: string, patch: Partial<Omit<PayrollRecord, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          payrollRecords: current.payrollRecords.map((record) =>
+            record.id === id ? { ...record, ...patch, updatedAt: now } : record
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou holerite",
+            entityType: "payroll_record",
+            entityLabel: current.payrollRecords.find((record) => record.id === id)?.referenceMonth ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removePayrollRecord(id: string) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          payrollRecords: current.payrollRecords.filter((record) => record.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu holerite",
+            entityType: "payroll_record",
+            entityLabel: current.payrollRecords.find((record) => record.id === id)?.referenceMonth ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      upsertWorkTimeEntry(entry: Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const existing = current.workTimeEntries.find(
+            (item) => item.date === entry.date && item.person === entry.person
+          );
+
+          return {
+            ...current,
+            workTimeEntries: existing
+              ? current.workTimeEntries.map((item) =>
+                  item.id === existing.id ? { ...item, ...entry, updatedAt: now } : item
+                )
+              : [
+                  {
+                    ...entry,
+                    id: `work_${crypto.randomUUID()}`,
+                    createdAt: now,
+                    updatedAt: now
+                  },
+                  ...current.workTimeEntries
+                ],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: existing ? "Atualizou ponto" : "Registrou ponto",
+              entityType: "work_time_entry",
+              entityLabel: `${entry.date} - ${entry.person}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      upsertWorkTimeEntries(entries: Array<Omit<WorkTimeEntry, "id" | "createdAt" | "updatedAt">>) {
+        if (entries.length === 0) {
+          return;
+        }
+
+        const now = new Date().toISOString();
+        setState((current) => {
+          const workTimeEntries = [...current.workTimeEntries];
+          const indexByKey = new Map<string, number>(
+            workTimeEntries.map((item, index) => [`${item.person}::${item.date}`, index])
+          );
+
+          entries.forEach((entry) => {
+            const key = `${entry.person}::${entry.date}`;
+            const existingIndex = indexByKey.get(key);
+
+            if (existingIndex !== undefined) {
+              workTimeEntries[existingIndex] = {
+                ...workTimeEntries[existingIndex],
+                ...entry,
+                updatedAt: now
+              };
+              return;
+            }
+
+            const created: WorkTimeEntry = {
+              ...entry,
+              id: `work_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            };
+            indexByKey.set(key, workTimeEntries.length);
+            workTimeEntries.push(created);
+          });
+
+          return {
+            ...current,
+            workTimeEntries,
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Importou pontos em lote",
+              entityType: "work_time_entry",
+              entityLabel: `${entries.length} dia(s)`,
+              details: `${entries[0]?.person ?? "Pessoa"} - ${entries[0]?.date ?? ""}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      removeWorkTimeEntry(id: string) {
+        setState((current) => ({
+          ...current,
+          workTimeEntries: current.workTimeEntries.filter((entry) => entry.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu ponto",
+            entityType: "work_time_entry",
+            entityLabel: current.workTimeEntries.find((entry) => entry.id === id)?.date ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      addSalonMaterial(material: Omit<SalonMaterial, "id" | "createdAt" | "updatedAt">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonMaterials: [
+            {
+              ...material,
+              id: `salon_material_${crypto.randomUUID()}`,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.salonMaterials
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Cadastrou material do salao",
+            entityType: "salon_material",
+            entityLabel: material.name,
+            details: material.category
+          }),
+          updatedAt: now
+        }));
+      },
+      updateSalonMaterial(id: string, patch: Partial<Omit<SalonMaterial, "id" | "createdAt">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonMaterials: current.salonMaterials.map((material) =>
+            material.id === id ? { ...material, ...patch, updatedAt: now } : material
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou material do salao",
+            entityType: "salon_material",
+            entityLabel: current.salonMaterials.find((material) => material.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeSalonMaterial(id: string) {
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === id);
+          const affectedRecipes = current.salonServiceRecipes.map((recipe) => ({
+            ...recipe,
+            items: recipe.items.filter((item) => item.materialId !== id),
+            updatedAt: recipe.items.some((item) => item.materialId === id) ? new Date().toISOString() : recipe.updatedAt
+          }));
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.filter((item) => item.id !== id),
+            salonServiceRecipes: affectedRecipes,
+            deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Removeu material do salao",
+              entityType: "salon_material",
+              entityLabel: material?.name ?? id
+            }),
+            updatedAt: new Date().toISOString()
+          };
+        });
+      },
+      addSalonServiceRecipe(recipe: Omit<SalonServiceRecipe, "id" | "createdAt" | "updatedAt" | "version">) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: [
+            {
+              ...recipe,
+              id: `salon_recipe_${crypto.randomUUID()}`,
+              version: 1,
+              createdAt: now,
+              updatedAt: now
+            },
+            ...current.salonServiceRecipes
+          ],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Criou ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: recipe.name,
+            details: `${recipe.items.length} material(is)`
+          }),
+          updatedAt: now
+        }));
+      },
+      updateSalonServiceRecipe(id: string, patch: Partial<Omit<SalonServiceRecipe, "id" | "createdAt" | "version">>) {
+        const now = new Date().toISOString();
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: current.salonServiceRecipes.map((recipe) =>
+            recipe.id === id ? { ...recipe, ...patch, version: (recipe.version ?? 1) + 1, updatedAt: now } : recipe
+          ),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Atualizou ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: current.salonServiceRecipes.find((recipe) => recipe.id === id)?.name ?? id
+          }),
+          updatedAt: now
+        }));
+      },
+      removeSalonServiceRecipe(id: string) {
+        setState((current) => ({
+          ...current,
+          salonServiceRecipes: current.salonServiceRecipes.filter((recipe) => recipe.id !== id),
+          deletedEntityIds: addDeletedEntityIds(current.deletedEntityIds, id),
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Removeu ficha de servico",
+            entityType: "salon_recipe",
+            entityLabel: current.salonServiceRecipes.find((recipe) => recipe.id === id)?.name ?? id
+          }),
+          updatedAt: new Date().toISOString()
+        }));
+      },
+      registerSalonStockMovement(
+        movement: Omit<SalonStockMovement, "id" | "createdAt" | "unitCost" | "transactionId" | "serviceRecipeId">
+      ) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === movement.materialId);
+
+          if (!material) {
+            return current;
+          }
+
+          const quantity = Math.max(0, movement.quantity);
+          const delta = movement.type === "purchase" || movement.type === "adjustment" ? quantity : -quantity;
+          const stockMovement: SalonStockMovement = {
+            ...movement,
+            quantity,
+            unitCost: getSalonMaterialUnitCost(material),
+            id: `salon_stock_${crypto.randomUUID()}`,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.map((item) =>
+              item.id === movement.materialId
+                ? {
+                    ...item,
+                    stockQuantity: Math.max(0, item.stockQuantity + delta),
+                    updatedAt: now
+                  }
+                : item
+            ),
+            salonStockMovements: [stockMovement, ...current.salonStockMovements],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: movement.type === "purchase" ? "Registrou entrada de material" : "Ajustou estoque do salao",
+              entityType: "salon_stock_movement",
+              entityLabel: material.name,
+              details: movement.reason
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      setSalonInventoryCount(input: { materialId: string; countedQuantity: number; date: string; notes?: string }) {
+        const now = new Date().toISOString();
+        setState((current) => {
+          const material = current.salonMaterials.find((item) => item.id === input.materialId);
+
+          if (!material || !Number.isFinite(input.countedQuantity) || input.countedQuantity < 0) {
+            return current;
+          }
+
+          const difference = input.countedQuantity - material.stockQuantity;
+
+          if (Math.abs(difference) < 0.000001) {
+            return {
+              ...current,
+              activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+                action: "Conferiu inventario do salao",
+                entityType: "salon_stock_movement",
+                entityLabel: material.name,
+                details: "Sem diferenca de estoque"
+              }),
+              updatedAt: now
+            };
+          }
+
+          const movement: SalonStockMovement = {
+            id: `salon_stock_${crypto.randomUUID()}`,
+            materialId: material.id,
+            type: difference > 0 ? "adjustment" : "waste",
+            quantity: Math.abs(difference),
+            unitCost: getSalonMaterialUnitCost(material),
+            reason: "Inventario",
+            date: input.date,
+            notes: input.notes?.trim() || undefined,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          return {
+            ...current,
+            salonMaterials: current.salonMaterials.map((item) =>
+              item.id === material.id
+                ? {
+                    ...item,
+                    stockQuantity: input.countedQuantity,
+                    updatedAt: now
+                  }
+                : item
+            ),
+            salonStockMovements: [movement, ...current.salonStockMovements],
+            activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+              action: "Ajustou inventario do salao",
+              entityType: "salon_stock_movement",
+              entityLabel: material.name,
+              details: `${difference > 0 ? "+" : "-"}${Math.abs(difference)}`
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      registerSalonSale(input: SalonSaleInput) {
+        const current = stateRef.current;
+        const recipe = current.salonServiceRecipes.find((item) => item.id === input.recipeId && item.active);
+
+        if (!recipe) {
+          throw new Error("Selecione uma ficha de servico ativa para registrar a venda.");
+        }
+
+        if (!input.clientName.trim()) {
+          throw new Error("Informe o nome da cliente antes de salvar a venda.");
+        }
+
+        if (!Number.isFinite(input.amount) || input.amount <= 0) {
+          throw new Error("Informe um valor de venda valido.");
+        }
+
+        const insufficientMaterials = getInsufficientSalonMaterials(current.salonMaterials, recipe);
+
+        if (insufficientMaterials.length > 0) {
+          throw new Error(`Estoque insuficiente para: ${insufficientMaterials.join(", ")}.`);
+        }
+
+        const now = new Date().toISOString();
+        const transactionId = `txn_${crypto.randomUUID()}`;
+
+        setState((stateNow) => {
+          const freshRecipe = stateNow.salonServiceRecipes.find((item) => item.id === input.recipeId && item.active);
+
+          if (!freshRecipe) {
+            return stateNow;
+          }
+
+          const freshInsufficientMaterials = getInsufficientSalonMaterials(stateNow.salonMaterials, freshRecipe);
+
+          if (freshInsufficientMaterials.length > 0) {
+            return stateNow;
+          }
+
+          const materialCost = calculateSalonRecipeCost(freshRecipe, stateNow.salonMaterials);
+          const materialsById = new Map(stateNow.salonMaterials.map((material) => [material.id, material]));
+          const materialSnapshot = freshRecipe.items.map((item) => {
+            const material = materialsById.get(item.materialId);
+
+            return {
+              materialId: item.materialId,
+              materialName: material?.name ?? "Material removido",
+              quantity: item.quantity,
+              unit: material?.unit ?? "unit",
+              unitCost: material ? getSalonMaterialUnitCost(material) : 0
+            };
+          });
+          const transaction: Transaction = {
+            id: transactionId,
+            type: "income",
+            description: freshRecipe.name,
+            amount: input.amount,
+            category: freshRecipe.category || "Sobrancelha",
+            person: input.person,
+            date: input.date,
+            recurring: false,
+            source: "salon_sale",
+            paymentMethod: input.paymentMethod,
+            paymentRecipient: input.clientName.trim(),
+            notes: input.notes?.trim() || undefined,
+            accountId: input.accountId || DEFAULT_FINANCE_ACCOUNT_ID,
+            salonServiceRecipeId: freshRecipe.id,
+            salonServiceName: freshRecipe.name,
+            salonRecipeVersion: freshRecipe.version ?? 1,
+            salonMaterialCost: materialCost,
+            salonRecipeItemsSnapshot: materialSnapshot,
+            createdAt: now,
+            updatedAt: now
+          };
+          const usageMovements = freshRecipe.items.map((item): SalonStockMovement => {
+            const material = materialsById.get(item.materialId);
+
+            return {
+              id: `salon_stock_${crypto.randomUUID()}`,
+              materialId: item.materialId,
+              type: "usage",
+              quantity: item.quantity,
+              unitCost: material ? getSalonMaterialUnitCost(material) : 0,
+              reason: `Venda: ${freshRecipe.name}`,
+              date: input.date,
+              serviceRecipeId: freshRecipe.id,
+              transactionId,
+              notes: input.clientName.trim(),
+              createdAt: now,
+              updatedAt: now
+            };
+          });
+          const consumedByMaterial = freshRecipe.items.reduce<Record<string, number>>((totals, item) => {
+            totals[item.materialId] = (totals[item.materialId] ?? 0) + item.quantity;
+            return totals;
+          }, {});
+
+          return {
+            ...stateNow,
+            transactions: [transaction, ...stateNow.transactions],
+            salonMaterials: stateNow.salonMaterials.map((material) =>
+              consumedByMaterial[material.id]
+                ? {
+                    ...material,
+                    stockQuantity: Math.max(0, material.stockQuantity - consumedByMaterial[material.id]),
+                    updatedAt: now
+                  }
+                : material
+            ),
+            salonStockMovements: [...usageMovements, ...stateNow.salonStockMovements],
+            activityLogs: addFinanceActivity(stateNow.activityLogs, userEmailRef.current, {
+              action: "Registrou venda do salao",
+              entityType: "transaction",
+              entityLabel: freshRecipe.name,
+              details: input.clientName.trim()
+            }),
+            updatedAt: now
+          };
+        });
+      },
+      importTransactions(transactions: Transaction[]) {
+        const now = new Date().toISOString();
+        const normalizedTransactions = transactions.map((transaction) => ({
+          ...transaction,
+          createdAt: transaction.createdAt || now,
+          updatedAt: transaction.updatedAt || transaction.createdAt || now
+        }));
+
+        setState((current) => ({
+          ...current,
+          transactions: [...normalizedTransactions, ...current.transactions],
+          activityLogs: addFinanceActivity(current.activityLogs, userEmailRef.current, {
+            action: "Importou CSV",
+            entityType: "transaction",
+            entityLabel: `${transactions.length} transacao(oes)`
+          }),
+          updatedAt: now
+        }));
+      },
+      resetLocalCache() {
+        // Limpar cache local nao pode gerar tombstones, porque isso apagaria a base compartilhada de todos.
+        skipNextCloudSaveRef.current = true;
+        lastCloudPayloadRef.current = "";
+        window.localStorage.removeItem(STORAGE_KEY);
+        setState(createEmptyFinanceState());
+      }
+    }),
+    []
+  );
+
+  const visibleState = supabase && !userIdRef.current ? createEmptyFinanceState() : state;
+
+  return {
+    state: visibleState,
+    isHydrated,
+    actions,
+    cloud: {
+      ...cloud,
+      signIn,
+      signUp,
+      signOut,
+      syncNow
+    }
+  };
+}
+
+export type FinanceCloudSync = ReturnType<typeof useFinanceStore>["cloud"];
+
+function addFinanceActivity(
+  logs: FinanceActivityLog[],
+  actorEmail: string | null,
+  entry: {
+    action: string;
+    entityType: FinanceActivityEntity;
+    entityLabel: string;
+    details?: string;
+  }
+) {
+  return [
+    {
+      id: `activity_${crypto.randomUUID()}`,
+      actorEmail: actorEmail || "usuario autorizado",
+      action: entry.action,
+      entityType: entry.entityType,
+      entityLabel: entry.entityLabel,
+      details: entry.details,
+      createdAt: new Date().toISOString()
+    },
+    ...logs
+  ].slice(0, 200);
+}
+
+function persistFinanceStateLocally(state: FinanceState) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Nao foi possivel atualizar o cache local da Maya.", error);
+  }
+}
+
+function getSalonMaterialUnitCost(material: SalonMaterial) {
+  return material.packageQuantity > 0 ? material.packageCost / material.packageQuantity : 0;
+}
+
+function calculateSalonRecipeCost(recipe: SalonServiceRecipe, materials: SalonMaterial[]) {
+  const materialsById = new Map(materials.map((material) => [material.id, material]));
+
+  return recipe.items.reduce((total, item) => {
+    const material = materialsById.get(item.materialId);
+    return total + (material ? getSalonMaterialUnitCost(material) * item.quantity : 0);
+  }, 0);
+}
+
+function getInsufficientSalonMaterials(materials: SalonMaterial[], recipe: SalonServiceRecipe) {
+  const materialsById = new Map(materials.map((material) => [material.id, material]));
+
+  return recipe.items
+    .map((item) => ({ item, material: materialsById.get(item.materialId) }))
+    .filter(({ item, material }) => !material || material.stockQuantity < item.quantity)
+    .map(({ material }) => material?.name ?? "material removido");
+}
+
+function getSessionIdleMilliseconds() {
+  const configuredMinutes = Number(process.env.NEXT_PUBLIC_MAYA_SESSION_IDLE_MINUTES);
+  const minutes =
+    Number.isFinite(configuredMinutes) && configuredMinutes > 0
+      ? configuredMinutes
+      : DEFAULT_SESSION_IDLE_MINUTES;
+
+  return minutes * 60 * 1000;
+}
+
+function recordSessionActivity() {
+  window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
+}
+
+function getLastSessionActivity() {
+  const stored = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_KEY));
+  return Number.isFinite(stored) && stored > 0 ? stored : Date.now();
+}
+
+function markSessionLocked() {
+  window.localStorage.setItem(SESSION_LOCK_KEY, "true");
+}
+
+function clearSessionLocked() {
+  window.localStorage.removeItem(SESSION_LOCK_KEY);
+}
+
+function shouldAskPasswordAgain() {
+  if (window.localStorage.getItem(SESSION_LOCK_KEY) === "true") {
+    return true;
+  }
+
+  return Date.now() - getLastSessionActivity() >= SESSION_IDLE_MS;
+}
+
+function formatCloudError(error: { message?: string; code?: string }) {
+  const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+
+  if (
+    text.includes("save_finance_workspace_state_locked") ||
+    text.includes("function") ||
+    text.includes("finance_states") ||
+    text.includes("finance_workspace") ||
+    text.includes("relation") ||
+    text.includes("schema cache")
+  ) {
+    return "Sincronizacao online precisa ser ativada no banco antes de usar.";
+  }
+
+  if (text.includes("permission") || text.includes("policy") || text.includes("rls")) {
+    return "Sua conta nao tem permissao para sincronizar estes dados.";
+  }
+
+  return "Nao consegui sincronizar seus dados agora.";
+}
+
+function formatAuthError(error: { message?: string }) {
+  const text = (error.message ?? "").toLowerCase();
+
+  if (text.includes("invalid login") || text.includes("credentials")) {
+    return "E-mail ou senha incorretos.";
+  }
+
+  if (text.includes("password")) {
+    return "Use uma senha com pelo menos 6 caracteres.";
+  }
+
+  if (text.includes("already")) {
+    return "Essa conta ja existe. Use Entrar.";
+  }
+
+  return "Nao consegui acessar sua conta agora.";
+}
