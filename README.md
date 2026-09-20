@@ -31,6 +31,9 @@ Obrigatorias:
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
 - SUPABASE_SERVICE_ROLE_KEY
 - OPENAI_API_KEY
+- OPENAI_MODEL=gpt-6-astra (analise/conversa)
+- OPENAI_PDF_MODEL=gpt-5.6-terra (PDF/OCR)
+- OPENAI_VISION_MODEL=gpt-5.6-terra (imagens/OCR)
 
 Notificacoes push, opcionais:
 
