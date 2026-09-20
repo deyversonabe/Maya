@@ -20,6 +20,8 @@ import {
   toInputDate
 } from "@/lib/utils";
 import { expenseCategories, incomeCategories } from "../data/defaults";
+import { buildFinancialPosition } from "../lib/balance";
+import { isPlausibleFinanceDate } from "../lib/date-validation";
 import {
   buildBillSummary,
   buildMonthSummaries,
@@ -30,7 +32,7 @@ import {
   getTransactionsByMonthUntil
 } from "../lib/calculations";
 import { useFinanceStore } from "../lib/use-finance-store";
-import type { MonthSummary, PayableBill, Transaction, TransactionType } from "../types";
+import type { FinanceAccount, MonthSummary, PayableBill, Transaction, TransactionType } from "../types";
 import { AttachmentLink } from "./attachment-link";
 import { DocumentItemsPanel } from "./document-items-panel";
 
@@ -73,7 +75,10 @@ const transactionOrder: TransactionType[] = ["income", "expense", "investment", 
 
 export function MonthsPage() {
   const { state, actions } = useFinanceStore();
-  const availableMonths = useMemo(() => buildAvailableMonths(state.transactions, state.bills), [state.transactions, state.bills]);
+  const availableMonths = useMemo(
+    () => buildAvailableMonths(state.transactions, state.bills, state.accounts),
+    [state.accounts, state.transactions, state.bills]
+  );
   const currentMonth = getCurrentMonthKey();
   const [selectedMonth, setSelectedMonth] = useState(() => currentMonth);
   const [periodMode, setPeriodMode] = useState<"day" | "month">("month");
@@ -95,6 +100,10 @@ export function MonthsPage() {
     [selectedMonth, state.transactions, today]
   );
   const billSummary = useMemo(() => buildBillSummary(state.bills, selectedMonth), [state.bills, selectedMonth]);
+  const financialPosition = useMemo(
+    () => buildFinancialPosition(state, selectedMonth),
+    [selectedMonth, state]
+  );
   const realizedBillTotal = useMemo(
     () => getPaidBillsByPaymentMonthUntil(state.bills, selectedMonth, today).reduce((total, bill) => total + bill.amount, 0),
     [selectedMonth, state.bills, today]
@@ -144,7 +153,7 @@ export function MonthsPage() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
               Selecione um mes para ver tudo discriminado: receitas, despesas, investimentos, transferencias, somas e
-              saldo calculado do periodo.
+              resultado calculado do periodo, sem confundir com o saldo acumulado da conta.
             </p>
           </div>
 
@@ -163,13 +172,15 @@ export function MonthsPage() {
         </div>
       </LedPanel>
 
-      <section className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MonthMetric label="Entradas realizadas" value={formatCurrency(realizedTotals.income)} tone="success" icon={<ArrowUpCircle className="size-5" />} />
         <MonthMetric label="Saidas realizadas" value={formatCurrency(realizedTotals.expense)} tone="warning" icon={<ArrowDownCircle className="size-5" />} />
         <MonthMetric label="Investimentos realizados" value={formatCurrency(realizedTotals.investment)} tone="info" icon={<PiggyBank className="size-5" />} />
-        <MonthMetric label="Contas previstas" value={formatCurrency(billSummary.total)} tone="warning" icon={<BellRing className="size-5" />} />
-        <MonthMetric label="Saldo realizado" value={formatCurrency(realizedTotals.balance)} tone={realizedTotals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
-        <MonthMetric label="Saldo lancado" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
+        <MonthMetric label="Contas a pagar" value={formatCurrency(financialPosition.unpaidBills)} tone="warning" icon={<BellRing className="size-5" />} />
+        <MonthMetric label="Resultado realizado" value={formatCurrency(realizedTotals.balance)} tone={realizedTotals.balance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
+        <MonthMetric label="Resultado lancado" value={formatCurrency(totals.balance)} tone={totals.balance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
+        <MonthMetric label="Saldo acumulado" value={formatCurrency(financialPosition.currentBalance)} tone={financialPosition.currentBalance >= 0 ? "success" : "warning"} icon={<WalletCards className="size-5" />} />
+        <MonthMetric label="Saldo apos contas" value={formatCurrency(financialPosition.projectedBalance)} tone={financialPosition.projectedBalance >= 0 ? "success" : "warning"} icon={<CalendarDays className="size-5" />} />
       </section>
 
       <MonthlyLineChart summaries={monthlySeries} />
@@ -218,12 +229,14 @@ export function MonthsPage() {
             <SummaryRow label="Contas previstas no mes" value={formatCurrency(billSummary.total)} />
             <SummaryRow label="Total investido realizado" value={formatCurrency(realizedTotals.investment)} />
             <SummaryRow label="Transferencias" value={formatCurrency(totals.transfer)} />
-            <SummaryRow label="Saldo realizado ate hoje" value={formatCurrency(realizedTotals.balance)} highlight />
-            <SummaryRow label="Saldo lancado no mes" value={formatCurrency(totals.balance)} />
+            <SummaryRow label="Resultado realizado ate hoje" value={formatCurrency(realizedTotals.balance)} />
+            <SummaryRow label="Resultado lancado no mes" value={formatCurrency(totals.balance)} />
+            <SummaryRow label="Saldo acumulado" value={formatCurrency(financialPosition.currentBalance)} highlight />
+            <SummaryRow label="Saldo apos contas nao pagas" value={formatCurrency(financialPosition.projectedBalance)} highlight />
           </div>
           <div className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50">
-            O saldo realizado considera apenas lancamentos com data ate hoje e contas pagas. Contas futuras ficam
-            separadas como previsao e nao entram no saldo realizado.
+            O resultado realizado considera apenas movimentos do periodo ate hoje. O saldo acumulado vem do historico
+            completo das carteiras; o saldo apos contas desconta as obrigacoes ainda nao pagas do mes.
           </div>
         </Card>
       </section>
@@ -465,7 +478,7 @@ function MonthComparisonCard({
     ["Despesas lancadas", comparison.a.expenses, comparison.b.expenses, comparison.delta.expenses],
     ["Contas pagas", comparison.a.paidBills, comparison.b.paidBills, comparison.delta.paidBills],
     ["Contas previstas", comparison.a.plannedBills, comparison.b.plannedBills, comparison.delta.plannedBills],
-    ["Saldo realizado", comparison.a.balance, comparison.b.balance, comparison.delta.balance]
+    ["Resultado realizado", comparison.a.balance, comparison.b.balance, comparison.delta.balance]
   ] as const;
 
   return (
@@ -916,12 +929,16 @@ function getPreviousMonth(month: string) {
   return monthKeyAdd(month, -1);
 }
 
-function buildAvailableMonths(transactions: Transaction[], bills: PayableBill[]) {
+function buildAvailableMonths(transactions: Transaction[], bills: PayableBill[], accounts: FinanceAccount[]) {
   const months = new Set<string>();
 
   buildMonthKeyRange(getCurrentMonthKey(), -12, 24).forEach((month) => months.add(month));
 
-  transactions.forEach((transaction) => months.add(transaction.date.slice(0, 7)));
-  bills.forEach((bill) => months.add(bill.dueDate.slice(0, 7)));
+  transactions
+    .filter((transaction) => isPlausibleFinanceDate(transaction.date, accounts))
+    .forEach((transaction) => months.add(transaction.date.slice(0, 7)));
+  bills
+    .filter((bill) => isPlausibleFinanceDate(bill.dueDate, accounts))
+    .forEach((bill) => months.add(bill.dueDate.slice(0, 7)));
   return Array.from(months).sort();
 }

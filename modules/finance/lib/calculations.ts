@@ -11,6 +11,7 @@ import type {
   BillStatus,
   BudgetUsage,
   FinancialHealthAlert,
+  FinanceAccount,
   FinanceState,
   FinanceSummary,
   Goal,
@@ -19,20 +20,28 @@ import type {
   PayableBill,
   Transaction
 } from "../types";
+import { buildFinancialPosition } from "./balance";
+import { findPaidBillTransactionDuplicateMatches } from "./duplicates";
+import { isPlausibleFinanceDate, isValidCalendarDateKey } from "./date-validation";
 
 export { getCurrentMonthKey } from "@/lib/utils";
 
-export function calculateSummary(state: FinanceState): FinanceSummary {
-  const currentMonth = getCurrentMonthKey();
-  const today = toDateKey(new Date());
+export function calculateSummary(state: FinanceState, now = new Date()): FinanceSummary {
+  const currentMonth = getCurrentMonthKey(now);
+  const today = toDateKey(now);
   const monthTransactions = getTransactionsByMonthUntil(state.transactions, currentMonth, today);
   const monthBills = getPaidBillsByPaymentMonthUntil(state.bills, currentMonth, today);
+  const position = buildFinancialPosition(state, currentMonth, now);
 
   const income = sumByType(monthTransactions, "income");
   const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
   const investments = sumByType(monthTransactions, "investment");
-  const availableBalance = income - expenses - investments;
-  const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
+  const periodResult = income - expenses - investments;
+  const realizedSavingsRate = income > 0 ? ((income - expenses) / income) * 100 : null;
+  const projectedSavingsRate =
+    income > 0 ? ((income - expenses - position.unpaidBills) / income) * 100 : null;
+  const hasKnownOutflow = expenses > 0 || position.unpaidBills > 0;
+  const savingsRate = hasKnownOutflow ? projectedSavingsRate : null;
 
   const categoryTotals = buildExpenseCategoryTotals(monthTransactions, monthBills);
 
@@ -45,8 +54,16 @@ export function calculateSummary(state: FinanceState): FinanceSummary {
     income,
     expenses,
     investments,
-    availableBalance,
+    periodResult,
+    currentBalance: position.currentBalance,
+    availableBalance: position.currentBalance,
+    pendingBills: position.pendingBills,
+    overdueBills: position.overdueBills,
+    unpaidBills: position.unpaidBills,
+    projectedBalance: position.projectedBalance,
     savingsRate,
+    realizedSavingsRate,
+    projectedSavingsRate,
     goalsTotal,
     goalsProgress,
     biggestExpenseCategory: biggestCategory?.[0] ?? "Sem despesas",
@@ -54,18 +71,32 @@ export function calculateSummary(state: FinanceState): FinanceSummary {
   };
 }
 
-export function buildMonthlyFlow(transactions: Transaction[], bills: PayableBill[] = []) {
-  const today = toDateKey(new Date());
-  const months = buildMonthKeyRange(getCurrentMonthKey(), -5, 0);
+export function buildMonthlyFlow(
+  transactions: Transaction[],
+  bills: PayableBill[] = [],
+  accounts: FinanceAccount[] = [],
+  now = new Date()
+) {
+  const today = toDateKey(now);
+  const months = buildMonthKeyRange(getCurrentMonthKey(now), -5, 0);
+  const partialState = { accounts, transactions, bills };
 
   return months.map((month) => {
     const monthTransactions = getTransactionsByMonthUntil(transactions, month, today);
     const monthBills = getPaidBillsByPaymentMonthUntil(bills, month, today);
+    const income = sumByType(monthTransactions, "income");
+    const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
+    const investments = sumByType(monthTransactions, "investment");
+    const periodResult = income - expenses - investments;
+    const position = buildFinancialPosition(partialState, month, now);
+
     return {
       month,
-      income: sumByType(monthTransactions, "income"),
-      expenses: calculateMonthExpenseTotal(monthTransactions, monthBills),
-      investments: sumByType(monthTransactions, "investment")
+      income,
+      expenses,
+      investments,
+      periodResult,
+      closingBalance: position.currentBalance
     };
   });
 }
@@ -85,7 +116,7 @@ export function buildMonthSummaries(
     const income = sumByType(monthTransactions, "income");
     const expenses = calculateMonthExpenseTotal(monthTransactions, monthBills);
     const investments = sumByType(monthTransactions, "investment");
-    const availableBalance = income - expenses - investments;
+    const periodResult = income - expenses - investments;
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
 
     return {
@@ -93,7 +124,8 @@ export function buildMonthSummaries(
       income,
       expenses,
       investments,
-      availableBalance,
+      periodResult,
+      availableBalance: periodResult,
       savingsRate
     };
   });
@@ -114,28 +146,34 @@ export function buildInsights(state: FinanceState) {
     ];
   }
 
-  if (summary.income === 0) {
+  if (summary.income === 0 || summary.savingsRate === null) {
     insights.push({
-      title: "Receitas ainda nao cadastradas",
-      body: "Existem dados insuficientes para calcular taxa de economia. Cadastre as receitas do mes para liberar uma leitura mais precisa.",
+      title: "Dados insuficientes para economia",
+      body:
+        summary.income === 0
+          ? "Cadastre as receitas do mes para calcular a taxa de economia com seguranca."
+          : "Ainda nao ha despesas ou contas conhecidas suficientes para tratar 100% da renda como economia real.",
       tone: "info"
     });
-  } else if (summary.savingsRate >= 30) {
+  } else if (summary.savingsRate >= 30 && summary.projectedBalance >= 0) {
     insights.push({
-      title: "Ritmo excelente",
-      body: `A taxa de economia esta em ${formatPercent(summary.savingsRate)}. Esse ritmo fortalece metas e reserva.`,
+      title: "Ritmo positivo",
+      body: `Considerando as contas conhecidas do mes, a economia projetada esta em ${formatPercent(summary.savingsRate)}.`,
       tone: "success"
     });
-  } else if (summary.savingsRate >= 10) {
+  } else if (summary.savingsRate >= 10 && summary.projectedBalance >= 0) {
     insights.push({
       title: "Bom caminho",
-      body: `A taxa de economia esta em ${formatPercent(summary.savingsRate)}. Um pequeno ajuste em gastos variaveis pode acelerar as metas.`,
+      body: `A economia projetada esta em ${formatPercent(summary.savingsRate)}. Um pequeno ajuste em gastos variaveis pode acelerar as metas.`,
       tone: "info"
     });
   } else {
     insights.push({
-      title: "Atencao gentil",
-      body: "As despesas estao ocupando quase toda a renda do mes. Vale revisar recorrencias e compras recentes.",
+      title: "Atencao ao caixa",
+      body:
+        summary.projectedBalance < 0
+          ? `Depois das contas ainda nao pagas do mes, o saldo projetado fica em ${formatCurrency(summary.projectedBalance)}.`
+          : "As despesas e contas conhecidas estao ocupando grande parte da renda do mes. Vale revisar recorrencias e compras recentes.",
       tone: "warning"
     });
   }
@@ -242,6 +280,39 @@ export function buildFinancialHealthAlerts(state: FinanceState, now = new Date()
   }
 
   alerts.push(...buildRecurrenceEndingAlerts(state, currentMonth, createdAt));
+  alerts.push(...buildInstallmentAlerts(state, currentMonth, createdAt));
+
+  const suspiciousDates = [
+    ...state.transactions
+      .filter((transaction) => !isPlausibleFinanceDate(transaction.date, state.accounts, now))
+      .map((transaction) => ({ label: transaction.description, date: transaction.date })),
+    ...state.bills
+      .filter((bill) => !isPlausibleFinanceDate(bill.dueDate, state.accounts, now))
+      .map((bill) => ({ label: bill.title, date: bill.dueDate }))
+  ];
+
+  if (suspiciousDates.length > 0) {
+    const first = suspiciousDates[0];
+    alerts.push({
+      id: `suspicious_finance_dates_${suspiciousDates.length}`,
+      title: "Datas financeiras para revisar",
+      message: `${suspiciousDates.length} registro(s) estao fora da faixa historica esperada. Exemplo: "${first.label}" em ${first.date}. Revise esses dados porque eles podem alterar o saldo acumulado.`,
+      priority: "warning",
+      createdAt
+    });
+  }
+
+  const crossDuplicates = findPaidBillTransactionDuplicateMatches(state.transactions, state.bills);
+  if (crossDuplicates.length > 0) {
+    const first = crossDuplicates[0];
+    alerts.push({
+      id: `possible_bill_transaction_duplicate_${first.bill.id}_${first.transaction.id}`,
+      title: "Possivel pagamento duplicado",
+      message: `A conta "${first.bill.title}" e o lancamento "${first.transaction.description}" parecem representar o mesmo pagamento de ${formatCurrency(first.bill.amount)}. Revise antes de considerar o saldo definitivo.`,
+      priority: "warning",
+      createdAt
+    });
+  }
 
   return alerts.sort(sortFinancialHealthAlerts).slice(0, 4);
 }
@@ -280,8 +351,16 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
   const expenseDelta = current.expenses - previous.expenses;
   const incomeDelta = current.income - previous.income;
   const savingsDelta = current.savingsRate - previous.savingsRate;
-  const healthScore = calculateHealthScore(current, state);
-  const trend = savingsDelta > 5 || current.availableBalance > previous.availableBalance ? "growth" : savingsDelta < -5 ? "drop" : "stable";
+  const summary = calculateSummary(state);
+  const healthScore = calculateHealthScore(summary, state);
+  const trend =
+    summary.projectedBalance < 0
+      ? "drop"
+      : savingsDelta > 5 || current.periodResult > previous.periodResult
+        ? "growth"
+        : savingsDelta < -5
+          ? "drop"
+          : "stable";
   const biggestCategory = getBiggestExpenseCategory(state.transactions, state.bills, current.month);
   const currentTransactions = getTransactionsByMonthUntil(state.transactions, current.month);
   const currentBills = getPaidBillsByPaymentMonthUntil(state.bills, current.month);
@@ -297,10 +376,13 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
     hasCurrentIncome
       ? `No mes ${current.month}, receitas somam ${formatCurrency(current.income)} e despesas somam ${formatCurrency(current.expenses)}.`
       : `No mes ${current.month}, ainda nao ha receitas cadastradas; despesas registradas somam ${formatCurrency(current.expenses)}.`,
-    `A taxa de economia esta em ${formatPercent(current.savingsRate)}, variando ${formatPercent(savingsDelta)} em relacao ao mes anterior.`,
+    summary.savingsRate === null
+      ? "Ainda nao ha dados suficientes para calcular uma taxa de economia confiavel neste mes."
+      : `A economia projetada esta em ${formatPercent(summary.savingsRate)}, considerando contas conhecidas do mes.`,
     biggestCategory.amount > 0
       ? `${biggestCategory.category} e a maior categoria de despesa, com ${formatCurrency(biggestCategory.amount)}.`
       : "Ainda nao ha despesas suficientes para apontar uma categoria dominante.",
+    `Saldo atual ${formatCurrency(summary.currentBalance)}; depois das contas ainda nao pagas do mes, a projecao fica em ${formatCurrency(summary.projectedBalance)}.`,
     `No mes ${current.month}, existem ${recurringCount} lancamento(s) recorrente(s) e ${installmentCount} parcela(s) no calculo.`,
     budgetSummary.totalLimit > 0
       ? `Os orcamentos do mes somam ${formatCurrency(budgetSummary.totalLimit)} e ja consumiram ${formatPercent(budgetSummary.usedPercent)}.`
@@ -327,10 +409,10 @@ export function buildMayaLocalAnalysis(state: FinanceState, question?: string): 
   const message = [
     `Eu sou a MAYA. Fiz uma leitura cuidadosa da saude financeira de voces e o placar atual e ${healthScore}/100.`,
     trend === "growth"
-      ? "O desempenho mostra evolucao. A combinacao de saldo e economia esta ajudando voces a construir tranquilidade."
+      ? "O desempenho mostra evolucao, com leitura combinada de fluxo mensal, saldo acumulado e contas conhecidas."
       : trend === "drop"
         ? "Existe uma queda de desempenho para observar com calma. Nao e motivo para culpa; e um sinal para ajustar rota."
-        : "O cenario esta estavel. Isso e bom para previsibilidade, mas ainda podemos buscar pequenos ganhos.",
+        : "O cenario esta estavel. A leitura considera saldo acumulado, resultado mensal e compromissos ainda nao pagos.",
     question ? `Sobre sua pergunta: "${question}", eu recomendo olhar primeiro para fluxo mensal, recorrencias e metas.` : "Minha recomendacao e acompanhar meses, recorrencias e parcelas como um mapa de decisoes."
   ].join(" ");
 
@@ -534,31 +616,41 @@ function getBiggestExpenseCategory(transactions: Transaction[], bills: PayableBi
   return { category, amount };
 }
 
-function calculateHealthScore(current: MonthSummary, state: FinanceState) {
+function calculateHealthScore(current: FinanceSummary, state: FinanceState) {
   const goalProgress =
     state.goals.length > 0
       ? state.goals.reduce((total, goal) => total + getGoalProgress(goal), 0) / state.goals.length
       : 0;
-  const savingsComponent = Math.max(0, Math.min(40, current.savingsRate * 1.2));
-  const balanceComponent = current.availableBalance >= 0 ? 25 : 5;
-  const goalComponent = Math.min(25, goalProgress / 4);
-  const budgetSummary = buildBudgetSummary(state, current.month);
+  const savingsComponent =
+    current.savingsRate === null ? 0 : Math.max(0, Math.min(35, current.savingsRate * 1.05));
+  const liquidityComponent =
+    current.currentBalance < 0 ? 0 : current.projectedBalance < 0 ? 8 : current.unpaidBills > 0 ? 20 : 25;
+  const goalComponent = Math.min(20, goalProgress / 5);
+  const budgetSummary = buildBudgetSummary(state, current.currentMonth);
   const budgetComponent =
     budgetSummary.totalLimit === 0
-      ? 4
+      ? 3
       : budgetSummary.exceededCount > 0
-        ? 2
+        ? 1
         : budgetSummary.attentionCount > 0
-          ? 7
-          : 10;
+          ? 5
+          : 8;
   const hasMonthlyRecurring =
-    getTransactionsByMonthUntil(state.transactions, current.month).some((transaction) => transaction.recurring) ||
-    getPaidBillsByPaymentMonthUntil(state.bills, current.month).some((bill) => bill.recurrence === "monthly");
-  const predictabilityComponent = hasMonthlyRecurring ? 8 : 3;
+    getTransactionsByMonthUntil(state.transactions, current.currentMonth).some((transaction) => transaction.recurring) ||
+    state.bills.some((bill) => bill.dueDate.startsWith(current.currentMonth) && bill.recurrence === "monthly");
+  const predictabilityComponent = hasMonthlyRecurring ? 7 : 3;
+  const dataConfidenceComponent = current.income > 0 && current.savingsRate !== null ? 5 : 0;
 
   return Math.min(
     100,
-    Math.round(savingsComponent + balanceComponent + goalComponent + predictabilityComponent + budgetComponent)
+    Math.round(
+      savingsComponent +
+        liquidityComponent +
+        goalComponent +
+        predictabilityComponent +
+        budgetComponent +
+        dataConfidenceComponent
+    )
   );
 }
 
@@ -596,6 +688,7 @@ function emptyMonth(month: string): MonthSummary {
     income: 0,
     expenses: 0,
     investments: 0,
+    periodResult: 0,
     availableBalance: 0,
     savingsRate: 0
   };
@@ -630,11 +723,68 @@ function buildExpenseCategoryTotals(transactions: Transaction[], bills: PayableB
   return totals;
 }
 
+function buildInstallmentAlerts(state: FinanceState, currentMonth: string, createdAt: string): FinancialHealthAlert[] {
+  const candidates = [
+    ...state.transactions
+      .filter(
+        (transaction) =>
+          transaction.date.startsWith(currentMonth) &&
+          transaction.installmentGroupId &&
+          transaction.installmentNumber &&
+          transaction.installmentTotal
+      )
+      .map((transaction) => ({
+        id: transaction.id,
+        groupId: transaction.installmentGroupId!,
+        label: transaction.description,
+        number: transaction.installmentNumber!,
+        total: transaction.installmentTotal!,
+        date: transaction.date
+      })),
+    ...state.bills
+      .filter(
+        (bill) =>
+          bill.dueDate.startsWith(currentMonth) &&
+          bill.installmentGroupId &&
+          bill.installmentNumber &&
+          bill.installmentTotal
+      )
+      .map((bill) => ({
+        id: bill.id,
+        groupId: bill.installmentGroupId!,
+        label: bill.title,
+        number: bill.installmentNumber!,
+        total: bill.installmentTotal!,
+        date: bill.dueDate
+      }))
+  ];
+
+  const seen = new Set<string>();
+  return candidates.flatMap((item) => {
+    if (seen.has(item.groupId) || item.number < item.total - 1) return [];
+    seen.add(item.groupId);
+
+    const remaining = Math.max(0, item.total - item.number);
+    return [
+      {
+        id: `installment_progress_${sanitizeAlertId(item.groupId)}_${item.number}_${item.total}`,
+        title: remaining === 0 ? "Parcelamento concluido" : "Parcelamento perto de acabar",
+        message:
+          remaining === 0
+            ? `"${item.label}" esta na parcela ${item.number}/${item.total}, a ultima prevista.`
+            : `"${item.label}" esta na parcela ${item.number}/${item.total}; resta ${remaining} parcela.`,
+        priority: remaining === 0 ? "info" : "warning",
+        createdAt
+      } satisfies FinancialHealthAlert
+    ];
+  });
+}
+
 function buildRecurrenceEndingAlerts(state: FinanceState, currentMonth: string, createdAt: string): FinancialHealthAlert[] {
   const series = new Map<string, { label: string; kind: "transaction" | "bill"; months: Set<string> }>();
 
   state.transactions
-    .filter((transaction) => transaction.recurring && isValidDateKey(transaction.date))
+    .filter((transaction) => transaction.recurring && isValidCalendarDateKey(transaction.date))
     .forEach((transaction) => {
       const key = transaction.recurrenceGroupId || buildRecurrenceFallbackKey([
         "transaction",
@@ -647,7 +797,7 @@ function buildRecurrenceEndingAlerts(state: FinanceState, currentMonth: string, 
     });
 
   state.bills
-    .filter((bill) => bill.recurrence === "monthly" && isValidDateKey(bill.dueDate))
+    .filter((bill) => bill.recurrence === "monthly" && isValidCalendarDateKey(bill.dueDate))
     .forEach((bill) => {
       const key = bill.recurrenceGroupId || buildRecurrenceFallbackKey(["bill", bill.title, String(bill.amount), bill.category, bill.person]);
       addRecurrenceMonth(series, key, bill.title, "bill", bill.dueDate.slice(0, 7));
@@ -710,10 +860,6 @@ function diffMonthKeys(left: string, right: string) {
   const [leftYear, leftMonth] = left.split("-").map(Number);
   const [rightYear, rightMonth] = right.split("-").map(Number);
   return (rightYear - leftYear) * 12 + (rightMonth - leftMonth);
-}
-
-function isValidDateKey(value: string) {
-  return /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(value);
 }
 
 function sanitizeAlertId(value: string) {

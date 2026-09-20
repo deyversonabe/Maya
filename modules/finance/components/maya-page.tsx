@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Bot, Send, Sparkles, TrendingDown, TrendingUp, Waves } from "lucide-react";
@@ -22,7 +22,7 @@ type ChatMessage = {
 };
 
 export function MayaPage() {
-  const { state } = useFinanceStore();
+  const { state, isHydrated } = useFinanceStore();
   const localAnalysis = useMemo(() => buildMayaLocalAnalysis(state), [state]);
   const months = useMemo(() => buildMonthSummaries(state.transactions, 6, state.bills), [state.bills, state.transactions]);
   const [analysis, setAnalysis] = useState<MayaAnalysis>(localAnalysis);
@@ -34,6 +34,16 @@ export function MayaPage() {
   ]);
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const hasUserMessages = messages.some((message) => message.role === "user");
+
+  useEffect(() => {
+    if (!isHydrated || hasUserMessages) {
+      return;
+    }
+
+    setAnalysis(localAnalysis);
+    setMessages([{ role: "maya", content: localAnalysis.message }]);
+  }, [hasUserMessages, isHydrated, localAnalysis]);
 
   async function askMaya(prompt: string) {
     const trimmed = prompt.trim();
@@ -146,7 +156,7 @@ export function MayaPage() {
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="Pergunte para a MAYA: calcule juros, avalie emprestimo ou negocie uma conta atrasada."
               />
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || !isHydrated}>
                 <Send className="size-4" aria-hidden="true" />
                 Enviar
               </Button>
@@ -207,8 +217,8 @@ export function MayaPage() {
                     <span className="text-sm text-bronze">{formatPercent(month.savingsRate)}</span>
                   </div>
                   <p className="text-xs leading-5 text-muted">
-                    Receitas {formatCurrency(month.income)} - Despesas {formatCurrency(month.expenses)} - Saldo{" "}
-                    {formatCurrency(month.availableBalance)}
+                    Receitas {formatCurrency(month.income)} - Despesas {formatCurrency(month.expenses)} - Resultado{" "}
+                    {formatCurrency(month.periodResult)}
                   </p>
                 </div>
               ))}

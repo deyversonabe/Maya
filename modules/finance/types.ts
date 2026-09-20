@@ -1,4 +1,4 @@
-﻿export type TransactionType = "income" | "expense" | "investment" | "transfer";
+export type TransactionType = "income" | "expense" | "investment" | "transfer";
 
 export type Person = "Deyverson" | "Tom" | "Casal";
 
@@ -405,8 +405,22 @@ export interface FinanceSummary {
   income: number;
   expenses: number;
   investments: number;
+  /** Resultado realizado somente no mes: receitas - despesas - investimentos. */
+  periodResult: number;
+  /** Saldo acumulado real das carteiras ate a data de corte. */
+  currentBalance: number;
+  /** Compatibilidade temporaria: representa o saldo acumulado real, nao o resultado do mes. */
   availableBalance: number;
-  savingsRate: number;
+  /** Contas ainda nao pagas no mes, incluindo pendentes e vencidas. */
+  unpaidBills: number;
+  pendingBills: number;
+  overdueBills: number;
+  /** Saldo acumulado menos contas ainda nao pagas do mes. */
+  projectedBalance: number;
+  /** Taxa de economia considerando despesas realizadas e contas conhecidas ainda nao pagas. Null = dados insuficientes. */
+  savingsRate: number | null;
+  realizedSavingsRate: number | null;
+  projectedSavingsRate: number | null;
   goalsTotal: number;
   goalsProgress: number;
   biggestExpenseCategory: string;
@@ -418,6 +432,9 @@ export interface MonthSummary {
   income: number;
   expenses: number;
   investments: number;
+  /** Resultado do periodo, nao saldo acumulado. */
+  periodResult: number;
+  /** Alias legado mantido para compatibilidade visual. */
   availableBalance: number;
   savingsRate: number;
 }

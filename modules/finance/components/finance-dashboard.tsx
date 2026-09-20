@@ -40,6 +40,7 @@ import {
   getGoalProgress
 } from "../lib/calculations";
 import { parseTransactionsCsv } from "../lib/csv";
+import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import {
   findTransactionByFiscalAccessKey,
   findTransactionDuplicateMatches,
@@ -127,7 +128,10 @@ export function FinanceDashboard() {
   const [feedback, setFeedback] = useState("Dados salvos automaticamente.");
 
   const summary = useMemo(() => calculateSummary(state), [state]);
-  const flow = useMemo(() => buildMonthlyFlow(state.transactions, state.bills), [state.bills, state.transactions]);
+  const flow = useMemo(
+    () => buildMonthlyFlow(state.transactions, state.bills, state.accounts),
+    [state.accounts, state.bills, state.transactions]
+  );
   const insights = useMemo(() => buildInsights(state), [state]);
   const maya = useMemo(() => buildMayaLocalAnalysis(state), [state]);
   const budgetSummary = useMemo(() => buildBudgetSummary(state, summary.currentMonth), [state, summary.currentMonth]);
@@ -283,6 +287,12 @@ export function FinanceDashboard() {
 
     if (!transactionForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !transactionForm.date) {
       setFeedback("Preencha descricao, valor e data para salvar a transacao.");
+      return;
+    }
+
+    const dateIssue = getFinanceDateIssue(transactionForm.date, state.accounts);
+    if (dateIssue) {
+      setFeedback(getFinanceDateIssueMessage(dateIssue));
       return;
     }
 
@@ -445,6 +455,13 @@ export function FinanceDashboard() {
       return;
     }
 
+    const suspiciousDate = transactions.find((transaction) => getFinanceDateIssue(transaction.date, state.accounts));
+    if (suspiciousDate) {
+      const issue = getFinanceDateIssue(suspiciousDate.date, state.accounts);
+      setFeedback(`${getFinanceDateIssueMessage(issue)} Revise a linha de ${suspiciousDate.date} antes de importar.`);
+      return;
+    }
+
     const duplicateCandidates = transactions.map(({ id: _id, createdAt: _createdAt, ...transaction }) => transaction);
     const duplicates = findTransactionDuplicateMatches(state.transactions, duplicateCandidates);
 
@@ -592,9 +609,17 @@ export function FinanceDashboard() {
           <section id="dashboard" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <VisualMetric
               icon={<Wallet className="size-5" />}
-              label="Saldo disponivel"
-              value={formatCurrency(summary.availableBalance)}
-              tone={summary.availableBalance >= 0 ? "success" : "warning"}
+              label="Saldo atual"
+              value={isHydrated ? formatCurrency(summary.currentBalance) : "Carregando"}
+              detail="Saldo acumulado real das carteiras."
+              tone={summary.currentBalance >= 0 ? "success" : "warning"}
+            />
+            <VisualMetric
+              icon={<CalendarDays className="size-5" />}
+              label="Saldo apos contas"
+              value={isHydrated ? formatCurrency(summary.projectedBalance) : "Carregando"}
+              detail={`${formatCurrency(summary.unpaidBills)} ainda nao pagos no mes.`}
+              tone={summary.projectedBalance >= 0 ? "success" : "warning"}
             />
             <VisualMetric
               icon={<ArrowUpCircle className="size-5" />}
@@ -610,9 +635,10 @@ export function FinanceDashboard() {
             />
             <VisualMetric
               icon={<PiggyBank className="size-5" />}
-              label="Taxa de economia"
-              value={formatPercent(summary.savingsRate)}
-              tone={summary.savingsRate >= 20 ? "success" : "warning"}
+              label="Economia projetada"
+              value={summary.savingsRate === null ? "Dados insuf." : formatPercent(summary.savingsRate)}
+              detail="Considera despesas realizadas e contas conhecidas ainda nao pagas."
+              tone={summary.savingsRate === null ? "info" : summary.savingsRate >= 20 ? "success" : "warning"}
             />
             <VisualMetric
               icon={<HeartPulse className="size-5" />}
@@ -1008,10 +1034,11 @@ export function FinanceDashboard() {
                   <div key={month.month} className="grid gap-2">
                     <div className="flex items-center justify-between text-sm">
                       <strong className="text-cream">{month.month}</strong>
-                      <span className={cn("text-muted", financialValueClass(month.income - month.expenses - month.investments, "text-muted"))}>
-                        {formatCurrency(month.income - month.expenses - month.investments)}
+                      <span className={cn("text-muted", financialValueClass(month.periodResult, "text-muted"))}>
+                        Resultado {formatCurrency(month.periodResult)}
                       </span>
                     </div>
+                    <p className="text-xs text-muted">Saldo acumulado ate o periodo: {formatCurrency(month.closingBalance)}</p>
                     <div className="grid gap-1">
                       <FlowBar label="Receitas" value={month.income} max={maxFlowValue} className="bg-emerald-300" />
                       <FlowBar label="Despesas" value={month.expenses} max={maxFlowValue} className="bg-terracotta" />

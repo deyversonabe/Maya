@@ -1,6 +1,7 @@
 import type { FinanceState, LaborBenefit, PayableBill, PayrollRecord, TaxDocument, Transaction, WorkTimeEntry } from "../types";
 import { getCurrentMonthKey, getMonthEndDate, toDateKey } from "@/lib/utils";
 import { getBillEffectiveStatus, getBillPaymentDate } from "./calculations";
+import { buildAccountBalanceSummaries } from "./balance";
 
 export type FinanceReportPeriod = {
   start: string;
@@ -16,6 +17,10 @@ export type FinanceReport = {
     expenses: number;
     investments: number;
     transfers: number;
+    periodResult: number;
+    currentBalance: number;
+    projectedBalance: number;
+    /** Alias legado: agora representa saldo acumulado real. */
     balance: number;
     pendingBills: number;
     paidBills: number;
@@ -84,12 +89,27 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     .filter((entry) => isDateInsidePeriod(entry.date, period))
     .sort((left, right) => left.date.localeCompare(right.date));
 
-  const income = sumTransactions(transactions, "income");
-  const transactionExpenses = sumTransactions(transactions, "expense");
-  const billExpenses = sumAllBills(bills);
+  const balanceCutoff = period.end < toDateKey() ? period.end : toDateKey();
+  const realizedTransactions = transactions.filter((transaction) => transaction.date <= balanceCutoff);
+  const paidBills = bills.filter(
+    (bill) => getBillEffectiveStatus(bill) === "paid" && getBillReportDate(bill) <= balanceCutoff
+  );
+  const income = sumTransactions(realizedTransactions, "income");
+  const transactionExpenses = sumTransactions(realizedTransactions, "expense");
+  const billExpenses = paidBills.reduce((total, bill) => total + bill.amount, 0);
   const expenses = transactionExpenses + billExpenses;
-  const investments = sumTransactions(transactions, "investment");
-  const transfers = sumTransactions(transactions, "transfer");
+  const investments = sumTransactions(realizedTransactions, "investment");
+  const transfers = sumTransactions(realizedTransactions, "transfer");
+  const periodResult = income - expenses - investments;
+  const currentBalance = buildAccountBalanceSummaries(
+    state.accounts,
+    state.transactions,
+    state.bills,
+    balanceCutoff
+  ).reduce((total, account) => total + account.balance, 0);
+  const pendingBills = sumBillsByEffectiveStatus(bills, "pending");
+  const overdueBills = sumBillsByEffectiveStatus(bills, "overdue");
+  const projectedBalance = currentBalance - pendingBills - overdueBills;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -99,10 +119,13 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
       expenses,
       investments,
       transfers,
-      balance: income - expenses - investments,
-      pendingBills: sumBillsByEffectiveStatus(bills, "pending"),
-      paidBills: sumBillsByEffectiveStatus(bills, "paid"),
-      overdueBills: sumBillsByEffectiveStatus(bills, "overdue"),
+      periodResult,
+      currentBalance,
+      projectedBalance,
+      balance: currentBalance,
+      pendingBills,
+      paidBills: paidBills.reduce((total, bill) => total + bill.amount, 0),
+      overdueBills,
       goalsCurrent: state.goals.reduce((total, goal) => total + goal.currentAmount, 0),
       goalsTarget: state.goals.reduce((total, goal) => total + goal.targetAmount, 0)
     },
@@ -113,10 +136,10 @@ export function buildFinanceReport(state: FinanceState, period: FinanceReportPer
     payrollRecords,
     workTimeEntries,
     recurring: buildRecurringReport(transactions, bills),
-    incomeByCategory: buildCategoryReport(transactions.filter((transaction) => transaction.type === "income")),
+    incomeByCategory: buildCategoryReport(realizedTransactions.filter((transaction) => transaction.type === "income")),
     expensesByCategory: buildExpenseCategoryReport(
-      transactions.filter((transaction) => transaction.type === "expense"),
-      bills
+      realizedTransactions.filter((transaction) => transaction.type === "expense"),
+      paidBills
     )
   };
 }
@@ -142,9 +165,6 @@ function sumBillsByEffectiveStatus(bills: PayableBill[], status: PayableBill["st
     .reduce((total, bill) => total + bill.amount, 0);
 }
 
-function sumAllBills(bills: PayableBill[]) {
-  return bills.reduce((total, bill) => total + bill.amount, 0);
-}
 
 function getBillReportDate(bill: PayableBill) {
   return getBillEffectiveStatus(bill) === "paid" ? getBillPaymentDate(bill) : bill.dueDate;

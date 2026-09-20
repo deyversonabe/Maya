@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
@@ -31,15 +31,22 @@ import type { MayaAnalysis } from "../types";
 import { FinancialHealthAlerts } from "./financial-health-alerts";
 
 export function HomeScreen() {
-  const { state } = useFinanceStore();
+  const { state, isHydrated } = useFinanceStore();
   const summary = calculateSummary(state);
   const maya = buildMayaLocalAnalysis(state);
   const budgetSummary = buildBudgetSummary(state, summary.currentMonth);
   const healthAlerts = buildFinancialHealthAlerts(state);
 
   const [question, setQuestion] = useState("");
-  const [reply, setReply] = useState(maya.message);
+  const [reply, setReply] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hasAskedMaya, setHasAskedMaya] = useState(false);
+
+  useEffect(() => {
+    if (isHydrated && !hasAskedMaya) {
+      setReply(maya.message);
+    }
+  }, [hasAskedMaya, isHydrated, maya.message]);
 
   async function askMaya(prompt: string) {
     const trimmed = prompt.trim();
@@ -48,6 +55,7 @@ export function HomeScreen() {
       return;
     }
 
+    setHasAskedMaya(true);
     setIsLoading(true);
 
     try {
@@ -124,17 +132,24 @@ export function HomeScreen() {
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <VisualMetric
                 label="Saude"
-                value={`${maya.healthScore}/100`}
+                value={isHydrated ? `${maya.healthScore}/100` : "Carregando"}
                 detail="Leitura atual da MAYA."
                 icon={<HeartPulse className="size-5" />}
                 tone={maya.healthScore >= 70 ? "success" : "warning"}
               />
               <VisualMetric
-                label="Saldo"
-                value={formatCurrency(summary.availableBalance)}
-                detail="Depois de despesas e investimentos."
+                label="Saldo atual"
+                value={isHydrated ? formatCurrency(summary.currentBalance) : "Carregando"}
+                detail="Saldo acumulado real das carteiras."
                 icon={<WalletCards className="size-5" />}
-                tone={summary.availableBalance >= 0 ? "success" : "warning"}
+                tone={summary.currentBalance >= 0 ? "success" : "warning"}
+              />
+              <VisualMetric
+                label="Apos contas"
+                value={isHydrated ? formatCurrency(summary.projectedBalance) : "Carregando"}
+                detail={`${formatCurrency(summary.unpaidBills)} ainda nao pagos no mes.`}
+                icon={<ReceiptText className="size-5" />}
+                tone={summary.projectedBalance >= 0 ? "success" : "warning"}
               />
               <VisualMetric
                 label="Orcamento"
@@ -150,7 +165,9 @@ export function HomeScreen() {
                 <Bot className="size-4 text-bronze" aria-hidden="true" />
                 Fale rapido com a MAYA
               </div>
-              <p className="mb-3 text-sm leading-6 text-cream/90">{isLoading ? "MAYA esta pensando..." : reply}</p>
+              <p className="mb-3 text-sm leading-6 text-cream/90">
+                {!isHydrated ? "Carregando dados financeiros..." : isLoading ? "MAYA esta pensando..." : reply}
+              </p>
               <form
                 className="grid gap-2 sm:flex"
                 onSubmit={(event) => {
@@ -163,7 +180,7 @@ export function HomeScreen() {
                   onChange={(event) => setQuestion(event.target.value)}
                   placeholder="Pergunte algo para a MAYA..."
                 />
-                <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
+                <Button type="submit" disabled={isLoading || !isHydrated} className="w-full sm:w-auto">
                   <Send className="size-4" aria-hidden="true" />
                   Enviar
                 </Button>

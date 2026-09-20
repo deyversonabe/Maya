@@ -1619,7 +1619,6 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
 
   const line = value as Record<string, unknown>;
   const amountSource = line.amount ?? line.value ?? line.valor ?? line.valorTransacao ?? line.valorLancamento;
-  const type = normalizeStatementLineType(line, amountSource);
   const description = toCleanString(
     line.description ??
       line.descricao ??
@@ -1630,6 +1629,7 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
       line.name ??
       line.titulo
   );
+  const type = normalizeStatementLineType(line, amountSource, description);
   const amount = positiveAmount(amountSource);
   const date = toDateString(line.date ?? line.transactionDate ?? line.data ?? line.dataTransacao);
 
@@ -1637,7 +1637,7 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
     return null;
   }
 
-  const category = normalizeStatementCategory(type, line.category);
+  const category = normalizeStatementCategory(type, line.category, description);
   const paymentMethod = normalizePaymentMethod(line.paymentMethod ?? line.method ?? line.formaPagamento ?? line.meioPagamento, undefined);
   const paymentRecipient = toCleanString(
     line.paymentRecipient ??
@@ -1666,17 +1666,57 @@ function normalizeStatementLine(value: unknown): StatementTransactionDraft | nul
   };
 }
 
-function normalizeStatementCategory(type: Extract<TransactionType, "income" | "expense">, value: unknown) {
+function normalizeStatementCategory(
+  type: Extract<TransactionType, "income" | "expense">,
+  value: unknown,
+  description = ""
+) {
   const category = toCleanString(value);
   const allowed = type === "income" ? incomeCategories : expenseCategories;
+
+  if (allowed.includes(category) && category !== "Outros") {
+    return category;
+  }
+
+  const text = normalizeStatementText(description);
+  if (type === "income") {
+    if (/salario|holerite|pagamento.*empresa/.test(text)) return "Salario";
+    if (/sobrancel|henna|brow|micropigment/.test(text)) return allowed.includes("Sobrancelha") ? "Sobrancelha" : "Outros";
+    if (/cabelo|salao|cliente|servico/.test(text)) return allowed.includes("Cabelo") ? "Cabelo" : "Outros";
+    return "Outros";
+  }
+
+  if (/supermerc|mercado|atacadao|assai|carrefour|padaria|restaurante|lanche|ifood|alimento/.test(text)) return "Alimentacao";
+  if (/farmacia|drogaria|medicamento|remedio|consulta|hospital|plano.*saude|saude/.test(text)) return "Saude";
+  if (/gasolina|etanol|combustivel|posto/.test(text)) return "Combustivel";
+  if (/uber|99|taxi|onibus|transporte/.test(text)) return "Transporte";
+  if (/agua|esgoto|energia|luz|aluguel|condominio/.test(text)) return "Moradia";
+  if (/internet|software|celular|telefone|tecnologia/.test(text)) return "Tecnologia";
+  if (/salao|beleza|barbearia|cosmetico/.test(text)) return "Beleza";
+  if (/hotel|hosped|passagem|viagem/.test(text)) return "Viagem";
 
   return allowed.includes(category) ? category : "Outros";
 }
 
+function normalizeStatementText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function normalizeStatementLineType(
   line: Record<string, unknown>,
-  amountSource: unknown
+  amountSource: unknown,
+  description = ""
 ): Extract<TransactionType, "income" | "expense"> | null {
+  const descriptionText = normalizeStatementText(description);
+  if (/recebido|recebimento|pix recebido|credito recebido|transferencia recebida/.test(descriptionText)) {
+    return "income";
+  }
+
   if (line.type === "income" || line.type === "expense") {
     return line.type;
   }
@@ -1715,6 +1755,10 @@ function normalizeStatementLineType(
     directionText === "db" ||
     directionText.includes("debit")
   ) {
+    return "expense";
+  }
+
+  if (/pagamento efetuado|compra|debito|tarifa|saque/.test(descriptionText)) {
     return "expense";
   }
 

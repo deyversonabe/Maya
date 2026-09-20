@@ -38,6 +38,7 @@ import {
   getBillEffectiveStatus
 } from "../lib/calculations";
 import { findBillDuplicateMatches, type BillDuplicateMatch } from "../lib/duplicates";
+import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
@@ -207,6 +208,12 @@ export function BillsPage() {
 
     if (!form.title.trim() || !Number.isFinite(amount) || amount <= 0 || !form.dueDate) {
       setFeedback("Preencha titulo, valor e vencimento antes de salvar.");
+      return;
+    }
+
+    const dateIssue = getFinanceDateIssue(form.dueDate, state.accounts);
+    if (dateIssue) {
+      setFeedback(getFinanceDateIssueMessage(dateIssue));
       return;
     }
 

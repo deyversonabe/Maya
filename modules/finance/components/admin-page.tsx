@@ -332,7 +332,9 @@ export function AdminPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               <ReportMetric label="Renda" value={report.summary.income} />
               <ReportMetric label="Despesa" value={report.summary.expenses} />
-              <ReportMetric label="Saldo" value={report.summary.balance} />
+              <ReportMetric label="Resultado do periodo" value={report.summary.periodResult} />
+              <ReportMetric label="Saldo atual" value={report.summary.currentBalance} />
+              <ReportMetric label="Saldo apos contas" value={report.summary.projectedBalance} />
               <ReportMetric label="Atrasos" value={report.summary.overdueBills} />
             </div>
 

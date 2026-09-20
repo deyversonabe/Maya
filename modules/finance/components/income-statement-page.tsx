@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -14,12 +14,20 @@ import {
   financialValueClass,
   formatCurrency,
   getCurrentMonthKey,
-  getMonthEndDate,
   parseFinancialAmountInput,
   toInputDate
 } from "@/lib/utils";
 import { DEFAULT_FINANCE_ACCOUNT_ID, incomeCategories } from "../data/defaults";
+import {
+  buildAccountBalanceSummaries,
+  getBalanceCutoffDate,
+  getBillBalanceDate,
+  getEffectiveAccountId,
+  getSignedTransactionAmount,
+  normalizeFinanceAccounts
+} from "../lib/balance";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
+import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinanceAccount, FinanceAccountKind, PayableBill, PaymentMethod, Person, Transaction, TransactionType } from "../types";
 
@@ -41,13 +49,6 @@ type StatementEntry = {
   paymentRecipient?: string;
   isFuture?: boolean;
   transaction?: Transaction;
-};
-
-type AccountSummary = {
-  account: FinanceAccount;
-  income: number;
-  debit: number;
-  balance: number;
 };
 
 type IncomeDuplicateReview = {
@@ -105,7 +106,13 @@ export function IncomeStatementPage() {
   });
 
   const accountSummaries = useMemo(
-    () => buildAccountSummaries(state.accounts, state.transactions, state.bills, selectedStatementMonth),
+    () =>
+      buildAccountBalanceSummaries(
+        state.accounts,
+        state.transactions,
+        state.bills,
+        getBalanceCutoffDate(selectedStatementMonth)
+      ),
     [selectedStatementMonth, state.accounts, state.bills, state.transactions]
   );
   const statement = useMemo(
@@ -129,8 +136,8 @@ export function IncomeStatementPage() {
     .filter(
       (bill) =>
         bill.status === "paid" &&
-        getBillStatementDate(bill).startsWith(month) &&
-        isOnOrBeforeToday(getBillStatementDate(bill)) &&
+        getBillBalanceDate(bill).startsWith(month) &&
+        isOnOrBeforeToday(getBillBalanceDate(bill)) &&
         matchesSelectedAccount(bill.accountId, state.accounts, selectedAccountId)
     )
     .reduce((total, bill) => total + bill.amount, 0);
@@ -152,6 +159,12 @@ export function IncomeStatementPage() {
 
     if (!form.description.trim() || !Number.isFinite(amount) || amount <= 0 || !form.date) {
       setFeedback("Preencha descricao, valor e data para salvar a renda.");
+      return;
+    }
+
+    const dateIssue = getFinanceDateIssue(form.date, state.accounts);
+    if (dateIssue) {
+      setFeedback(getFinanceDateIssueMessage(dateIssue));
       return;
     }
 
@@ -245,6 +258,12 @@ export function IncomeStatementPage() {
 
     if (!accountForm.name.trim() || !Number.isFinite(openingBalance) || !accountForm.openingBalanceDate) {
       setFeedback("Preencha nome, saldo inicial valido e data inicial da carteira.");
+      return;
+    }
+
+    const openingDateIssue = getFinanceDateIssue(accountForm.openingBalanceDate, state.accounts);
+    if (openingDateIssue) {
+      setFeedback(getFinanceDateIssueMessage(openingDateIssue));
       return;
     }
 
@@ -830,57 +849,6 @@ function createIncomeTransactions({
   }));
 }
 
-function buildAccountSummaries(
-  accounts: FinanceAccount[],
-  transactions: Transaction[],
-  bills: PayableBill[],
-  selectedMonth: string
-): AccountSummary[] {
-  const cutoffDate = getStatementCutoffDate(selectedMonth);
-  const summaries = normalizeAccountsForDisplay(accounts).map((account) => ({
-    account,
-    income: 0,
-    debit: 0,
-    balance: account.openingBalanceDate <= cutoffDate ? account.openingBalance : 0
-  }));
-  const byId = new Map(summaries.map((summary) => [summary.account.id, summary]));
-
-  transactions
-    .filter((transaction) => transaction.date <= cutoffDate)
-    .forEach((transaction) => {
-    const summary = byId.get(getEffectiveAccountId(transaction.accountId, accounts));
-
-    if (!summary) {
-      return;
-    }
-
-    const amount = getSignedTransactionAmount(transaction);
-    summary.balance += amount;
-
-    if (amount > 0) {
-      summary.income += amount;
-    } else if (amount < 0) {
-      summary.debit += Math.abs(amount);
-    }
-  });
-
-  bills
-    .filter((bill) => bill.status === "paid")
-    .filter((bill) => getBillStatementDate(bill) <= cutoffDate)
-    .forEach((bill) => {
-      const summary = byId.get(getEffectiveAccountId(bill.accountId, accounts));
-
-      if (!summary) {
-        return;
-      }
-
-      summary.debit += bill.amount;
-      summary.balance -= bill.amount;
-    });
-
-  return summaries;
-}
-
 function buildStatementEntries(
   accounts: FinanceAccount[],
   transactions: Transaction[],
@@ -888,10 +856,10 @@ function buildStatementEntries(
   selectedAccountId: "all" | string,
   selectedMonth: string
 ): StatementEntry[] {
-  const displayAccounts = normalizeAccountsForDisplay(accounts);
+  const displayAccounts = normalizeFinanceAccounts(accounts);
   const accountById = new Map(displayAccounts.map((account) => [account.id, account]));
   const periodStart = `${selectedMonth}-01`;
-  const periodEnd = getStatementCutoffDate(selectedMonth);
+  const periodEnd = getBalanceCutoffDate(selectedMonth);
   const selectedAccounts = selectedAccountId === "all"
     ? displayAccounts
     : displayAccounts.filter((account) => account.id === selectedAccountId);
@@ -931,7 +899,7 @@ function buildStatementEntries(
     })).filter((entry) => selectedAccountId === "all" || selectedIds.has(entry.accountId)),
     ...bills
       .filter((bill) => bill.status === "paid")
-      .filter((bill) => getBillStatementDate(bill) <= periodEnd)
+      .filter((bill) => getBillBalanceDate(bill) <= periodEnd)
       .map((bill) => ({
         id: `bill_${bill.id}`,
         date: bill.paidAt?.slice(0, 10) || bill.dueDate,
@@ -998,29 +966,6 @@ function buildStatementEntries(
   return monthEntries;
 }
 
-function normalizeAccountsForDisplay(accounts: FinanceAccount[]) {
-  if (accounts.length > 0) {
-    return accounts;
-  }
-
-  return [
-    {
-      id: DEFAULT_FINANCE_ACCOUNT_ID,
-      name: "Carteira do casal",
-      kind: "checking" as FinanceAccountKind,
-      owner: "Casal" as Person,
-      openingBalance: 0,
-      openingBalanceDate: toInputDate(new Date()),
-      color: "#55f7ff",
-      createdAt: new Date().toISOString()
-    }
-  ];
-}
-
-function getEffectiveAccountId(accountId: string | undefined, accounts: FinanceAccount[]) {
-  return accounts.some((account) => account.id === accountId) ? accountId ?? DEFAULT_FINANCE_ACCOUNT_ID : DEFAULT_FINANCE_ACCOUNT_ID;
-}
-
 function matchesSelectedAccount(accountId: string | undefined, accounts: FinanceAccount[], selectedAccountId: "all" | string) {
   return selectedAccountId === "all" || getEffectiveAccountId(accountId, accounts) === selectedAccountId;
 }
@@ -1037,31 +982,8 @@ function mapTransactionToStatementType(type: TransactionType): StatementEntry["t
   return "debit";
 }
 
-function getSignedTransactionAmount(transaction: Transaction) {
-  if (transaction.type === "income") {
-    return transaction.amount;
-  }
-
-  if (transaction.type === "transfer") {
-    return 0;
-  }
-
-  return -transaction.amount;
-}
-
 function isOnOrBeforeToday(value: string) {
   return value <= toInputDate(new Date());
-}
-
-function getStatementCutoffDate(month: string) {
-  const today = toInputDate(new Date());
-  const monthEnd = getMonthEndDate(month);
-
-  return month === today.slice(0, 7) ? today : monthEnd;
-}
-
-function getBillStatementDate(bill: PayableBill) {
-  return bill.paidAt?.slice(0, 10) || bill.dueDate;
 }
 
 function formatPaymentMethod(method: PaymentMethod) {

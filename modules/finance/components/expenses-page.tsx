@@ -22,6 +22,7 @@ import {
 import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
+import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import {
   detectQrPayloadsFromImageDataUrl,
@@ -441,6 +442,15 @@ export function ExpensesPage() {
     transactions: Array<Omit<Transaction, "id" | "createdAt">>,
     reconciliations: BillReconciliationMatch[] = []
   ) {
+    const suspiciousTransaction = [...transactions, ...reconciliations.map((match) => match.transaction)].find((transaction) =>
+      getFinanceDateIssue(transaction.date, state.accounts)
+    );
+    if (suspiciousTransaction) {
+      const issue = getFinanceDateIssue(suspiciousTransaction.date, state.accounts);
+      setFeedback(`${getFinanceDateIssueMessage(issue)} Revise a linha de ${suspiciousTransaction.date} no extrato.`);
+      return;
+    }
+
     reconciliations.forEach((match) => {
       actions.updateBill(match.bill.id, {
         status: "paid",
@@ -469,6 +479,12 @@ export function ExpensesPage() {
 
     if (!form.description.trim() || !Number.isFinite(amount) || amount <= 0 || !form.date) {
       setFeedback("Preencha descricao, valor e data para salvar.");
+      return;
+    }
+
+    const dateIssue = getFinanceDateIssue(form.date, state.accounts);
+    if (dateIssue) {
+      setFeedback(getFinanceDateIssueMessage(dateIssue));
       return;
     }
 
