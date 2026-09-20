@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Bot, CalendarDays, Clock3, Database, FileText, Home, Landmark, LogOut, Menu, ReceiptText, Scissors, ShieldCheck, Target, WalletCards, X } from "lucide-react";
+import { BarChart3, BellRing, Bot, Building2, CalendarDays, Clock3, Database, FileText, Home, Inbox, Landmark, LogOut, Menu, ReceiptText, Scissors, ShieldCheck, Target, WalletCards, X } from "lucide-react";
 import { useMayaAdminAccess } from "@/lib/auth/use-maya-admin-access";
 import { cn } from "@/lib/utils";
 import { SyncStatusBanner } from "./sync-status-banner";
@@ -12,22 +12,25 @@ import { SyncStatusBanner } from "./sync-status-banner";
 const navItems = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-  { href: "/income", label: "Receitas", icon: Landmark },
-  { href: "/salon", label: "Salao", icon: Scissors },
-  { href: "/months", label: "Meses", icon: CalendarDays },
   { href: "/expenses", label: "Despesas", icon: ReceiptText },
+  { href: "/income", label: "Receitas", icon: Landmark },
   { href: "/bills", label: "Contas", icon: BellRing },
+  { href: "/maya", label: "MAYA", icon: Bot },
+  { href: "/captures", label: "Capturas", icon: Inbox },
+  { href: "/banking", label: "Trazer do banco", icon: Building2 },
+  { href: "/months", label: "Meses", icon: CalendarDays },
   { href: "/budgets", label: "Orcamentos", icon: WalletCards },
   { href: "/goals", label: "Metas", icon: Target },
+  { href: "/salon", label: "Salao", icon: Scissors },
   { href: "/fiscal", label: "Fiscal", icon: FileText },
   { href: "/hours", label: "Horas", icon: Clock3 },
   { href: "/data", label: "Dados", icon: Database, adminOnly: true },
-  { href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true },
-  { href: "/maya", label: "MAYA", icon: Bot }
+  { href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true }
 ];
 
-const mobilePrimaryHrefs = ["/", "/income", "/expenses", "/bills", "/maya"];
-const mobileMenuHrefs = ["/dashboard", "/salon", "/months", "/budgets", "/goals", "/fiscal", "/hours", "/data", "/admin"];
+const desktopPrimaryHrefs = ["/", "/dashboard", "/expenses", "/income", "/bills", "/maya"];
+const mobilePrimaryHrefs = ["/", "/dashboard", "/expenses", "/bills", "/maya"];
+
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -38,8 +41,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [isAdmin]
   );
   const activeItem = visibleNavItems.find((item) => isActivePath(pathname, item.href)) ?? navItems[0];
+  const desktopPrimaryItems = visibleNavItems.filter((item) => desktopPrimaryHrefs.includes(item.href));
+  const moreItems = visibleNavItems.filter((item) => !desktopPrimaryHrefs.includes(item.href));
   const mobilePrimaryItems = visibleNavItems.filter((item) => mobilePrimaryHrefs.includes(item.href));
-  const mobileMenuItems = visibleNavItems.filter((item) => mobileMenuHrefs.includes(item.href));
+  const mobileMenuItems = visibleNavItems.filter((item) => !mobilePrimaryHrefs.includes(item.href));
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -98,27 +103,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="ml-3 font-serif text-3xl font-bold text-bronze drop-shadow-[0_0_18px_rgba(184,121,69,0.26)]">Maya</span>
         </Link>
 
-        <nav className="hidden gap-2 md:grid md:grid-cols-5 xl:grid-cols-[repeat(14,minmax(0,1fr))]" aria-label="Navegacao principal">
-          {visibleNavItems.map((item) => {
+        <nav className="hidden flex-1 items-center justify-center gap-2 md:flex" aria-label="Navegacao principal">
+          {desktopPrimaryItems.map((item) => {
             const Icon = item.icon;
             const active = isActivePath(pathname, item.href);
-
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-black transition",
-                  active
-                    ? "border-neon-cyan/45 bg-neon-cyan/15 text-cyan-100 shadow-neon"
-                    : "border-cream/10 bg-cream/[0.04] text-muted hover:border-neon-cyan/30 hover:bg-neon-cyan/10 hover:text-cyan-100"
-                )}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {item.label}
+              <Link key={item.href} href={item.href} className={cn(
+                "flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-black transition",
+                active ? "border-neon-cyan/45 bg-neon-cyan/15 text-cyan-100 shadow-neon" : "border-cream/10 bg-cream/[0.04] text-muted hover:border-neon-cyan/30 hover:bg-neon-cyan/10 hover:text-cyan-100"
+              )}>
+                <Icon className="size-4" aria-hidden="true" />{item.label}
               </Link>
             );
           })}
+          <details className="group relative">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg border border-cream/10 bg-cream/[0.04] px-4 text-sm font-black text-muted transition hover:border-neon-cyan/30 hover:bg-neon-cyan/10 hover:text-cyan-100">
+              <Menu className="size-4" /> Mais
+            </summary>
+            <div className="absolute right-0 top-12 z-50 grid min-w-64 gap-1 rounded-xl border border-neon-cyan/20 bg-moss-950/95 p-2 shadow-neon backdrop-blur-xl">
+              {moreItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActivePath(pathname, item.href);
+                return <Link key={item.href} href={item.href} className={cn("flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-bold transition", active ? "bg-neon-cyan/15 text-cyan-100" : "text-muted hover:bg-neon-cyan/10 hover:text-cyan-100")}><Icon className="size-4" />{item.label}</Link>;
+              })}
+            </div>
+          </details>
         </nav>
 
         {email ? (
