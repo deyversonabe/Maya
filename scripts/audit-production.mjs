@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
@@ -34,6 +34,12 @@ for (const required of [
 ]) {
   if (!envExample.includes(required)) warnings.push(`Variavel esperada nao documentada: ${required}`);
 }
+
+
+try {
+  const duplicateTests = await stat(resolve(root, "tests/tests"));
+  if (duplicateTests.isDirectory()) warnings.push("Pasta duplicada tests/tests detectada. Remova-a do GitHub; o CI a ignora por seguranca, mas ela nao deve permanecer no repositorio.");
+} catch {}
 
 const captureMigration = await readFile(resolve(root, "supabase/migrations/20260920_finance_capture_inbox.sql"), "utf8");
 if (!/enable row level security/i.test(captureMigration)) errors.push("A inbox de capturas precisa manter RLS habilitado.");
