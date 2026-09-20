@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --environment node",
+    "test": "vitest run",
     "test:watch": "vitest",
     "auth:create-users": "node scripts/create-supabase-auth-users.mjs",
     "push:generate-keys": "web-push generate-vapid-keys",
