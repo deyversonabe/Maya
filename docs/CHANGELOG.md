@@ -1,10 +1,17 @@
-﻿# Changelog
+# Changelog
 
 Todas as mudancas relevantes do projeto devem ser registradas neste arquivo.
 
 O formato deve seguir uma adaptacao de Keep a Changelog, com secoes por data e categorias como Added, Changed, Deprecated, Removed, Fixed e Security quando aplicavel.
 
 ## [Unreleased]
+
+### IA atualizada — GPT-6 Astra / GPT-5.6 Terra (2026-09-20)
+
+- MAYA passa a usar `gpt-6-astra` como modelo padrao para analise financeira e conversa quando `OPENAI_MODEL` nao estiver definido.
+- Leitura de imagens, notas, extratos e PDFs passa a recomendar `gpt-5.6-terra` via `OPENAI_VISION_MODEL` e `OPENAI_PDF_MODEL`, equilibrando precisao e custo.
+- `.env.example`, guia de deploy e diretrizes de IA atualizados para a configuracao vigente.
+- Variaveis de ambiente continuam tendo prioridade, permitindo trocar modelos sem nova alteracao de codigo.
 
 ### Reliability hardening — notas e horas (2026-08-16)
 

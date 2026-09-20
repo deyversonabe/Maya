@@ -63,9 +63,9 @@ Para ativar a MAYA com OpenAI:
 Para colocar o produto no ar sem WhatsApp:
 
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL=gpt-5-mini`
-- `OPENAI_PDF_MODEL=gpt-5-mini`
-- `OPENAI_VISION_MODEL=gpt-4o-mini`
+- `OPENAI_MODEL=gpt-6-astra`
+- `OPENAI_PDF_MODEL=gpt-5.6-terra`
+- `OPENAI_VISION_MODEL=gpt-5.6-terra`
 - `NEXT_PUBLIC_APP_URL=https://maya-steel.vercel.app`
 - `WHATSAPP_ENABLED=false`
 
@@ -74,7 +74,7 @@ Nesse modo, o cadastro por foto continua funcionando dentro do app em `Despesas 
 Se a leitura de nota cair no rascunho manual mesmo com chave configurada, conferir primeiro:
 
 1. `OPENAI_API_KEY` existe em Production e Preview na Vercel.
-2. `OPENAI_VISION_MODEL` esta preenchida com modelo que aceita imagem, recomendado `gpt-4o-mini`.
+2. `OPENAI_VISION_MODEL` esta preenchida com modelo que aceita imagem; configuracao recomendada atual: `gpt-5.6-terra`.
 3. A chave tem credito/limite disponivel no projeto OpenAI.
 4. O deploy foi refeito depois de alterar variaveis.
 5. Os logs da Vercel mostram `maya_receipt_read_failed` com categoria segura da falha.

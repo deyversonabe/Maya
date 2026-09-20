@@ -135,8 +135,8 @@ Regras obrigatorias:
 - Registrar modelo, operacao, latencia, status e estimativa de uso quando possivel.
 - Evitar armazenar prompts e respostas com dados sensiveis sem necessidade clara.
 - Validar saidas estruturadas com schema quando a funcionalidade depender de formato.
-- O modelo padrao configuravel por ambiente e `gpt-5-mini`, mantendo suporte para troca via `OPENAI_MODEL` e `OPENAI_VISION_MODEL`.
-- Para leitura de comprovantes por imagem, `OPENAI_VISION_MODEL` deve apontar para um modelo com entrada de imagem. A configuracao recomendada de baixo custo e `gpt-4o-mini`.
+- O modelo principal padrao e `gpt-6-astra`, mantendo suporte para troca por ambiente via `OPENAI_MODEL`; para tarefas de extracao multimodal, use `OPENAI_VISION_MODEL` e `OPENAI_PDF_MODEL`.
+- Para leitura de comprovantes por imagem/PDF, a configuracao recomendada atual e `gpt-5.6-terra`, que suporta entrada de imagem e oferece melhor equilibrio entre inteligencia, latencia e custo que usar o modelo principal em toda extracao.
 - Imagens enviadas pelo navegador devem ser normalizadas/comprimidas antes do envio para reduzir falhas por tamanho, formato, payload ou resolucao excessiva.
 - A leitura de comprovantes deve ter timeout server-side menor que o limite da funcao hospedada e retornar rascunho manual seguro se o provedor demorar, recusar a imagem, atingir limite ou devolver saida invalida.
 - A leitura de extratos deve retornar lista estruturada de linhas ou fallback seguro sem salvar dados automaticamente.
