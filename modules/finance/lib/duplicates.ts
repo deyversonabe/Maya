@@ -94,9 +94,9 @@ export function findDuplicateTransaction(
 
 export function isPossibleTransactionDuplicate(
   existing: Pick<Transaction, "type" | "amount" | "date"> &
-    Partial<Pick<Transaction, "fiscalDocument" | "description" | "paymentRecipient" | "category">>,
+    Partial<Pick<Transaction, "fiscalDocument" | "description" | "paymentRecipient" | "category" | "externalId" | "institutionId">>,
   incoming: Pick<Transaction, "type" | "amount" | "date"> &
-    Partial<Pick<Transaction, "fiscalDocument" | "description" | "paymentRecipient" | "category">>
+    Partial<Pick<Transaction, "fiscalDocument" | "description" | "paymentRecipient" | "category" | "externalId" | "institutionId">>
 ) {
   if (!isTrackedTransactionType(existing.type) || !isTrackedTransactionType(incoming.type)) {
     return false;
@@ -104,6 +104,12 @@ export function isPossibleTransactionDuplicate(
 
   if (existing.type !== incoming.type) {
     return false;
+  }
+
+  if (existing.externalId && incoming.externalId && existing.externalId === incoming.externalId) {
+    if (!existing.institutionId || !incoming.institutionId || existing.institutionId === incoming.institutionId) {
+      return true;
+    }
   }
 
   const existingAccessKey = normalizeFiscalAccessKey(existing.fiscalDocument?.accessKey);

@@ -5,6 +5,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import type { FinancialDocumentDraft, PaymentMethod, Person } from "../types";
 import { AttachmentLink } from "./attachment-link";
+import { validateFinancialDocumentDraft } from "@/modules/captures/validation";
 
 type DateField = "documentDate" | "dueDate" | "entryDate";
 
@@ -45,6 +46,7 @@ export function FinancialDocumentReview({
   onChange: (patch: Partial<FinancialDocumentDraft>) => void;
 }) {
   const confidence = Math.round((draft.confidence || 0) * 100);
+  const validation = validateFinancialDocumentDraft(draft);
   const dateValue = draft[dateField] || draft.documentDate || draft.dueDate || draft.entryDate || "";
   const missingFields = draft.missingFields
     .map((field) => missingFieldLabels[field] ?? field)
@@ -61,6 +63,7 @@ export function FinancialDocumentReview({
             <Badge tone="info">Editavel</Badge>
             <Badge tone="warning">Aguardando salvar</Badge>
             {confidence > 0 ? <Badge tone={confidence >= 75 ? "success" : "warning"}>Leitura {confidence}%</Badge> : null}
+            <Badge tone={validation.status === "ready" ? "success" : validation.status === "blocked" ? "danger" : "warning"}>{validation.status === "ready" ? "Pronto" : validation.status === "blocked" ? "Bloqueado" : "Revisar"} · {validation.score}/100</Badge>
             {hasFiscalQr ? <Badge tone="success">QR fiscal lido</Badge> : null}
           </div>
           <p className="mt-2 text-sm leading-6 text-cyan-100">
@@ -80,6 +83,16 @@ export function FinancialDocumentReview({
         <p className="mb-4 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm font-bold text-amber-100">
           Complete antes de salvar: {missingFields.join(", ")}.
         </p>
+      ) : null}
+
+      {validation.issues.length > 0 ? (
+        <div className="mb-4 grid gap-1 rounded-lg border border-cream/10 bg-moss-950/30 p-3">
+          {validation.issues.map((issue, index) => (
+            <p key={`${issue.code}-${index}`} className={`text-xs font-bold ${issue.level === "error" ? "text-red-200" : issue.level === "warning" ? "text-amber-100" : "text-cyan-100"}`}>
+              {issue.message}
+            </p>
+          ))}
+        </div>
       ) : null}
 
       {fiscalEntries.length > 0 ? (

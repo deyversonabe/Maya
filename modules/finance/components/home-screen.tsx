@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Bot,
+  Building2,
+  FileScan,
   HeartPulse,
+  Inbox,
   ReceiptText,
   Send,
   ShieldCheck,
@@ -216,6 +220,13 @@ export function HomeScreen() {
         </div>
       </LedPanel>
 
+      <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Acoes principais">
+        <HomeAction href="/expenses" icon={<FileScan />} title="Ler documento" text="Nota, recibo, boleto, foto, print ou PDF. A MAYA cria um rascunho editavel." />
+        <HomeAction href="/captures" icon={<Inbox />} title="Revisar capturas" text="Confira tudo que chegou do WhatsApp e ainda nao virou dado financeiro." />
+        <HomeAction href="/banking" icon={<Building2 />} title="Trazer do banco" text="Importe OFX agora ou conecte Open Finance quando quiser automatizar." />
+        <HomeAction href="/maya" icon={<Bot />} title="Conversar com a MAYA" text="Pergunte sobre saldo, contas, limites, metas e proximos passos." />
+      </section>
+
       <section className="mt-4">
         <FinancialHealthAlerts alerts={healthAlerts} />
       </section>
@@ -227,6 +238,16 @@ export function HomeScreen() {
         <Feature icon={<ShieldCheck />} title="Seguro por padrao" text="Comprovantes viram rascunhos revisaveis antes de qualquer despesa ser salva." />
       </section>
     </AppShell>
+  );
+}
+
+function HomeAction({ href, icon, title, text }: { href: string; icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <Link href={href} className="glass-panel group rounded-card border border-neon-cyan/12 p-4 transition hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:bg-neon-cyan/[0.06] focus:outline-none focus:ring-4 focus:ring-neon-cyan/20">
+      <div className="mb-3 inline-flex rounded-xl border border-neon-cyan/20 bg-neon-cyan/10 p-2 text-cyan-100 transition group-hover:text-bronze [&_svg]:size-5">{icon}</div>
+      <strong className="block font-serif text-xl text-bronze">{title}</strong>
+      <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
+    </Link>
   );
 }
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useRef, useState } from "react";
 import {
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Copy,
   FileImage,
+  Pencil,
   ReceiptText,
   Trash2
 } from "lucide-react";
@@ -39,7 +40,7 @@ import {
 } from "../lib/calculations";
 import { findBillDuplicateMatches, type BillDuplicateMatch } from "../lib/duplicates";
 import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
-import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BillStatus,
@@ -84,6 +85,7 @@ export function BillsPage() {
   const [feedback, setFeedback] = useState("Cadastre contas, boletos e Pix para acompanhar vencimentos.");
   const [documentDraft, setDocumentDraft] = useState<FinancialDocumentDraft | null>(null);
   const [duplicateReview, setDuplicateReview] = useState<BillDuplicateReview | null>(null);
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [isReadingDocument, setIsReadingDocument] = useState(false);
   const [form, setForm] = useState({
     title: "",
@@ -171,12 +173,15 @@ export function BillsPage() {
     setFeedback("MAYA esta lendo a conta e preenchendo o rascunho...");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
+          fileDataUrl: attachment.fileDataUrl,
+          fileUrl: attachment.signedUrl,
+          mimeType: attachment.mimeType,
           fileName: file.name,
           documentKind: "bill"
         })
@@ -249,7 +254,8 @@ export function BillsPage() {
       source: documentDraft ? "attachment" : "manual"
     });
 
-    const duplicates = findBillDuplicateMatches(state.bills, bills);
+    const comparableBills = editingBillId ? state.bills.filter((bill) => bill.id !== editingBillId) : state.bills;
+    const duplicates = findBillDuplicateMatches(comparableBills, bills);
 
     if (duplicates.length > 0) {
       setDuplicateReview({ bills, matches: duplicates });
@@ -261,6 +267,33 @@ export function BillsPage() {
   }
 
   function saveBills(bills: Array<Omit<PayableBill, "id" | "createdAt">>) {
+    if (editingBillId) {
+      const existing = state.bills.find((bill) => bill.id === editingBillId);
+      const next = bills[0];
+      if (!next || !existing) {
+        setFeedback("Nao foi possivel localizar a conta que esta sendo editada.");
+        return;
+      }
+      actions.updateBill(editingBillId, {
+        ...next,
+        attachmentImageName: documentDraft?.attachmentImageName ?? existing.attachmentImageName,
+        attachmentDataUrl: documentDraft?.attachmentDataUrl ?? existing.attachmentDataUrl,
+        attachmentStoragePath: documentDraft?.attachmentStoragePath ?? existing.attachmentStoragePath,
+        attachmentMimeType: documentDraft?.attachmentMimeType ?? existing.attachmentMimeType,
+        attachmentSize: documentDraft?.attachmentSize ?? existing.attachmentSize,
+        documentItems: documentDraft?.items ?? existing.documentItems,
+        fiscalDocument: documentDraft?.fiscalDocument ?? existing.fiscalDocument,
+        source: documentDraft ? "attachment" : existing.source
+      });
+      setSelectedMonth(form.dueDate.slice(0, 7));
+      setDocumentDraft(null);
+      setDuplicateReview(null);
+      setEditingBillId(null);
+      setFeedback("Conta atualizada. Ela continua editavel quando voce precisar.");
+      resetBillForm();
+      return;
+    }
+
     actions.addBills(bills);
     setSelectedMonth(form.dueDate.slice(0, 7));
     setDocumentDraft(null);
@@ -272,6 +305,10 @@ export function BillsPage() {
           ? `${bills.length} contas recorrentes foram cadastradas.`
           : "Conta cadastrada com sucesso."
     );
+    resetBillForm();
+  }
+
+  function resetBillForm() {
     setForm((current) => ({
       ...current,
       title: "",
@@ -284,6 +321,32 @@ export function BillsPage() {
       status: "pending",
       notes: ""
     }));
+  }
+
+  function editBill(bill: PayableBill) {
+    setEditingBillId(bill.id);
+    setDocumentDraft(null);
+    setDuplicateReview(null);
+    setForm({
+      title: bill.title,
+      description: bill.description ?? "",
+      amount: String(bill.amount),
+      category: bill.category,
+      otherCategoryDescription: bill.otherCategoryDescription ?? "",
+      person: bill.person,
+      accountId: bill.accountId ?? DEFAULT_FINANCE_ACCOUNT_ID,
+      dueDate: bill.dueDate,
+      paymentMethod: bill.paymentMethod,
+      paymentCode: bill.paymentCode ?? "",
+      paymentRecipient: bill.paymentRecipient ?? "",
+      plan: "single",
+      months: "12",
+      installments: "2",
+      status: getBillEffectiveStatus(bill) === "paid" ? "paid" : "pending",
+      notes: bill.notes ?? ""
+    });
+    setFeedback(`Editando ${bill.title}. Salve para aplicar as correcoes.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function copyPaymentCode(bill: PayableBill) {
@@ -377,8 +440,8 @@ export function BillsPage() {
         <Card>
           <CardHeader
             eyebrow="Cadastro"
-            title="Nova conta"
-            action={<Badge tone={documentDraft ? "success" : "neutral"}>{documentDraft ? "Anexo lido" : "Manual"}</Badge>}
+            title={editingBillId ? "Editar conta" : "Nova conta"}
+            action={<Badge tone={editingBillId ? "info" : documentDraft ? "success" : "neutral"}>{editingBillId ? "Edicao" : documentDraft ? "Anexo lido" : "Manual"}</Badge>}
           />
 
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -394,7 +457,7 @@ export function BillsPage() {
               ref={uploadRef}
               className="hidden"
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
@@ -580,6 +643,7 @@ export function BillsPage() {
                 Recorrencia ou parcelas
                 <Select
                   value={form.plan}
+                  disabled={Boolean(editingBillId)}
                   onChange={(event) => setForm((current) => ({ ...current, plan: event.target.value as BillPlan }))}
                 >
                   <option value="single">Unica</option>
@@ -619,8 +683,13 @@ export function BillsPage() {
 
             <Button type="submit" className="w-full sm:w-auto">
               <ReceiptText className="size-4" aria-hidden="true" />
-              Salvar conta
+              {editingBillId ? "Atualizar conta" : "Salvar conta"}
             </Button>
+            {editingBillId ? (
+              <Button type="button" variant="ghost" onClick={() => { setEditingBillId(null); setDocumentDraft(null); resetBillForm(); setFeedback("Edicao cancelada."); }}>
+                Cancelar edicao
+              </Button>
+            ) : null}
           </form>
         </Card>
 
@@ -693,6 +762,7 @@ export function BillsPage() {
                   key={bill.id}
                   bill={bill}
                   onCopy={() => void copyPaymentCode(bill)}
+                  onEdit={() => editBill(bill)}
                   onPaid={() => {
                     actions.markBillPaid(bill.id);
                     setFeedback(`${bill.title} marcada como paga.`);
@@ -714,11 +784,13 @@ export function BillsPage() {
 function BillItem({
   bill,
   onCopy,
+  onEdit,
   onPaid,
   onRemove
 }: {
   bill: PayableBill;
   onCopy: () => void;
+  onEdit: () => void;
   onPaid: () => void;
   onRemove: () => void;
 }) {
@@ -763,6 +835,10 @@ function BillItem({
             <p className="text-xs font-black uppercase tracking-[0.12em] text-muted">Valor</p>
             <strong className="mt-1 block text-xl text-bronze">{formatCurrency(bill.amount)}</strong>
           </div>
+          <Button variant="secondary" onClick={onEdit}>
+            <Pencil className="size-4" aria-hidden="true" />
+            Editar
+          </Button>
           <Button variant="secondary" onClick={onCopy} disabled={!bill.paymentCode}>
             <Copy className="size-4" aria-hidden="true" />
             Copiar codigo
@@ -838,12 +914,12 @@ function DraftItems({ items }: { items: NonNullable<FinancialDocumentDraft["item
 
 function withStoredAttachment(
   draft: FinancialDocumentDraft,
-  attachment: FinanceAttachmentUpload
+  attachment: FinanceDocumentAttachmentUpload
 ): FinancialDocumentDraft {
   return {
     ...draft,
     attachmentImageName: attachment.fileName,
-    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentDataUrl: attachment.storagePath ? undefined : (attachment.imageDataUrl ?? attachment.fileDataUrl),
     attachmentStoragePath: attachment.storagePath,
     attachmentMimeType: attachment.mimeType,
     attachmentSize: attachment.size

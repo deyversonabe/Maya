@@ -5,15 +5,10 @@ export type WhatsAppMessage = {
   from: string;
   timestamp?: string;
   type?: string;
-  text?: {
-    body?: string;
-  };
-  image?: {
-    id: string;
-    mime_type?: string;
-    sha256?: string;
-    caption?: string;
-  };
+  text?: { body?: string };
+  image?: { id: string; mime_type?: string; sha256?: string; caption?: string };
+  document?: { id: string; mime_type?: string; sha256?: string; filename?: string; caption?: string };
+  audio?: { id: string; mime_type?: string; sha256?: string; voice?: boolean };
 };
 
 export type WhatsAppWebhookPayload = {
@@ -24,16 +19,8 @@ export type WhatsAppWebhookPayload = {
       field?: string;
       value?: {
         messaging_product?: string;
-        metadata?: {
-          display_phone_number?: string;
-          phone_number_id?: string;
-        };
-        contacts?: Array<{
-          wa_id?: string;
-          profile?: {
-            name?: string;
-          };
-        }>;
+        metadata?: { display_phone_number?: string; phone_number_id?: string };
+        contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
         messages?: WhatsAppMessage[];
         statuses?: Array<Record<string, unknown>>;
       };

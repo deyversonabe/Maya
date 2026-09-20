@@ -19,8 +19,11 @@ import { normalizeFiscalDocumentDate } from "@/modules/finance/lib/fiscal-date";
 import { parseTimeClockReportText } from "./timecard-report-parser";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5-mini";
-const DEFAULT_VISION_MODEL = "gpt-4o-mini";
+// Modelo principal atual para analise/conversa da MAYA.
+// OCR/visao usa Terra por padrao para equilibrar precisao, latencia e custo.
+const DEFAULT_MODEL = "gpt-6-astra";
+const DEFAULT_VISION_MODEL = "gpt-5.6-terra";
+const DEFAULT_PDF_MODEL = "gpt-5.6-terra";
 const OPENAI_TIMEOUT_MS = 18_000;
 const OPENAI_PDF_TIMEOUT_MS = 50_000;
 const FISCAL_QR_FETCH_TIMEOUT_MS = 4_000;
@@ -277,8 +280,8 @@ export async function readReceiptWithMaya({
     const hasPdf = Boolean(pdfUrl || pdfBase64);
     const response = await fetchOpenAIResponse(apiKey, {
         model: hasPdf
-          ? process.env.OPENAI_PDF_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL
-          : process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+          ? process.env.OPENAI_PDF_MODEL || DEFAULT_PDF_MODEL
+          : process.env.OPENAI_VISION_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
@@ -346,9 +349,15 @@ export async function readReceiptWithMaya({
 
 export async function readBankStatementWithMaya({
   imageDataUrl,
+  pdfBase64,
+  pdfUrl,
+  documentText,
   fileName
 }: {
-  imageDataUrl: string;
+  imageDataUrl?: string;
+  pdfBase64?: string;
+  pdfUrl?: string;
+  documentText?: string;
   fileName?: string;
 }): Promise<{
   statementDraft: BankStatementDraft;
@@ -368,56 +377,67 @@ export async function readBankStatementWithMaya({
   }
 
   try {
+    const content: Array<Record<string, unknown>> = [
+      {
+        type: "input_text",
+        text: [
+          "Voce e a MAYA, assistente financeira do app.",
+          "Leia este extrato bancario, print, PDF ou lista de transacoes.",
+          "Faca leitura minuciosa linha por linha, preservando descricao, valor exato com centavos, data e sinal de entrada/saida.",
+          "Separe somente linhas financeiras reais em entradas e saidas.",
+          "Extraia tambem, quando estiverem explicitamente visiveis: openingBalance (saldo inicial/anterior), closingBalance (saldo final), totalIncome (total de creditos/entradas) e totalExpenses (total de debitos/saidas).",
+          "Nao use saldo, limite, subtotal ou total como se fossem transacoes. Esses valores devem ficar apenas nos campos de reconciliacao.",
+          "Nunca invente valor, data, pessoa, banco, descricao ou categoria.",
+          "Valores de linhas devem ser positivos. Se o extrato mostrar -35,90, devolva amount 35.90 e type expense. Use type income para credito/entrada e expense para debito/saida.",
+          "Use datas no formato YYYY-MM-DD. Se a data nao existir ou estiver ilegivel, nao inclua a linha.",
+          `Categorias de renda permitidas: ${incomeCategories.join(", ")}.`,
+          `Categorias de despesa permitidas: ${expenseCategories.join(", ")}.`,
+          "Quando nao houver categoria confiavel, use Outros.",
+          "Quando a linha for Pix, use paymentMethod pix e preencha paymentRecipient com o nome legivel da pessoa/empresa quando existir.",
+          "Se uma linha tiver descricao quebrada em mais de uma linha visual, una a descricao antes de devolver.",
+          "Se o extrato usar D/C, credito/debito, entrada/saida, verde/vermelho ou sinais +/-, use isso para classificar type.",
+          "Responda apenas JSON valido com: title, periodStart, periodEnd, openingBalance, closingBalance, totalIncome, totalExpenses, confidence, missingFields, lines, notes.",
+          "lines deve ser array com: type, description, amount, category, date, paymentMethod, paymentRecipient, confidence, notes.",
+          documentText ? `Texto adicional extraido do arquivo: ${normalizeDocumentTextForPrompt(documentText)}` : ""
+        ].filter(Boolean).join(" ")
+      }
+    ];
+
+    if (imageDataUrl) {
+      content.push({ type: "input_image", detail: "high", image_url: imageDataUrl });
+    }
+
+    if (pdfUrl || pdfBase64) {
+      content.push({
+        type: "input_file",
+        ...(pdfUrl ? { file_url: pdfUrl } : { file_data: pdfBase64 }),
+        filename: fileName || "extrato.pdf"
+      });
+    }
+
+    if (!imageDataUrl && !pdfUrl && !pdfBase64 && !documentText) {
+      return {
+        statementDraft: fallbackDraft,
+        needsReview: true,
+        message: "Nenhum conteudo de extrato foi enviado para leitura."
+      };
+    }
+
+    const hasPdf = Boolean(pdfUrl || pdfBase64);
     const response = await fetchOpenAIResponse(apiKey, {
-        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
-        input: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: [
-                  "Voce e a MAYA, assistente financeira do app.",
-                  "Leia esta imagem de extrato bancario ou lista de transacoes.",
-                  "Faca OCR minucioso linha por linha, preservando descricao, valor exato com centavos, data e sinal de entrada/saida.",
-                  "Separe somente linhas financeiras reais em entradas e saidas.",
-                  "Ignore saldo anterior, saldo final, limite, cabecalhos, totais, subtotais, tarifas demonstrativas sem transacao, mensagens promocionais e linhas ilegiveis.",
-                  "Nunca invente valor, data, pessoa, banco, descricao ou categoria.",
-                  "Valores devem ser positivos. Se o extrato mostrar -35,90, devolva amount 35.90 e type expense. Use type income para credito/entrada e expense para debito/saida.",
-                  "Use datas no formato YYYY-MM-DD. Se a data nao existir ou estiver ilegivel, nao inclua a linha.",
-                  `Categorias de renda permitidas: ${incomeCategories.join(", ")}.`,
-                  `Categorias de despesa permitidas: ${expenseCategories.join(", ")}.`,
-                  "Quando nao houver categoria confiavel, use Outros.",
-                  "Quando a linha for Pix, use paymentMethod pix e preencha paymentRecipient com o nome legivel da pessoa/empresa quando existir.",
-                  "Se uma linha tiver descricao quebrada em mais de uma linha visual, una a descricao antes de devolver.",
-                  "Se o extrato usar D/C, credito/debito, entrada/saida, verde/vermelho ou sinais +/-, use isso para classificar type.",
-                  "Ignore linhas de saldo inicial, saldo anterior, saldo disponivel, saldo atual, saldo final, limite, total de creditos e total de debitos mesmo que tenham valor.",
-                  "Responda apenas JSON valido com: title, periodStart, periodEnd, confidence, missingFields, lines, notes.",
-                  "lines deve ser array com: type, description, amount, category, date, paymentMethod, paymentRecipient, confidence, notes."
-                ].join(" ")
-              },
-              {
-                type: "input_image",
-                detail: "high",
-                image_url: imageDataUrl
-              }
-            ]
-          }
-        ],
-        max_output_tokens: 2600,
-        store: false,
-        text: { format: { type: "json_object" } }
-    });
+      model: hasPdf
+        ? process.env.OPENAI_PDF_MODEL || DEFAULT_PDF_MODEL
+        : process.env.OPENAI_VISION_MODEL || DEFAULT_VISION_MODEL,
+      input: [{ role: "user", content }],
+      max_output_tokens: hasPdf ? 5200 : 3200,
+      store: false,
+      text: { format: { type: "json_object" } }
+    }, hasPdf ? OPENAI_PDF_TIMEOUT_MS : OPENAI_TIMEOUT_MS);
 
     if (!response.ok) {
       const error = await parseOpenAIError(response);
       logReceiptReadFailure(error, "statement");
-
-      return {
-        statementDraft: fallbackDraft,
-        needsReview: true,
-        message: buildReceiptFailureMessage(error)
-      };
+      return { statementDraft: fallbackDraft, needsReview: true, message: buildReceiptFailureMessage(error) };
     }
 
     const data = (await response.json()) as OpenAIResponse;
@@ -429,19 +449,51 @@ export async function readBankStatementWithMaya({
       needsReview: true,
       message:
         statementDraft.lines.length > 0
-          ? "MAYA leu o extrato e separou entradas e saidas. Revise antes de importar."
-          : "MAYA nao encontrou linhas confiaveis no extrato. Tente uma imagem mais nitida ou importe manualmente."
+          ? "MAYA leu o extrato e separou entradas e saidas. Revise as linhas e a reconciliacao antes de importar."
+          : "MAYA nao encontrou linhas confiaveis no extrato. Tente uma imagem/PDF mais nitido ou importe manualmente."
     };
   } catch (error) {
     const failure = normalizeCaughtFailure(error);
     logReceiptReadFailure(failure, "statement");
-
-    return {
-      statementDraft: fallbackDraft,
-      needsReview: true,
-      message: buildReceiptFailureMessage(failure)
-    };
+    return { statementDraft: fallbackDraft, needsReview: true, message: buildReceiptFailureMessage(failure) };
   }
+}
+
+export async function transcribeAudioWithMaya({
+  bytes,
+  fileName,
+  mimeType
+}: {
+  bytes: Uint8Array;
+  fileName: string;
+  mimeType?: string;
+}) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("openai_not_configured");
+  if (bytes.byteLength > 25_000_000) throw new Error("audio_too_large");
+
+  const form = new FormData();
+  form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-transcribe");
+  form.append("file", new Blob([bytes], { type: mimeType || "audio/ogg" }), fileName);
+  form.append("prompt", "Lancamento financeiro em portugues do Brasil. Preserve valores, nomes de estabelecimentos, bancos, Pix, datas e categorias quando forem falados.");
+  form.append("languages[]", "pt");
+
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(45_000)
+  });
+
+  if (!response.ok) {
+    const failure = await parseOpenAIError(response);
+    throw new Error(`audio_transcription_failed:${failure.code || failure.status || "unknown"}`);
+  }
+
+  const data = (await response.json()) as { text?: string };
+  const text = data.text?.trim() || "";
+  if (!text) throw new Error("audio_transcription_empty");
+  return text;
 }
 
 export async function readTimeClockWithMaya({
@@ -530,8 +582,8 @@ export async function readTimeClockWithMaya({
       apiKey,
       {
         model: isMultiDayPdf
-          ? process.env.OPENAI_PDF_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL
-          : process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+          ? process.env.OPENAI_PDF_MODEL || DEFAULT_PDF_MODEL
+          : process.env.OPENAI_VISION_MODEL || DEFAULT_VISION_MODEL,
         input: [
           {
             role: "user",
@@ -1444,16 +1496,40 @@ function normalizeBankStatementDraft(
     missingFields.add("lines");
   }
 
+  const openingBalance = toFiniteMoney(parsed.openingBalance ?? parsed.saldoInicial ?? parsed.saldoAnterior);
+  const closingBalance = toFiniteMoney(parsed.closingBalance ?? parsed.saldoFinal ?? parsed.saldoAtual);
+  const totalIncome = toFiniteMoney(parsed.totalIncome ?? parsed.totalCredits ?? parsed.totalEntradas ?? parsed.totalCreditos);
+  const totalExpenses = toFiniteMoney(parsed.totalExpenses ?? parsed.totalDebits ?? parsed.totalSaidas ?? parsed.totalDebitos);
+  const computedIncome = lines.filter((line) => line.type === "income").reduce((sum, line) => sum + line.amount, 0);
+  const computedExpenses = lines.filter((line) => line.type === "expense").reduce((sum, line) => sum + line.amount, 0);
+  const reconciliationDifference =
+    openingBalance !== undefined && closingBalance !== undefined
+      ? Math.round((closingBalance - (openingBalance + computedIncome - computedExpenses)) * 100) / 100
+      : undefined;
+
   return {
     ...fallback,
     title: toCleanString(parsed.title) || fallback.title,
     periodStart: toDateString(parsed.periodStart) || fallback.periodStart,
     periodEnd: toDateString(parsed.periodEnd) || fallback.periodEnd,
+    openingBalance,
+    closingBalance,
+    totalIncome,
+    totalExpenses,
+    reconciliationDifference,
     confidence: clampNumber(parsed.confidence, 0, 1, fallback.confidence),
     lines,
     missingFields: Array.from(missingFields),
     notes: toCleanString(parsed.notes) || fallback.notes
   };
+}
+
+function toFiniteMoney(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value * 100) / 100;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/[^0-9,.-]/g, "").replace(/\.(?=.*\.)/g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : undefined;
 }
 
 function buildFallbackTimeClockDraft(targetDate?: string): TimeClockDraft {

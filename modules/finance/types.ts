@@ -85,6 +85,8 @@ export interface Transaction {
   installmentNumber?: number;
   installmentTotal?: number;
   source?: TransactionSource;
+  externalId?: string;
+  institutionId?: string;
   paymentMethod?: PaymentMethod;
   paymentRecipient?: string;
   otherCategoryDescription?: string;
@@ -526,6 +528,11 @@ export interface BankStatementDraft {
   title: string;
   periodStart?: string;
   periodEnd?: string;
+  openingBalance?: number;
+  closingBalance?: number;
+  totalIncome?: number;
+  totalExpenses?: number;
+  reconciliationDifference?: number;
   confidence: number;
   attachmentImageName?: string;
   attachmentDataUrl?: string;

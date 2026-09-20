@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Camera, Check, FileImage, FileText, Pencil, QrCode, Trash2 } from "lucide-react";
+import { Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,15 +20,14 @@ import {
   toInputDate
 } from "@/lib/utils";
 import { mayaFetch } from "@/lib/api-client";
+import { validateBankStatementDraft } from "@/modules/captures/validation";
 import { DEFAULT_FINANCE_ACCOUNT_ID, expenseCategories, incomeCategories } from "../data/defaults";
 import { addMonths, getTransactionsByMonth, getTransactionsByMonthUntil } from "../lib/calculations";
 import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import { findTransactionDuplicateMatches, type TransactionDuplicateMatch } from "../lib/duplicates";
 import {
   detectQrPayloadsFromImageDataUrl,
-  fileToFinanceAttachment,
   fileToFinanceDocumentAttachment,
-  type FinanceAttachmentUpload,
   type FinanceDocumentAttachmentUpload
 } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
@@ -69,13 +68,9 @@ type BillReconciliationMatch = {
   transactionIndex: number;
 };
 
-type ReceiptReadMode = "receipt" | "camera" | "fiscalQr";
-
 export function ExpensesPage() {
   const { state, actions } = useFinanceStore();
   const uploadRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const fiscalQrRef = useRef<HTMLInputElement>(null);
   const statementRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
@@ -276,14 +271,9 @@ export function ExpensesPage() {
     );
   }
 
-  async function handleReceiptFile(file: File, mode: ReceiptReadMode = "receipt") {
-    const isFiscalQrMode = mode === "fiscalQr";
+  async function handleReceiptFile(file: File) {
     setIsReadingReceipt(true);
-    setFeedback(
-      isFiscalQrMode
-        ? "MAYA esta procurando o QR Code fiscal e preparando os dados reais da nota..."
-        : "MAYA esta lendo a nota para salvar como despesa..."
-    );
+    setFeedback("MAYA esta lendo o documento, cruzando valores e preparando um rascunho editavel...");
 
     try {
       const attachment = await fileToFinanceDocumentAttachment(file);
@@ -312,17 +302,10 @@ export function ExpensesPage() {
       const storedDraft = result.financialDraft ? withStoredAttachment(result.financialDraft, attachment) : undefined;
 
       if (storedDraft) {
-        saveReceiptDraftAsExpense(storedDraft, {
-          message: result.message,
-          isFiscalQrMode,
-          detectedQrCount: qrPayloads.length
-        });
+        applyDraft(storedDraft);
+        setFeedback(`${result.message ?? "Rascunho criado."} Confira e edite os campos abaixo. Nada foi salvo automaticamente.${qrPayloads.length ? ` ${qrPayloads.length} QR Code fiscal detectado(s).` : ""}`);
       } else {
-        setFeedback(
-          isFiscalQrMode
-            ? "Nao encontrei dados fiscais suficientes nesta imagem. Tente enquadrar melhor o QR Code ou envie o cupom inteiro."
-            : "Nao consegui ler a nota. Voce pode cadastrar a despesa manualmente."
-        );
+        setFeedback("Nao consegui extrair dados confiaveis. Voce pode preencher manualmente sem perder o anexo.");
       }
     } catch (error) {
       setFeedback(
@@ -330,9 +313,7 @@ export function ExpensesPage() {
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
           : error instanceof Error && error.message === "document_too_large"
             ? "O PDF ficou grande demais para leitura. Envie uma versao menor ou uma imagem da nota."
-          : isFiscalQrMode
-            ? "Nao consegui ler o QR Code desta imagem. Tente uma foto mais perto do QR, bem iluminada, ou anexe o cupom inteiro."
-            : "Nao consegui ler a nota. Voce pode preencher a despesa manualmente."
+          : "Nao consegui ler o documento. Tente uma foto/arquivo mais nitido ou preencha manualmente."
       );
     } finally {
       setIsReadingReceipt(false);
@@ -344,12 +325,14 @@ export function ExpensesPage() {
     setFeedback("MAYA esta lendo o extrato e separando renda e despesas...");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       const response = await mayaFetch("/api/maya/statement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: attachment.imageDataUrl,
+          fileDataUrl: attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
+          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
           fileName: file.name
         })
       });
@@ -370,7 +353,9 @@ export function ExpensesPage() {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem do extrato ficou grande demais. Tente um print mais proximo e nitido."
-          : "Nao consegui ler o extrato. Voce pode cadastrar as transacoes manualmente."
+          : error instanceof Error && error.message === "document_too_large"
+            ? "O PDF do extrato ficou grande demais. Envie uma versao menor ou divida o arquivo."
+            : "Nao consegui ler o extrato. Voce pode cadastrar as transacoes manualmente."
       );
     } finally {
       setIsReadingStatement(false);
@@ -688,22 +673,14 @@ export function ExpensesPage() {
             action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Revisao MAYA" : "Manual ou nota"}</Badge>}
           />
 
-          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-3 grid gap-3 sm:grid-cols-2">
             <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
               <FileImage className="size-4" aria-hidden="true" />
-              Enviar nota
-            </Button>
-            <Button variant="ghost" onClick={() => cameraRef.current?.click()} disabled={isReadingReceipt}>
-              <Camera className="size-4" aria-hidden="true" />
-              Enviar pela camera
-            </Button>
-            <Button variant="secondary" onClick={() => fiscalQrRef.current?.click()} disabled={isReadingReceipt}>
-              <QrCode className="size-4" aria-hidden="true" />
-              Ler QR Code
+              Ler documento
             </Button>
             <Button variant="secondary" onClick={() => statementRef.current?.click()} disabled={isReadingStatement}>
               <FileText className="size-4" aria-hidden="true" />
-              Enviar extrato
+              Ler extrato
             </Button>
             <input
               ref={uploadRef}
@@ -712,37 +689,7 @@ export function ExpensesPage() {
               accept="image/*,application/pdf"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) {
-                  void handleReceiptFile(file, "receipt");
-                }
-                event.target.value = "";
-              }}
-            />
-            <input
-              ref={cameraRef}
-              className="hidden"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleReceiptFile(file, "camera");
-                }
-                event.target.value = "";
-              }}
-            />
-            <input
-              ref={fiscalQrRef}
-              className="hidden"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleReceiptFile(file, "fiscalQr");
-                }
+                if (file) void handleReceiptFile(file);
                 event.target.value = "";
               }}
             />
@@ -750,19 +697,17 @@ export function ExpensesPage() {
               ref={statementRef}
               className="hidden"
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) {
-                  void handleStatementFile(file);
-                }
+                if (file) void handleStatementFile(file);
                 event.target.value = "";
               }}
             />
           </div>
           <p className="mb-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-xs font-bold leading-5 text-cyan-50">
-            Envie nota, cupom ou PDF. Quando a MAYA encontrar data, valor e descricao, a despesa entra no mes da nota.
-            Se faltar dado ou houver duplicidade, ela pede confirmacao antes de salvar.
+            Envie nota, recibo, boleto, foto, print ou PDF. A MAYA cria um rascunho editavel e detecta QR fiscal automaticamente.
+            Nada entra no saldo ate voce revisar e confirmar. Extratos aceitam imagem ou PDF e sao reconciliados antes da importacao.
           </p>
 
           <p className="mb-4 rounded-lg border border-bronze/20 bg-bronze/10 px-4 py-3 text-sm font-bold text-cream">
@@ -804,6 +749,7 @@ export function ExpensesPage() {
               persons={personOptions}
               dateField="documentDate"
               dateLabel="Data da nota"
+              showPayment
               onChange={updateReceiptDraft}
             />
           ) : null}
@@ -811,116 +757,57 @@ export function ExpensesPage() {
           {receiptDraft?.items?.length ? <DraftItems items={receiptDraft.items} /> : null}
 
           <form className="grid gap-4" onSubmit={submitExpense}>
-            <div className="grid gap-3 lg:grid-cols-[1fr_160px]">
-              <Label>
-                Descricao
-                <Input
-                  value={form.description}
-                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                  placeholder="Ex: mercado, aluguel, financiamento..."
-                />
-              </Label>
-              <Label>
-                Valor
-                <Input
-                  inputMode="decimal"
-                  value={form.amount}
-                  onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
-                  placeholder="0,00"
-                />
-              </Label>
-            </div>
+            {!receiptDraft ? (
+              <>
+                <div className="grid gap-3 lg:grid-cols-[1fr_160px]">
+                  <Label>
+                    Descricao
+                    <Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Ex: mercado, aluguel, financiamento..." />
+                  </Label>
+                  <Label>
+                    Valor
+                    <Input inputMode="decimal" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} placeholder="0,00" />
+                  </Label>
+                </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <Label>
-                Categoria
-                <Select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>
-                  {expenseCategories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </Select>
-              </Label>
-              <Label>
-                Pessoa
-                <Select value={form.person} onChange={(event) => setForm((current) => ({ ...current, person: event.target.value as Person }))}>
-                  {personOptions.map((person) => (
-                    <option key={person} value={person}>
-                      {person}
-                    </option>
-                  ))}
-                </Select>
-              </Label>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Label>
+                    Categoria
+                    <Select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</Select>
+                  </Label>
+                  <Label>
+                    Pessoa
+                    <Select value={form.person} onChange={(event) => setForm((current) => ({ ...current, person: event.target.value as Person }))}>{personOptions.map((person) => <option key={person} value={person}>{person}</option>)}</Select>
+                  </Label>
+                  <Label>
+                    Data inicial
+                    <Input type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} />
+                  </Label>
+                </div>
+
+                {form.category === "Outros" ? <Label>Descrever outros<Input value={form.otherCategoryDescription} onChange={(event) => setForm((current) => ({ ...current, otherCategoryDescription: event.target.value }))} placeholder="Opcional: descreva a categoria" /></Label> : null}
+
+                <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                  <Label>
+                    Forma
+                    <Select value={form.paymentMethod} onChange={(event) => setForm((current) => ({ ...current, paymentMethod: event.target.value as PaymentMethod }))}><option value="other">Outro</option><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="boleto">Boleto</option><option value="card">Cartao</option></Select>
+                  </Label>
+                  {form.paymentMethod === "pix" ? <Label>Para quem foi feito<Input value={form.paymentRecipient} onChange={(event) => setForm((current) => ({ ...current, paymentRecipient: event.target.value }))} placeholder="Nome da pessoa ou empresa" required /></Label> : null}
+                </div>
+              </>
+            ) : (
+              <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs font-bold text-emerald-100">Dados do documento ficam em um unico formulario acima. Abaixo, escolha somente a carteira e se o lancamento e unico, recorrente ou parcelado.</p>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2">
               <Label>
                 Carteira
-                <Select
-                  value={selectedExpenseAccountId}
-                  onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
-                >
-                  {state.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </Label>
-              <Label>
-                Data inicial
-                <Input type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} />
+                <Select value={selectedExpenseAccountId} onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}>{state.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</Select>
               </Label>
               <Label>
                 Tipo de lancamento
-                <Select value={form.plan} onChange={(event) => setForm((current) => ({ ...current, plan: event.target.value as ExpensePlan }))}>
-                  <option value="single">Unica</option>
-                  <option value="recurring">Recorrente mensal</option>
-                  <option value="installment">Parcelada</option>
-                </Select>
+                <Select value={form.plan} onChange={(event) => setForm((current) => ({ ...current, plan: event.target.value as ExpensePlan }))}><option value="single">Unica</option><option value="recurring">Recorrente mensal</option><option value="installment">Parcelada</option></Select>
               </Label>
-            </div>
-
-            {form.category === "Outros" ? (
-              <Label>
-                Descrever outros
-                <Input
-                  value={form.otherCategoryDescription}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, otherCategoryDescription: event.target.value }))
-                  }
-                  placeholder="Opcional: descreva a categoria"
-                />
-              </Label>
-            ) : null}
-
-            <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-              <Label>
-                Forma
-                <Select
-                  value={form.paymentMethod}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, paymentMethod: event.target.value as PaymentMethod }))
-                  }
-                >
-                  <option value="other">Outro</option>
-                  <option value="cash">Dinheiro</option>
-                  <option value="pix">Pix</option>
-                  <option value="boleto">Boleto</option>
-                  <option value="card">Cartao</option>
-                </Select>
-              </Label>
-              {form.paymentMethod === "pix" ? (
-                <Label>
-                  Para quem foi feito
-                  <Input
-                    value={form.paymentRecipient}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, paymentRecipient: event.target.value }))
-                    }
-                    placeholder="Nome da pessoa ou empresa"
-                    required
-                  />
-                </Label>
-              ) : null}
             </div>
 
             {form.plan !== "single" ? (
@@ -948,10 +835,12 @@ export function ExpensesPage() {
               </div>
             ) : null}
 
-            <Label>
-              Observacoes
-              <Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
-            </Label>
+            {!receiptDraft ? (
+              <Label>
+                Observacoes
+                <Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
+              </Label>
+            ) : null}
 
             <Button type="submit" className="w-full sm:w-auto">
               <Check className="size-4" aria-hidden="true" />
@@ -1444,6 +1333,7 @@ function StatementDraftReview({
     },
     { income: 0, expense: 0 }
   );
+  const validation = validateBankStatementDraft(draft);
   const repeated = findInternalDuplicateMatches(
     draft.lines.map((line) => ({
       type: line.type,
@@ -1463,9 +1353,12 @@ function StatementDraftReview({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-serif text-2xl font-bold text-cyan-50">Extrato lido pela MAYA</h3>
             <Badge tone="info">{draft.lines.length} linha(s)</Badge>
+            <Badge tone={validation.status === "ready" ? "success" : validation.status === "blocked" ? "danger" : "warning"}>
+              {validation.status === "ready" ? "Pronto" : validation.status === "blocked" ? "Bloqueado" : "Revisar"} · {validation.score}/100
+            </Badge>
           </div>
           <p className="mt-2 text-sm leading-6 text-cyan-100">
-            Confira entradas, saidas, Pix e categorias antes de importar para a nuvem.
+            Confira entradas, saidas, Pix e categorias. Nada e importado antes da sua confirmacao.
           </p>
         </div>
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-72">
@@ -1484,6 +1377,21 @@ function StatementDraftReview({
         <p className="mb-4 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm font-bold text-amber-100">
           Existem {repeated.length} valor(es) repetidos no mesmo dia dentro do extrato. Confirme antes de importar.
         </p>
+      ) : null}
+
+      {(draft.openingBalance !== undefined || draft.closingBalance !== undefined) ? (
+        <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-cream/10 bg-moss-950/30 p-3"><span className="text-xs text-muted">Saldo inicial</span><strong className="block text-cream">{draft.openingBalance !== undefined ? formatCurrency(draft.openingBalance) : "Nao lido"}</strong></div>
+          <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3"><span className="text-xs text-muted">Entradas lidas</span><strong className="block text-emerald-100">{formatCurrency(totals.income)}</strong></div>
+          <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-3"><span className="text-xs text-muted">Saidas lidas</span><strong className="block text-amber-100">{formatCurrency(totals.expense)}</strong></div>
+          <div className="rounded-lg border border-cream/10 bg-moss-950/30 p-3"><span className="text-xs text-muted">Saldo final</span><strong className="block text-cream">{draft.closingBalance !== undefined ? formatCurrency(draft.closingBalance) : "Nao lido"}</strong></div>
+        </div>
+      ) : null}
+
+      {validation.issues.length > 0 ? (
+        <div className="mb-4 grid gap-1 rounded-lg border border-cream/10 bg-moss-950/30 p-3">
+          {validation.issues.map((issue, index) => <p key={`${issue.code}-${index}`} className={`text-xs font-bold ${issue.level === "error" ? "text-red-200" : issue.level === "warning" ? "text-amber-100" : "text-cyan-100"}`}>{issue.message}</p>)}
+        </div>
       ) : null}
 
       {draft.lines.length === 0 ? (
@@ -1699,12 +1607,12 @@ function withStoredAttachment(
 
 function withStoredStatementAttachment(
   draft: BankStatementDraft,
-  attachment: FinanceAttachmentUpload
+  attachment: FinanceDocumentAttachmentUpload
 ): BankStatementDraft {
   return {
     ...draft,
     attachmentImageName: attachment.fileName,
-    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl,
+    attachmentDataUrl: attachment.storagePath ? undefined : attachment.imageDataUrl ?? attachment.fileDataUrl,
     attachmentStoragePath: attachment.storagePath,
     attachmentMimeType: attachment.mimeType,
     attachmentSize: attachment.size
