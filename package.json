@@ -11,7 +11,8 @@
     "test": "vitest run --environment node",
     "test:watch": "vitest",
     "auth:create-users": "node scripts/create-supabase-auth-users.mjs",
-    "push:generate-keys": "web-push generate-vapid-keys"
+    "push:generate-keys": "web-push generate-vapid-keys",
+    "audit:production": "node scripts/audit-production.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
