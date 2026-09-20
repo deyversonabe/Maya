@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatório de Integração de Valores — Maya</title>
+<style>
+  :root{
+    --bg:#0a1f1a; --plane:#081812; --card:#102a24; --card-2:#143329;
+    --gold:#d9a441; --gold-soft:#e7c17d;
+    --ink:#f3efe4; --ink-2:#b9c4bd; --muted:#8a978f;
+    --hair:rgba(255,255,255,.10); --hair-2:rgba(255,255,255,.06);
+    --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --s1:#3987e5; --s2:#d95926;
+    --tnum:"tabular-nums";
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    line-height:1.55; font-size:16px;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:40px 20px 80px}
+  header.top{border-bottom:1px solid var(--hair); padding-bottom:24px; margin-bottom:8px}
+  .kicker{color:var(--gold); font-size:12px; letter-spacing:.16em; text-transform:uppercase; font-weight:700; margin:0 0 6px}
+  h1{font-size:30px; line-height:1.15; margin:0 0 10px; font-weight:800; letter-spacing:-.01em}
+  .sub{color:var(--ink-2); margin:0; max-width:64ch}
+  .meta{color:var(--muted); font-size:13px; margin-top:14px; display:flex; gap:8px 18px; flex-wrap:wrap}
+  .meta b{color:var(--ink-2); font-weight:600}
+
+  section{margin-top:40px}
+  h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); font-weight:700; margin:0 0 4px}
+  h2 + .h2sub{color:var(--ink); font-size:22px; font-weight:700; margin:0 0 18px; letter-spacing:-.01em}
+  p{margin:0 0 14px; color:var(--ink-2)}
+  p.tight{margin-bottom:6px}
+  strong.ink{color:var(--ink)}
+
+  .card{background:var(--card); border:1px solid var(--hair); border-radius:16px; padding:22px}
+  .card + .card{margin-top:16px}
+
+  /* verdict banner */
+  .verdict{display:flex; gap:16px; align-items:flex-start; border-left:4px solid var(--critical)}
+  .verdict.warn{border-left-color:var(--warn)}
+  .verdict .big{font-size:15px}
+
+  /* KPI tiles */
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .tile{background:var(--card); border:1px solid var(--hair); border-radius:14px; padding:16px}
+  .tile .lab{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  .tile .val{font-size:24px; font-weight:800; margin-top:8px; font-variant-numeric:var(--tnum)}
+  .tile .note{font-size:12px; color:var(--ink-2); margin-top:4px}
+  .tile.flag{border-color:rgba(208,59,59,.55)}
+  .tile.flag .val{color:#ff8a8a}
+  .tile.ok{border-color:rgba(12,163,12,.45)}
+
+  /* bar comparison */
+  .bars{margin-top:6px}
+  .barrow{display:grid; grid-template-columns:200px 1fr; gap:14px; align-items:center; margin:12px 0}
+  .barrow .name{font-size:13px; color:var(--ink-2)}
+  .barrow .track{position:relative; background:var(--hair-2); border-radius:6px; height:34px}
+  .barrow .fill{position:absolute; left:0; top:0; bottom:0; border-radius:6px; display:flex; align-items:center; justify-content:flex-end; padding:0 10px; font-weight:800; font-size:14px; color:#06140f; font-variant-numeric:var(--tnum)}
+  .fill.blue{background:var(--s1); color:#04121f}
+  .fill.crit{background:var(--critical); color:#150404; }
+  .gap-note{margin-top:10px; font-size:13px; color:var(--ink-2)}
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:3px 9px; border-radius:999px; vertical-align:middle}
+  .chip.crit{background:rgba(208,59,59,.16); color:#ff9d9d; border:1px solid rgba(208,59,59,.4)}
+  .chip.warn{background:rgba(250,178,25,.14); color:#f6c85a; border:1px solid rgba(250,178,25,.4)}
+  .chip.ok{background:rgba(12,163,12,.16); color:#79d979; border:1px solid rgba(12,163,12,.4)}
+
+  /* tables */
+  table{width:100%; border-collapse:collapse; font-size:14px; margin-top:4px}
+  th,td{text-align:left; padding:11px 12px; border-bottom:1px solid var(--hair-2)}
+  th{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  td.num,th.num{text-align:right; font-variant-numeric:var(--tnum)}
+  tr:last-child td{border-bottom:none}
+  .st{font-weight:700; font-size:13px; white-space:nowrap}
+  .st.ok{color:var(--good)} .st.crit{color:#ff8a8a} .st.warn{color:#f6c85a}
+  .neg{color:#ff9d9d}
+
+  /* reconciliation waterfall */
+  .flow{display:grid; grid-template-columns:1fr; gap:8px; margin-top:8px}
+  .flow .step{display:grid; grid-template-columns:180px 1fr auto; gap:12px; align-items:center; background:var(--card-2); border:1px solid var(--hair-2); border-radius:10px; padding:10px 14px}
+  .flow .step .k{font-size:13px; color:var(--ink-2)}
+  .flow .step .v{font-weight:800; font-variant-numeric:var(--tnum); text-align:right; font-size:15px}
+  .flow .step.res{background:rgba(57,135,229,.12); border-color:rgba(57,135,229,.45)}
+
+  ol.rec{counter-reset:r; list-style:none; padding:0; margin:0}
+  ol.rec li{position:relative; padding:14px 16px 14px 54px; background:var(--card); border:1px solid var(--hair); border-radius:12px; margin-bottom:10px}
+  ol.rec li::before{counter-increment:r; content:counter(r); position:absolute; left:14px; top:14px; width:26px; height:26px; border-radius:50%; background:var(--gold); color:#241a06; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:13px}
+  ol.rec li .t{font-weight:700; color:var(--ink); display:block; margin-bottom:3px}
+  ol.rec li .d{color:var(--ink-2); font-size:14px}
+  .prio{font-size:11px; font-weight:800; letter-spacing:.04em; padding:2px 7px; border-radius:6px; margin-left:8px; vertical-align:middle}
+  .prio.p1{background:rgba(208,59,59,.18); color:#ff9d9d}
+  .prio.p2{background:rgba(250,178,25,.16); color:#f6c85a}
+  .prio.p3{background:rgba(57,135,229,.16); color:#8fbef2}
+
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); margin-top:12px}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .sw{width:12px; height:12px; border-radius:3px; display:inline-block}
+
+  footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--hair); color:var(--muted); font-size:12px}
+
+  @media (max-width:680px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    .barrow{grid-template-columns:1fr}
+    .flow .step{grid-template-columns:1fr auto}
+    .flow .step .k{grid-column:1/-1}
+    h1{font-size:24px}
+  }
+  @media print{
+    body{background:#fff; color:#111}
+    .card,.tile,.flow .step,ol.rec li{border-color:#ddd; background:#fff}
+    .wrap{max-width:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <p class="kicker">Maya · Auditoria de dados</p>
+    <h1>Relatório de integração dos valores</h1>
+    <p class="sub">Teste de consistência dos números exibidos pelo app Maya, cruzando Dashboard, Meses, Contas e Extrato para o mesmo período. O objetivo é verificar se os saldos, receitas, despesas e metas fecham entre as telas.</p>
+    <div class="meta">
+      <span><b>Mês analisado:</b> 2026-09 (setembro)</span>
+      <span><b>Carteira:</b> Casal</span>
+      <span><b>Fonte:</b> telas ao vivo do app</span>
+      <span><b>Data:</b> 20/09/2026</span>
+    </div>
+  </header>
+
+  <!-- VEREDITO -->
+  <section>
+    <div class="card verdict">
+      <div class="big">
+        <strong class="ink">Veredito: os cálculos por mês fecham, mas o "saldo" não tem uma fonte única.</strong>
+        <p class="tight" style="margin-top:8px">As somas dentro de cada mês (receitas, despesas, comparação entre meses e metas) estão corretas e reconciliam entre si. O problema está no <strong class="ink">saldo</strong>: o app mostra <strong class="ink">quatro valores diferentes</strong> para o mesmo mês, e o número em destaque no Dashboard está <span class="chip crit">superestimado em R$ 1.809,84</span></p>
+        <p style="margin:0">O Dashboard exibe <strong class="ink">R$ 2.800,00</strong> como "saldo disponível", mas o saldo real da conta (no Extrato) é <strong class="ink">R$ 990,16</strong> — e depois das contas previstas do mês, fecha <span class="neg">negativo</span>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- OS 4 SALDOS -->
+  <section>
+    <h2>O problema central</h2>
+    <div class="h2sub">Quatro "saldos" para o mesmo mês</div>
+    <div class="tiles">
+      <div class="tile flag">
+        <div class="lab">Dashboard · disponível</div>
+        <div class="val">R$ 2.800,00</div>
+        <div class="note">Só o resultado de setembro</div>
+      </div>
+      <div class="tile flag">
+        <div class="lab">Meses · realizado</div>
+        <div class="val">R$ 2.800,00</div>
+        <div class="note">Também só o mês</div>
+      </div>
+      <div class="tile ok">
+        <div class="lab">Extrato · saldo real</div>
+        <div class="val">R$ 990,16</div>
+        <div class="note">Acumulado da conta ✓</div>
+      </div>
+      <div class="tile">
+        <div class="lab">Extrato · após vencidas</div>
+        <div class="val">R$ 955,26</div>
+        <div class="note">Menos R$ 34,90 já vencido</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <p class="tight"><strong class="ink">Saldo exibido no Dashboard × saldo real</strong></p>
+      <div class="bars">
+        <div class="barrow">
+          <div class="name">Dashboard "disponível"</div>
+          <div class="track"><div class="fill blue" style="width:100%">R$ 2.800,00</div></div>
+        </div>
+        <div class="barrow">
+          <div class="name">Saldo real (Extrato)</div>
+          <div class="track"><div class="fill crit" style="width:35.4%">R$ 990,16</div></div>
+        </div>
+      </div>
+      <p class="gap-note">Diferença de <span class="chip crit">R$ 1.809,84</span> — o Dashboard mostra quase <strong class="ink">3× mais</strong> do que o casal tem de fato. Causa: o card "Saldo disponível" usa apenas <strong class="ink">receitas − despesas do mês selecionado</strong>, ignorando o saldo acumulado que vinha negativo dos meses anteriores.</p>
+    </div>
+
+    <div class="card">
+      <p class="tight"><strong class="ink">Como o saldo real se forma (Extrato da conta)</strong></p>
+      <div class="flow">
+        <div class="step"><span class="k">Saldo antes de setembro (01/09)</span><span></span><span class="v neg">− R$ 1.809,84</span></div>
+        <div class="step"><span class="k">+ Salário Deyverson (2/3), 07/09</span><span></span><span class="v">+ R$ 2.800,00</span></div>
+        <div class="step res"><span class="k"><strong class="ink">= Saldo real da conta</strong></span><span></span><span class="v">R$ 990,16</span></div>
+      </div>
+      <p class="gap-note" style="margin-top:12px">E ainda há <strong class="ink">R$ 1.134,90 em contas previstas</strong> para setembro. Descontando: <strong class="ink">R$ 990,16 − R$ 1.134,90 = <span class="neg">− R$ 144,74</span></strong>. Ou seja, o mês na prática fecha no vermelho — o oposto do "100% de economia / ritmo excelente" que o app anuncia.</p>
+    </div>
+  </section>
+
+  <!-- O QUE FECHA -->
+  <section>
+    <h2>Reconciliação</h2>
+    <div class="h2sub">O que está correto ✓</div>
+    <p>Estes cruzamentos batem entre telas — a engine de cálculo por mês é confiável.</p>
+    <div class="card" style="padding:8px 6px">
+      <table>
+        <thead><tr><th>Verificação</th><th class="num">Set/2026</th><th class="num">Ago/2026</th><th class="num">Confere</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Receitas do mês</td><td class="num">2.800,00</td><td class="num">3.080,00</td><td class="num">dif −280,00</td><td class="st ok">OK</td></tr>
+          <tr><td>Despesas Ago (dashboard) = lançadas + contas pagas</td><td class="num">—</td><td class="num">1.588,23 + 34,90</td><td class="num">1.623,13</td><td class="st ok">OK</td></tr>
+          <tr><td>Saldo realizado do mês</td><td class="num">2.800,00</td><td class="num">1.456,87</td><td class="num">dif +1.343,13</td><td class="st ok">OK</td></tr>
+          <tr><td>Contas previstas (Meses = Contas)</td><td class="num">1.134,90</td><td class="num">1.134,90</td><td class="num">idêntico</td><td class="st ok">OK</td></tr>
+          <tr><td>Meta "Viagem Cabo Frio" (2.000 / 2.704)</td><td class="num">73,96%</td><td class="num">—</td><td class="num">73,96%</td><td class="st ok">OK</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- O QUE NÃO FECHA -->
+  <section>
+    <h2>Reconciliação</h2>
+    <div class="h2sub">O que não bate ✕</div>
+    <div class="card" style="padding:8px 6px">
+      <table>
+        <thead><tr><th>Indicador</th><th class="num">Valor</th><th>Onde aparece</th><th>Problema</th></tr></thead>
+        <tbody>
+          <tr><td>Saldo disponível</td><td class="num">2.800,00</td><td>Dashboard</td><td>Só o mês; deveria ser acumulado</td></tr>
+          <tr><td>Saldo realizado</td><td class="num">2.800,00</td><td>Meses</td><td>Idem — não é o saldo da conta</td></tr>
+          <tr><td>Saldo real da conta</td><td class="num">990,16</td><td>Extrato</td><td class="st ok">Correto (referência)</td></tr>
+          <tr><td>Saldo anterior ao mês</td><td class="num neg">−1.809,84</td><td>Extrato</td><td>Não bate com a soma da Tendência</td></tr>
+          <tr><td>Acumulado da Tendência (jul + ago)</td><td class="num neg">−999,26</td><td>Dashboard</td><td>Gap de R$ 810,58 vs. Extrato</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px"><span class="chip warn">Investigar</span> O gráfico de Tendência só mostra os últimos 6 meses (abr–set), mas o Extrato carrega saldo de lançamentos antigos — inclusive de <strong class="ink">2022 e 2023</strong> (ver seção de qualidade de dados). Isso explica boa parte do gap de R$ 810,58: existem valores no saldo que nenhuma tela de tendência mostra. Vale confirmar somando os meses órfãos.</p>
+  </section>
+
+  <!-- QUALIDADE DE DADOS -->
+  <section>
+    <h2>Qualidade dos dados</h2>
+    <div class="h2sub">Lançamentos suspeitos</div>
+    <div class="card" style="padding:8px 6px">
+      <table>
+        <thead><tr><th>Achado</th><th>Detalhe</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Meses órfãos</td><td>Seletor tem 2022-07, 2022-08, 2023-08, 2023-10 e depois pula pra 2025-09 — quase certo erro de ano no cadastro</td><td class="st warn">Revisar</td></tr>
+          <tr><td>Possível duplicata</td><td>"Água / Moradia / 2026-08-11 / R$ 118,47" e "Conta de água e esgoto / Outros / 2022-07-15 / R$ 118,47" — mesmo valor, mesma conta, categorias e datas diferentes</td><td class="st warn">Revisar</td></tr>
+          <tr><td>Tipo possivelmente trocado</td><td>"Recebido de pagamento da compra em lavanderia" (R$ 33,80) está classificado como <strong class="ink">Despesa</strong>, mas o texto indica entrada</td><td class="st warn">Revisar</td></tr>
+          <tr><td>Categorização em "Outros"</td><td>Nota de supermercado, medicamentos e outras caem em "Outros" em vez de Alimentação/Saúde — distorce a análise por categoria</td><td class="st warn">Revisar</td></tr>
+          <tr><td>Nº da parcela no alerta</td><td>Alerta diz "Pagamento Deyverson (1/3)", mas o lançamento de setembro é "(2/3)" e o alerta afirma que termina em 2026-10</td><td class="st warn">Revisar</td></tr>
+          <tr><td>Conta vencendo hoje</td><td>"Plano saúde Tom" R$ 34,90 vence 20/09 e segue como Pendente</td><td class="st crit">Ação</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- NARRATIVA -->
+  <section>
+    <h2>Coerência da narrativa da MAYA</h2>
+    <div class="h2sub">Mensagens que se contradizem</div>
+    <div class="card">
+      <p class="tight">• <strong class="ink">Início</strong> diz "ainda não tenho transações reais suficientes para avaliar", enquanto o <strong class="ink">Dashboard</strong> dá "95/100, ritmo excelente" — com 38 registros na base. As duas leituras não podem valer ao mesmo tempo.</p>
+      <p class="tight">• <strong class="ink">Taxa de economia de 100%</strong> e "ritmo excelente" saem de um mês <em>sem despesas lançadas ainda</em>. Com R$ 1.134,90 de contas previstas e saldo real de R$ 990,16, o mês fecha negativo — é um falso positivo.</p>
+      <p style="margin:0">• A <strong class="ink">Saúde financeira 95/100</strong> não reflete o saldo real nem as contas a vencer. O score precisa considerar o acumulado, não só o mês corrente.</p>
+    </div>
+  </section>
+
+  <!-- RECOMENDAÇÕES -->
+  <section>
+    <h2>O que fazer</h2>
+    <div class="h2sub">Correções priorizadas</div>
+    <ol class="rec">
+      <li><span class="t">Uma fonte única para "saldo"<span class="prio p1">P1</span></span><span class="d">Definir o saldo da conta (Extrato, acumulado) como a única verdade. Dashboard e Meses devem consumir esse mesmo cálculo, não recomputar por conta própria. Hoje há 4 números para a mesma coisa.</span></li>
+      <li><span class="t">Corrigir o card "Saldo disponível"<span class="prio p1">P1</span></span><span class="d">Trocar "receitas − despesas do mês" pelo saldo acumulado real. Enquanto não corrigir, renomear para "Resultado do mês" pra não induzir o casal a achar que tem R$ 2.800 na conta.</span></li>
+      <li><span class="t">Mostrar o saldo já descontando contas previstas<span class="prio p2">P2</span></span><span class="d">Exibir "saldo real" e "saldo após contas do mês" lado a lado. Neste mês: R$ 990,16 → −R$ 144,74. É a informação que muda a decisão.</span></li>
+      <li><span class="t">Ajustar Saúde financeira e economia<span class="prio p2">P2</span></span><span class="d">O score e a taxa de economia precisam olhar o acumulado e as contas a vencer, senão viram falso positivo em meses sem despesa lançada.</span></li>
+      <li><span class="t">Limpar dados órfãos de 2022/2023<span class="prio p2">P2</span></span><span class="d">Revisar/corrigir os lançamentos com ano errado e a possível duplicata da água (R$ 118,47). Validar data no cadastro (bloquear anos muito fora do intervalo).</span></li>
+      <li><span class="t">Revisar tipo e categoria de lançamentos<span class="prio p3">P3</span></span><span class="d">A "lavanderia" pode estar como Despesa em vez de Receita; várias despesas em "Outros". Sugerir categoria automática pela descrição ajudaria.</span></li>
+      <li><span class="t">Alinhar a narrativa da MAYA<span class="prio p3">P3</span></span><span class="d">Não mostrar "sem dados suficientes" e "95/100 ritmo excelente" ao mesmo tempo. E acertar o nº da parcela no alerta (1/3 × 2/3).</span></li>
+    </ol>
+    <div class="legend">
+      <span><span class="prio p1">P1</span> crítico — engana o usuário</span>
+      <span><span class="prio p2">P2</span> importante</span>
+      <span><span class="prio p3">P3</span> polimento</span>
+    </div>
+  </section>
+
+  <footer>
+    Relatório gerado a partir da leitura ao vivo das telas Início, Dashboard, Meses, Contas e Extrato do app Maya (maya-steel.vercel.app), mês de referência 2026-09. Os valores foram conferidos por soma manual. Alguns totais (meses de 2022/2023) não foram somados individualmente e estão marcados como "investigar".
+  </footer>
+
+</div>
+</body>
+</html>

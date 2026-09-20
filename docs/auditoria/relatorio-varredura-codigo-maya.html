@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Varredura do Código — Maya</title>
+<style>
+  :root{
+    --bg:#0a1f1a; --plane:#081812; --card:#102a24; --card-2:#143329;
+    --gold:#d9a441; --gold-soft:#e7c17d;
+    --ink:#f3efe4; --ink-2:#b9c4bd; --muted:#8a978f;
+    --hair:rgba(255,255,255,.10); --hair-2:rgba(255,255,255,.06);
+    --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --s1:#3987e5; --s2:#d95926;
+    --tnum:"tabular-nums";
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.55; font-size:16px}
+  .wrap{max-width:940px; margin:0 auto; padding:40px 20px 80px}
+  header.top{border-bottom:1px solid var(--hair); padding-bottom:24px; margin-bottom:8px}
+  .kicker{color:var(--gold); font-size:12px; letter-spacing:.16em; text-transform:uppercase; font-weight:700; margin:0 0 6px}
+  h1{font-size:30px; line-height:1.15; margin:0 0 10px; font-weight:800; letter-spacing:-.01em}
+  .sub{color:var(--ink-2); margin:0; max-width:66ch}
+  .meta{color:var(--muted); font-size:13px; margin-top:14px; display:flex; gap:8px 18px; flex-wrap:wrap}
+  .meta b{color:var(--ink-2); font-weight:600}
+
+  section{margin-top:40px}
+  h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); font-weight:700; margin:0 0 4px}
+  h2 + .h2sub{color:var(--ink); font-size:22px; font-weight:700; margin:0 0 18px; letter-spacing:-.01em}
+  p{margin:0 0 14px; color:var(--ink-2)}
+  p.tight{margin-bottom:6px}
+  strong.ink{color:var(--ink)}
+  code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:12.5px; background:rgba(255,255,255,.06); border:1px solid var(--hair-2); border-radius:5px; padding:1px 6px; color:var(--gold-soft); white-space:nowrap}
+
+  .card{background:var(--card); border:1px solid var(--hair); border-radius:16px; padding:22px}
+  .card + .card{margin-top:16px}
+
+  .verdict{display:flex; gap:16px; align-items:flex-start; border-left:4px solid var(--critical)}
+  .verdict .big{font-size:15px}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .tile{background:var(--card); border:1px solid var(--hair); border-radius:14px; padding:16px}
+  .tile .lab{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  .tile .val{font-size:26px; font-weight:800; margin-top:8px; font-variant-numeric:var(--tnum)}
+  .tile .note{font-size:12px; color:var(--ink-2); margin-top:4px}
+  .tile.flag{border-color:rgba(208,59,59,.55)} .tile.flag .val{color:#ff8a8a}
+  .tile.warn{border-color:rgba(250,178,25,.5)} .tile.warn .val{color:#f6c85a}
+  .tile.ok{border-color:rgba(12,163,12,.45)} .tile.ok .val{color:#79d979}
+
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:3px 9px; border-radius:999px; vertical-align:middle}
+  .chip.crit{background:rgba(208,59,59,.16); color:#ff9d9d; border:1px solid rgba(208,59,59,.4)}
+  .chip.warn{background:rgba(250,178,25,.14); color:#f6c85a; border:1px solid rgba(250,178,25,.4)}
+  .chip.ok{background:rgba(12,163,12,.16); color:#79d979; border:1px solid rgba(12,163,12,.4)}
+
+  /* findings */
+  .finding{background:var(--card); border:1px solid var(--hair); border-radius:14px; padding:18px 20px; margin-bottom:14px}
+  .finding.p1{border-left:4px solid var(--critical)}
+  .finding.p2{border-left:4px solid var(--warn)}
+  .finding.p3{border-left:4px solid var(--s1)}
+  .finding .head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+  .finding .num{width:26px; height:26px; flex:none; border-radius:50%; background:var(--gold); color:#241a06; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:13px}
+  .finding .ttl{font-weight:800; color:var(--ink); font-size:16px}
+  .prio{font-size:11px; font-weight:800; letter-spacing:.04em; padding:2px 7px; border-radius:6px}
+  .prio.p1{background:rgba(208,59,59,.18); color:#ff9d9d}
+  .prio.p2{background:rgba(250,178,25,.16); color:#f6c85a}
+  .prio.p3{background:rgba(57,135,229,.16); color:#8fbef2}
+  .finding p{margin:0 0 8px; font-size:14.5px}
+  .finding .lbl{font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); display:block; margin:12px 0 5px}
+  .files{display:grid; gap:5px; margin:0 0 4px}
+  .files .f{font-size:12.5px; color:var(--ink-2); display:flex; gap:8px; align-items:baseline}
+  .files .f code{white-space:normal}
+  .fix{background:var(--card-2); border:1px solid var(--hair-2); border-radius:10px; padding:12px 14px; margin-top:10px}
+  .fix .lbl{margin-top:0}
+  .fix p{margin:0; color:var(--ink); font-size:14px}
+
+  .flow{display:grid; gap:8px; margin-top:10px}
+  .flow .step{display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; background:var(--card-2); border:1px solid var(--hair-2); border-radius:10px; padding:10px 14px}
+  .flow .step .k{font-size:13px; color:var(--ink-2)}
+  .flow .step .v{font-weight:800; font-variant-numeric:var(--tnum); text-align:right; font-size:15px}
+  .flow .step.res{background:rgba(57,135,229,.12); border-color:rgba(57,135,229,.45)}
+  .neg{color:#ff9d9d}
+
+  table{width:100%; border-collapse:collapse; font-size:14px; margin-top:4px}
+  th,td{text-align:left; padding:11px 12px; border-bottom:1px solid var(--hair-2); vertical-align:top}
+  th{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  tr:last-child td{border-bottom:none}
+  .st{font-weight:700; font-size:13px; white-space:nowrap}
+  .st.ok{color:var(--good)} .st.crit{color:#ff8a8a} .st.warn{color:#f6c85a}
+
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); margin-top:14px}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--hair); color:var(--muted); font-size:12px}
+
+  @media (max-width:680px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    h1{font-size:24px}
+    .flow .step{grid-template-columns:1fr auto}
+  }
+  @media print{ body{background:#fff; color:#111} .card,.tile,.finding,.flow .step,.fix{border-color:#ddd; background:#fff} .wrap{max-width:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <p class="kicker">Maya · Varredura do código-fonte</p>
+    <h1>Relatório de correções e melhorias na estrutura</h1>
+    <p class="sub">Varredura no repositório <code>deyversonabe/Maya</code> partindo do relatório de integração de valores. O objetivo é achar no código a causa-raiz de cada divergência apontada e mapear o que corrigir e o que melhorar na estrutura completa do sistema.</p>
+    <div class="meta">
+      <span><b>Repositório:</b> deyversonabe/Maya (Next.js 16 + Supabase)</span>
+      <span><b>Escopo:</b> módulo finance, IA e store</span>
+      <span><b>Data:</b> 20/09/2026</span>
+    </div>
+  </header>
+
+  <!-- VEREDITO -->
+  <section>
+    <div class="card verdict">
+      <div class="big">
+        <strong class="ink">Veredito: o app já tem um motor de saldo correto — mas as telas principais não usam ele.</strong>
+        <p class="tight" style="margin-top:8px">A tela de Extrato (<code>income-statement-page.tsx</code>) calcula o <strong class="ink">saldo acumulado real</strong> (saldo inicial + histórico completo = R$ 990,16). Só que Dashboard, Início e Meses ignoram esse motor e recalculam por conta própria um <strong class="ink">saldo só do mês</strong> (<code>receitas − despesas − investimentos</code>). Daí saírem <span class="chip crit">4 saldos diferentes</span> para o mesmo mês.</p>
+        <p style="margin:0">Todos os falsos positivos (saldo R$ 2.800, economia 100%, saúde 95/100, narrativa contraditória) descem dessa <strong class="ink">falta de uma fonte única de saldo</strong> — e não de erros de soma. A engine de soma por mês está correta.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAPA DAS 4 FONTES -->
+  <section>
+    <h2>Causa-raiz</h2>
+    <div class="h2sub">Onde cada "saldo" nasce no código</div>
+    <div class="card" style="padding:8px 6px">
+      <table>
+        <thead><tr><th>Tela</th><th>Valor</th><th>Função no código</th><th>O que ela calcula</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard · "Saldo disponivel"</td><td>2.800,00</td><td><code>calculations.ts:34</code> → <code>finance-dashboard.tsx:596</code></td><td>Só o mês corrente</td></tr>
+          <tr><td>Início · "Saldo"</td><td>2.800,00</td><td><code>calculations.ts:34</code> → <code>home-screen.tsx:134</code></td><td>Mesmo cálculo do mês</td></tr>
+          <tr><td>Meses · "Saldo realizado"</td><td>2.800,00</td><td><code>months-page.tsx:679 / 721</code></td><td>Recalcula por mês, de novo</td></tr>
+          <tr><td>Relatório/PDF exportado</td><td>—</td><td><code>reporting.ts:102</code></td><td>Por período, sem acumular</td></tr>
+          <tr><td>Extrato · "Saldo real"</td><td class="st ok">990,16</td><td><code>income-statement-page.tsx:832</code></td><td class="st ok">Saldo inicial + histórico ✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px">São <strong class="ink">4 implementações separadas</strong> da mesma conta de saldo, e só a do Extrato está certa. A regra <code>availableBalance = income − expenses − investments</code> aparece copiada em <code>calculations.ts</code>, <code>months-page.tsx</code> e <code>reporting.ts</code> — nenhuma delas soma o <code>openingBalance</code> nem o saldo que vinha dos meses anteriores.</p>
+  </section>
+
+  <!-- CRÍTICO -->
+  <section>
+    <h2>Correções · Crítico</h2>
+    <div class="h2sub">P1 — enganam o usuário</div>
+
+    <div class="finding p1">
+      <div class="head"><span class="num">1</span><span class="ttl">Criar uma fonte única de saldo (acumulado)</span><span class="prio p1">P1</span></div>
+      <p>Dashboard, Início e Meses precisam consumir o <strong class="ink">mesmo</strong> saldo acumulado que o Extrato já calcula. Hoje cada tela recomputa e o número mais visível (Dashboard) fica <strong class="ink">R$ 1.809,84 acima</strong> do real.</p>
+      <span class="lbl">Arquivos</span>
+      <div class="files">
+        <div class="f"><code>modules/finance/lib/calculations.ts:34</code><span>· <code>availableBalance = income − expenses − investments</code> (só o mês)</span></div>
+        <div class="f"><code>modules/finance/lib/calculations.ts:88</code><span>· <code>buildMonthSummaries</code> repete a mesma fórmula</span></div>
+        <div class="f"><code>modules/finance/components/income-statement-page.tsx:832</code><span>· <code>buildAccountSummaries</code> = o motor correto (usar como base)</span></div>
+      </div>
+      <div class="fix"><span class="lbl">Correção</span><p>Extrair um único módulo de saldo (ex.: <code>lib/balance.ts</code>) reaproveitando <code>buildAccountSummaries</code>, e fazer <code>calculateSummary</code> devolver o saldo acumulado real. Todas as telas passam a ler dele. Enquanto a unificação não sai, renomear o card do Dashboard de "Saldo disponivel" para <strong class="ink">"Resultado do mês"</strong> para não induzir o casal a achar que tem R$ 2.800 na conta.</p></div>
+    </div>
+
+    <div class="finding p1">
+      <div class="head"><span class="num">2</span><span class="ttl">Taxa de economia e Saúde financeira dão falso positivo</span><span class="prio p1">P1</span></div>
+      <p>Em setembro a despesa lançada é 0 (o cálculo só conta contas <strong class="ink">pagas</strong>), então a economia dá 100% e o score infla até 95/100.</p>
+      <span class="lbl">Por que dá 95/100</span>
+      <div class="flow">
+        <div class="step"><span class="k">savingsComponent — trava no teto por causa dos 100% <code>calculations.ts:543</code></span><span class="v">40</span></div>
+        <div class="step"><span class="k">balanceComponent — usa o saldo furado (positivo) <code>calculations.ts:544</code></span><span class="v">25</span></div>
+        <div class="step"><span class="k">goalComponent (Cabo Frio 73,96%) + recorrência + orçamento</span><span class="v">≈ 30</span></div>
+        <div class="step res"><span class="k"><strong class="ink">= healthScore</strong></span><span class="v">95</span></div>
+      </div>
+      <span class="lbl" style="margin-top:14px">Arquivos</span>
+      <div class="files">
+        <div class="f"><code>calculations.ts:35</code><span>· <code>savingsRate = (income − expenses) / income</code> — 0 despesa → 100%</span></div>
+        <div class="f"><code>calculations.ts:368</code><span>· <code>getPaidBillsByPaymentMonthUntil</code> só soma contas <code>status === "paid"</code> — as R$ 1.134,90 previstas ficam de fora</span></div>
+        <div class="f"><code>calculations.ts:543–544</code><span>· componentes do score usam savingsRate e o saldo do mês, não o real</span></div>
+      </div>
+      <div class="fix"><span class="lbl">Correção</span><p>O score e a economia devem partir do <strong class="ink">saldo acumulado real</strong> e considerar as contas a vencer. Num mês sem despesa lançada, economia não pode ser 100% — tratar como "dados insuficientes" até haver despesa/contas do mês computadas.</p></div>
+    </div>
+
+    <div class="finding p1">
+      <div class="head"><span class="num">3</span><span class="ttl">Narrativa da MAYA trava em "sem dados suficientes"</span><span class="prio p1">P1</span></div>
+      <p>O Início mostra "ainda não tenho transações reais suficientes" ao mesmo tempo que o painel exibe 95/100 — com 38 registros na base. É um bug de estado do React, não de dados.</p>
+      <span class="lbl">Arquivos</span>
+      <div class="files">
+        <div class="f"><code>home-screen.tsx:41</code><span>· <code>const [reply, setReply] = useState(maya.message)</code> — congela a mensagem gerada <strong class="ink">antes</strong> da hidratação</span></div>
+        <div class="f"><code>use-finance-store.ts:72–73</code><span>· o store começa com <code>createEmptyFinanceState()</code> e <code>isHydrated=false</code>; quando os 38 lançamentos chegam, <code>reply</code> não reatualiza</span></div>
+        <div class="f"><code>home-screen.tsx:34</code><span>· a Home nem checa <code>isHydrated</code> antes de renderizar (a Central de Dados checa, <code>data-center-page.tsx:151</code>)</span></div>
+      </div>
+      <div class="fix"><span class="lbl">Correção</span><p>Sincronizar <code>reply</code> com <code>maya.message</code> via <code>useEffect</code> (só sobrescrevendo quando o usuário não digitou pergunta), e/ou só montar as métricas depois de <code>isHydrated</code>. Some a contradição e o placar passa a bater com o texto.</p></div>
+    </div>
+  </section>
+
+  <!-- IMPORTANTE -->
+  <section>
+    <h2>Correções · Importante</h2>
+    <div class="h2sub">P2 — distorcem análise e dados</div>
+
+    <div class="finding p2">
+      <div class="head"><span class="num">4</span><span class="ttl">Sem validação de ano na data — origem dos meses órfãos 2022/2023</span><span class="prio p2">P2</span></div>
+      <p>O seletor pula de 2023 para 2025 porque lançamentos entram com ano errado sem nenhum bloqueio.</p>
+      <span class="lbl">Arquivos</span>
+      <div class="files">
+        <div class="f"><code>calculations.ts:716</code><span>· <code>isValidDateKey</code> valida só o formato <code>\d{4}-\d{2}-\d{2}</code> — aceita qualquer ano de 0000 a 9999</span></div>
+      </div>
+      <div class="fix"><span class="lbl">Correção</span><p>Validar faixa de ano no formulário e na importação (ex.: entre a data de abertura da conta e o ano atual + 1) e alertar ao salvar uma data muito fora do intervalo. Isso trava o "2022" digitado no lugar de "2026".</p></div>
+    </div>
+
+    <div class="finding p2">
+      <div class="head"><span class="num">5</span><span class="ttl">Mostrar o saldo já descontando contas previstas</span><span class="prio p2">P2</span></div>
+      <p>Hoje nenhuma tela projeta o saldo depois das contas a vencer — a informação que muda a decisão do casal.</p>
+      <div class="flow">
+        <div class="step"><span class="k">Saldo real da conta (Extrato)</span><span class="v">R$ 990,16</span></div>
+        <div class="step"><span class="k">− Contas previstas de setembro</span><span class="v">− R$ 1.134,90</span></div>
+        <div class="step res"><span class="k"><strong class="ink">= Saldo após contas do mês</strong></span><span class="v neg">− R$ 144,74</span></div>
+      </div>
+      <span class="lbl" style="margin-top:14px">Já existe base pronta</span>
+      <div class="files">
+        <div class="f"><code>calculations.ts:409–411</code><span>· <code>buildBillSummary</code> já expõe <code>pendingTotal</code> e <code>overdueTotal</code> — basta exibir "saldo real" e "saldo após contas" lado a lado</span></div>
+      </div>
+    </div>
+
+    <div class="finding p2">
+      <div class="head"><span class="num">6</span><span class="ttl">Detecção de duplicata é estreita demais</span><span class="prio p2">P2</span></div>
+      <p>A duplicata da água (R$ 118,47) não é pega porque as duas entradas têm anos diferentes.</p>
+      <span class="lbl">Arquivos</span>
+      <div class="files">
+        <div class="f"><code>duplicates.ts:117</code><span>· <code>areDatesNear</code> só considera duplicata dentro de uma janela de 2 dias</span></div>
+        <div class="f"><code>duplicates.ts:51</code><span>· contas só batem por <code>dueDate</code> + valor exatos; não cruza transação × conta</span></div>
+      </div>
+      <div class="fix"><span class="lbl">Correção</span><p>Sinalizar "possível duplicata" também quando valor + recebedor/descrição normalizada coincidem, mesmo com datas distantes; e cruzar transações contra contas pagas. Isso captura recorrência lançada duas vezes ou com ano trocado.</p></div>
+    </div>
+  </section>
+
+  <!-- POLIMENTO -->
+  <section>
+    <h2>Melhorias · Polimento</h2>
+    <div class="h2sub">P3 — refinam a leitura</div>
+
+    <div class="finding p3">
+      <div class="head"><span class="num">7</span><span class="ttl">Tipo trocado e excesso de "Outros"</span><span class="prio p3">P3</span></div>
+      <p>"Recebido de pagamento" caiu como Despesa, e supermercado/medicamentos caem em "Outros", distorcendo a análise por categoria. Já há normalização em <code>maya.ts:1669</code> (<code>normalizeStatementCategory</code>) que pode ser reforçada para sugerir tipo e categoria pela descrição.</p>
+    </div>
+
+    <div class="finding p3">
+      <div class="head"><span class="num">8</span><span class="ttl">Numeração da parcela inconsistente (1/3 × 2/3)</span><span class="prio p3">P3</span></div>
+      <p>O alerta diz "(1/3)" mas o lançamento de setembro é "(2/3)". Conferir a lógica de contagem/último mês de parcela para o texto do alerta bater com o lançamento.</p>
+    </div>
+
+    <div class="finding p3">
+      <div class="head"><span class="num">9</span><span class="ttl">Tendência só mostra 6 meses, mas o saldo carrega o histórico</span><span class="prio p3">P3</span></div>
+      <p><code>buildMonthlyFlow</code> (<code>calculations.ts:59</code>) usa janela de −5 a 0 meses, então o gráfico ignora lançamentos antigos que continuam no saldo — daí o gap de R$ 810,58. Ao unificar o saldo acumulado (item 1), a tendência deve partir do saldo inicial para fechar com o Extrato.</p>
+    </div>
+  </section>
+
+  <!-- ESTRUTURA -->
+  <section>
+    <h2>Estrutura geral</h2>
+    <div class="h2sub">Melhorias de arquitetura</div>
+    <div class="card">
+      <p class="tight">• <strong class="ink">Centralizar o cálculo de saldo.</strong> A mesma conta está duplicada em 4 arquivos (<code>calculations.ts</code>, <code>months-page.tsx</code>, <code>reporting.ts</code>, <code>income-statement-page.tsx</code>). Um único módulo de saldo elimina, de uma vez, a origem dos números divergentes e evita que voltem no futuro.</p>
+      <p class="tight">• <strong class="ink">Teste de reconciliação entre telas.</strong> A base de testes é boa (<code>tests/finance-values</code>, <code>finance-dates</code>, <code>duplicates</code>…), mas <strong class="ink">nenhum</strong> garante que Dashboard = Extrato. Um teste que afirme "saldo do Dashboard == saldo acumulado do Extrato" trava a regressão que gerou este relatório.</p>
+      <p class="tight">• <strong class="ink">Guardar hidratação nas telas.</strong> Padronizar o uso de <code>isHydrated</code> antes de renderizar métricas (a Central de Dados já faz; Home e Dashboard não), evitando o tipo de estado congelado do item 3.</p>
+      <p style="margin:0">• <strong class="ink">Ação de dados (fora do código):</strong> a conta "Plano saúde Tom" R$ 34,90 vence hoje (20/09) e segue pendente; e vale revisar/corrigir os lançamentos de 2022/2023 com ano errado antes de aplicar a validação do item 4.</p>
+    </div>
+    <div class="legend">
+      <span><span class="prio p1">P1</span> crítico — engana o usuário</span>
+      <span><span class="prio p2">P2</span> importante</span>
+      <span><span class="prio p3">P3</span> polimento</span>
+    </div>
+  </section>
+
+  <footer>
+    Varredura feita sobre o código-fonte do repositório deyversonabe/Maya (branch principal), cruzando cada divergência do relatório de integração de valores com as funções que a produzem. Referências de arquivo:linha apontam para o estado do repositório em 20/09/2026. Os valores financeiros vieram do relatório de integração; este documento foca na causa no código e na correção.
+  </footer>
+
+</div>
+</body>
+</html>
