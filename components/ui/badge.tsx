@@ -1,12 +1,13 @@
 import { cn } from "@/lib/utils";
 
-type BadgeTone = "success" | "warning" | "info" | "neutral";
+type BadgeTone = "success" | "warning" | "info" | "neutral" | "danger";
 
 const toneClass: Record<BadgeTone, string> = {
   success: "border-neon-green/40 bg-neon-green/10 text-emerald-100 shadow-[0_0_18px_rgba(114,255,182,0.12)]",
   warning: "border-neon-amber/45 bg-neon-amber/10 text-amber-100 shadow-[0_0_18px_rgba(255,210,122,0.12)]",
   info: "border-neon-cyan/45 bg-neon-cyan/10 text-cyan-100 shadow-[0_0_18px_rgba(85,247,255,0.12)]",
-  neutral: "border-bronze/45 bg-bronze/10 text-bronze shadow-[0_0_18px_rgba(184,121,69,0.12)]"
+  neutral: "border-bronze/45 bg-bronze/10 text-bronze shadow-[0_0_18px_rgba(184,121,69,0.12)]",
+  danger: "border-red-400/45 bg-red-500/10 text-red-100 shadow-[0_0_18px_rgba(248,113,113,0.14)]"
 };
 
 export function Badge({
