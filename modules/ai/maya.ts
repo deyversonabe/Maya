@@ -474,7 +474,7 @@ export async function transcribeAudioWithMaya({
 
   const form = new FormData();
   form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-transcribe");
-  form.append("file", new Blob([bytes], { type: mimeType || "audio/ogg" }), fileName);
+  form.append("file", new Blob([new Uint8Array(bytes)], { type: mimeType || "audio/ogg" }), fileName);
   form.append("prompt", "Lancamento financeiro em portugues do Brasil. Preserve valores, nomes de estabelecimentos, bancos, Pix, datas e categorias quando forem falados.");
   form.append("languages[]", "pt");
 

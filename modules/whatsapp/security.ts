@@ -24,7 +24,7 @@ export function verifyMetaSignature({
   appSecret?: string;
 }) {
   if (!appSecret) {
-    return true;
+    return false;
   }
 
   if (!signature?.startsWith(META_SIGNATURE_PREFIX)) {

@@ -232,7 +232,7 @@ function captureTransactions(draft: CaptureDraft): Array<Omit<Transaction, "id" 
   if (value.kind === "bill") return [];
   const date = value.kind === "income" ? value.entryDate || value.documentDate : value.documentDate || value.entryDate;
   return [{
-    type: value.kind, description: value.description || value.title, amount: value.amount, category: value.category || "Outros",
+    type: value.kind === "income" ? "income" : "expense", description: value.description || value.title, amount: value.amount, category: value.category || "Outros",
     person: value.person, date: date || "", recurring: false, source: "receipt", paymentMethod: value.paymentMethod,
     paymentRecipient: value.paymentRecipient, otherCategoryDescription: value.otherCategoryDescription,
     attachmentImageName: value.attachmentImageName, attachmentDataUrl: value.attachmentDataUrl, attachmentStoragePath: value.attachmentStoragePath,

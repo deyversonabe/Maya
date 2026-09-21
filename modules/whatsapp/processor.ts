@@ -74,8 +74,10 @@ async function buildCaptureFromMessage(message: WhatsAppMessage, config: NonNull
   if (!media?.id) return null;
   const metadata = await fetchWhatsAppMediaMetadata(media.id, config);
   const downloaded = await downloadWhatsAppMediaAsDataUrl(metadata, config);
-  const fileName = "filename" in media && media.filename ? media.filename : `${media.id}.${fileExtension(downloaded.contentType)}`;
-  const hint = `${"caption" in media ? media.caption ?? "" : ""} ${fileName}`.trim();
+  const providedFileName = message.type === "document" ? message.document?.filename : undefined;
+  const fileName = providedFileName ? providedFileName : `${media.id}.${fileExtension(downloaded.contentType)}`;
+  const caption = message.type === "image" ? message.image?.caption : message.document?.caption;
+  const hint = `${caption ?? ""} ${fileName}`.trim();
   const isStatement = /extrato|statement|movimenta|conta corrente/i.test(hint);
 
   if (isStatement) {
