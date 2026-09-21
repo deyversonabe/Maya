@@ -12,6 +12,7 @@ function draft(overrides: Partial<FinancialDocumentDraft> = {}): FinancialDocume
     documentDate: "2026-08-16",
     person: "Casal",
     confidence: 0.8,
+    source: "receipt",
     missingFields: ["paymentMethod", "items", "issuerName"],
     items: [],
     ...overrides
