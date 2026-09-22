@@ -1,14 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
-  Camera,
   CheckCircle2,
   Clock3,
   FileDown,
-  Loader2,
   MinusCircle,
   PlusCircle,
   ScanText,
@@ -23,8 +21,10 @@ import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, toInputDate } from "@/lib/utils";
 import { mayaFetch } from "@/lib/api-client";
 import { AttachmentLink } from "./attachment-link";
+import { buildDocumentReadPayload } from "../lib/document-payload";
 import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 import type { Person, TimeClockDraft, WorkTimeEntry } from "../types";
 
 const people: Person[] = ["Deyverson"];
@@ -49,7 +49,6 @@ type TimeClockUploadResult = {
 
 export function WorkHoursPage() {
   const { state, actions } = useFinanceStore();
-  const pointFileRef = useRef<HTMLInputElement>(null);
   const today = toInputDate(new Date());
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedPerson, setSelectedPerson] = useState<Person>("Deyverson");
@@ -118,19 +117,16 @@ export function WorkHoursPage() {
     setFeedback("MAYA esta lendo o ponto. Ela vai ignorar dados desnecessarios e procurar data/horarios.");
 
     try {
-      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       const attachment = await fileToFinanceDocumentAttachment(file);
+      const payload = buildDocumentReadPayload(attachment);
+      const isPdf = payload.mimeType === "application/pdf";
       setPointAttachment(attachment);
 
       const response = await mayaFetch("/api/maya/timecard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl: isPdf && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
-          fileUrl: isPdf ? attachment.signedUrl : undefined,
-          mimeType: file.type,
-          fileName: attachment.fileName,
+          ...payload,
           targetDate: selectedDate
         })
       });
@@ -160,9 +156,6 @@ export function WorkHoursPage() {
       setFeedback("Nao consegui ler o ponto agora. O arquivo pode ser conferido manualmente e os horarios continuam editaveis.");
     } finally {
       setIsReadingTimecard(false);
-      if (pointFileRef.current) {
-        pointFileRef.current.value = "";
-      }
     }
   }
 
@@ -510,28 +503,19 @@ export function WorkHoursPage() {
         <Card>
           <CardHeader eyebrow="Registro diario" title={formatDate(selectedDate)} />
           <div className="mb-4 rounded-2xl border border-neon-cyan/20 bg-neon-cyan/10 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={() => pointFileRef.current?.click()} disabled={isReadingTimecard}>
-                {isReadingTimecard ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Camera className="size-4" aria-hidden="true" />
-                )}
-                {isReadingTimecard ? "Lendo ponto..." : "Ler foto/PDF"}
-              </Button>
+            <div className="grid gap-2">
+              <UniversalDocumentPicker
+                loading={isReadingTimecard}
+                onFileSelected={(file) => handleTimecardUpload(file)}
+                cameraLabel="Fotografar ponto"
+                fileLabel="Escolher foto ou PDF"
+              />
               {timeClockDraft ? (
                 <Badge tone={timeClockDraft.missingFields.length ? "warning" : "success"}>
                   Confianca {Math.round(timeClockDraft.confidence * 100)}%
                 </Badge>
               ) : null}
             </div>
-            <input
-              ref={pointFileRef}
-              type="file"
-              accept="image/*,application/pdf"
-              className="hidden"
-              onChange={(event) => void handleTimecardUpload(event.target.files?.[0])}
-            />
             <p className="mt-3 text-sm leading-6 text-muted">
               Envie uma foto do papel de ponto ou um relatorio em PDF. A MAYA procura data e batidas de entrada/saida,
               ignora informacoes administrativas e mantem os registros editaveis no calendario.

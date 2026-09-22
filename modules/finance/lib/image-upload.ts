@@ -2,10 +2,11 @@
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { toDateKey } from "@/lib/utils";
+import { isImageFile, isPdfFile } from "./file-kind";
 
 const MAX_IMAGE_EDGE = 3000;
 const MAX_DATA_URL_LENGTH = 3_800_000;
-const MAX_DOCUMENT_DATA_URL_LENGTH = 3_900_000;
+const MAX_DOCUMENT_DATA_URL_LENGTH = 5_200_000;
 const JPEG_QUALITY = 0.92;
 const ATTACHMENT_BUCKET = process.env.NEXT_PUBLIC_MAYA_ATTACHMENTS_BUCKET || "maya-finance-attachments";
 const WORKSPACE_ID =
@@ -31,11 +32,15 @@ export interface FinanceDocumentAttachmentUpload {
 }
 
 export async function fileToOptimizedImageDataUrl(file: File) {
-  if (!file.type.startsWith("image/")) {
+  if (!isImageFile(file)) {
     throw new Error("invalid_image_file");
   }
 
-  const originalDataUrl = await fileToDataUrl(file);
+  const normalizedFile =
+    file.type.startsWith("image/") || !inferImageMimeType(file.name)
+      ? file
+      : new File([file], file.name, { type: inferImageMimeType(file.name) });
+  const originalDataUrl = await fileToDataUrl(normalizedFile);
 
   try {
     const image = await loadImage(originalDataUrl);
@@ -109,7 +114,7 @@ export async function fileToFinanceAttachment(file: File): Promise<FinanceAttach
 }
 
 export async function fileToFinanceDocumentAttachment(file: File): Promise<FinanceDocumentAttachmentUpload> {
-  if (file.type.startsWith("image/")) {
+  if (isImageFile(file)) {
     const attachment = await fileToFinanceAttachment(file);
 
     return {
@@ -118,7 +123,7 @@ export async function fileToFinanceDocumentAttachment(file: File): Promise<Finan
     };
   }
 
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const isPdf = isPdfFile(file);
 
   if (!isPdf) {
     throw new Error("invalid_finance_document_file");
@@ -289,6 +294,16 @@ function buildStoredFileName(fileName: string, mimeType: string) {
   const baseName = sanitized.replace(/\.[a-zA-Z0-9]{1,8}$/i, "") || "anexo";
 
   return `${baseName}.${extension}`;
+}
+
+function inferImageMimeType(fileName: string) {
+  const extension = extensionFromFileName(fileName);
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "heic") return "image/heic";
+  if (extension === "heif") return "image/heif";
+  return "";
 }
 
 function extensionFromMimeType(mimeType: string) {

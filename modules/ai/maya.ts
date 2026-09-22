@@ -383,6 +383,7 @@ export async function readBankStatementWithMaya({
         text: [
           "Voce e a MAYA, assistente financeira do app.",
           "Leia este extrato bancario, print, PDF ou lista de transacoes.",
+          "Quando a entrada for PDF, leia TODAS as paginas e reúna as movimentacoes reais de todas elas antes de responder.",
           "Faca leitura minuciosa linha por linha, preservando descricao, valor exato com centavos, data e sinal de entrada/saida.",
           "Separe somente linhas financeiras reais em entradas e saidas.",
           "Extraia tambem, quando estiverem explicitamente visiveis: openingBalance (saldo inicial/anterior), closingBalance (saldo final), totalIncome (total de creditos/entradas) e totalExpenses (total de debitos/saidas).",
@@ -429,7 +430,7 @@ export async function readBankStatementWithMaya({
         ? process.env.OPENAI_PDF_MODEL || DEFAULT_PDF_MODEL
         : process.env.OPENAI_VISION_MODEL || DEFAULT_VISION_MODEL,
       input: [{ role: "user", content }],
-      max_output_tokens: hasPdf ? 5200 : 3200,
+      max_output_tokens: hasPdf ? 6500 : 3200,
       store: false,
       text: { format: { type: "json_object" } }
     }, hasPdf ? OPENAI_PDF_TIMEOUT_MS : OPENAI_TIMEOUT_MS);
@@ -476,7 +477,7 @@ export async function transcribeAudioWithMaya({
   form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-transcribe");
   form.append("file", new Blob([new Uint8Array(bytes)], { type: mimeType || "audio/ogg" }), fileName);
   form.append("prompt", "Lancamento financeiro em portugues do Brasil. Preserve valores, nomes de estabelecimentos, bancos, Pix, datas e categorias quando forem falados.");
-  form.append("languages[]", "pt");
+  form.append("language", "pt");
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",

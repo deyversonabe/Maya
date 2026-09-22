@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, FileCode2, KeyRound, Loader2, QrCode, Save } from "lucide-react";
+import { Camera, FileCode2, Image as ImageIcon, KeyRound, Loader2, QrCode, Save } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,18 +10,23 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { toInputDate } from "@/lib/utils";
+import { mayaFetch } from "@/lib/api-client";
 import { expenseCategories, DEFAULT_FINANCE_ACCOUNT_ID } from "../data/defaults";
+import { buildDocumentReadPayload } from "../lib/document-payload";
 import { parseBrazilianFiscalXml, type FiscalNoteImportResult } from "../lib/fiscal-note-import";
+import { fileToFinanceDocumentAttachment } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { FinancialDocumentDraft, Person } from "../types";
 import { DocumentItemsPanel } from "./document-items-panel";
 import { FinancialDocumentReview } from "./financial-document-review";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 
 const people: Person[] = ["Deyverson", "Tom", "Casal"];
 
 export function FiscalNoteImportPage() {
   const { state, actions } = useFinanceStore();
-  const qrImageRef = useRef<HTMLInputElement>(null);
+  const qrCameraRef = useRef<HTMLInputElement>(null);
+  const qrGalleryRef = useRef<HTMLInputElement>(null);
   const xmlRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [person, setPerson] = useState<Person>("Casal");
@@ -88,6 +93,35 @@ export function FiscalNoteImportPage() {
     }
   }
 
+  async function readNoteDocument(file: File) {
+    setIsLoading(true);
+    setFeedback("MAYA esta lendo a foto/PDF da nota e criando um rascunho...");
+    try {
+      const attachment = await fileToFinanceDocumentAttachment(file);
+      const response = await mayaFetch("/api/maya/receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...buildDocumentReadPayload(attachment),
+          documentKind: "expense"
+        })
+      });
+      const result = (await response.json()) as { financialDraft?: FinancialDocumentDraft; message?: string; error?: string };
+      if (!response.ok) throw new Error(result.error || "fiscal_document_read_failed");
+      if (!result.financialDraft) {
+        setFeedback(result.message || "Nao encontrei dados confiaveis nesse documento.");
+        return;
+      }
+      setDraft({ ...result.financialDraft, person });
+      setInput(result.financialDraft.fiscalDocument?.accessKey ?? input);
+      setFeedback(`${result.message || "Rascunho criado."} Revise antes de salvar.`);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Nao foi possivel ler a foto/PDF da nota.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function importXml(file: File | undefined) {
     if (!file) return;
     setIsLoading(true);
@@ -147,21 +181,35 @@ export function FiscalNoteImportPage() {
 
         <LedPanel>{feedback}</LedPanel>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader eyebrow="Opcao 1" title="Ler QR Code" description="Fotografe somente o quadrado do QR Code, sem precisar enquadrar a nota inteira." />
-            <input ref={qrImageRef} className="hidden" type="file" accept="image/*" capture="environment" onChange={(event) => void readQrFromImage(event.target.files?.[0])} />
-            <Button className="w-full" onClick={() => qrImageRef.current?.click()} disabled={isLoading}><Camera className="h-4 w-4" /> Abrir camera</Button>
+            <CardHeader eyebrow="Opcao 1" title="Ler QR Code" description="Use a camera ou escolha uma foto salva do QR Code." />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input ref={qrCameraRef} className="hidden" type="file" accept="image/*" capture="environment" onChange={(event) => { void readQrFromImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+              <input ref={qrGalleryRef} className="hidden" type="file" accept="image/*" onChange={(event) => { void readQrFromImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+              <Button onClick={() => qrCameraRef.current?.click()} disabled={isLoading}><Camera className="h-4 w-4" /> Abrir camera</Button>
+              <Button variant="secondary" onClick={() => qrGalleryRef.current?.click()} disabled={isLoading}><ImageIcon className="h-4 w-4" /> Escolher foto</Button>
+            </div>
           </Card>
 
           <Card>
-            <CardHeader eyebrow="Opcao 2" title="Chave ou link" description="Cole a chave de 44 numeros ou o conteudo completo do QR Code." />
+            <CardHeader eyebrow="Opcao 2" title="Ler foto ou PDF da nota" description="A MAYA extrai os dados e cria um rascunho editavel, sem salvar automaticamente." />
+            <UniversalDocumentPicker
+              loading={isLoading}
+              onFileSelected={readNoteDocument}
+              cameraLabel="Fotografar nota"
+              fileLabel="Escolher foto ou PDF"
+            />
+          </Card>
+
+          <Card>
+            <CardHeader eyebrow="Opcao 3" title="Chave ou link" description="Cole a chave de 44 numeros ou o conteudo completo do QR Code." />
             <Label>Chave/URL<Input value={input} onChange={(event) => setInput(event.target.value)} placeholder="44 digitos ou URL da NFC-e" /></Label>
             <Button className="mt-3 w-full" onClick={() => void consultNote()} disabled={isLoading}><QrCode className="h-4 w-4" /> Consultar nota</Button>
           </Card>
 
           <Card>
-            <CardHeader eyebrow="Opcao 3" title="Importar XML" description="Metodo mais completo e confiavel para trazer todos os produtos da nota." />
+            <CardHeader eyebrow="Opcao 4" title="Importar XML" description="Metodo estruturado e confiavel para trazer os produtos da NF-e/NFC-e." />
             <input ref={xmlRef} className="hidden" type="file" accept=".xml,text/xml,application/xml" onChange={(event) => void importXml(event.target.files?.[0])} />
             <Button className="w-full" onClick={() => xmlRef.current?.click()} disabled={isLoading}><FileCode2 className="h-4 w-4" /> Selecionar XML</Button>
           </Card>

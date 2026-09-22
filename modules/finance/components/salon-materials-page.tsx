@@ -12,8 +12,10 @@ import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
 import { mayaFetch } from "@/lib/api-client";
 import { DEFAULT_FINANCE_ACCOUNT_ID, incomeCategories } from "../data/defaults";
-import { fileToFinanceAttachment } from "../lib/image-upload";
+import { buildDocumentReadPayload } from "../lib/document-payload";
+import { fileToFinanceDocumentAttachment } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 import type {
   FinancialDocumentDraft,
   PaymentMethod,
@@ -317,20 +319,24 @@ export function SalonMaterialsPage() {
     setFeedback("MAYA esta lendo a nota de compra e procurando itens para estoque...");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       const response = await mayaFetch("/api/maya/receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileName: file.name,
+          ...buildDocumentReadPayload(attachment),
           documentKind: "expense"
         })
       });
       const result = (await response.json()) as {
         financialDraft?: FinancialDocumentDraft;
         message?: string;
+        error?: string;
       };
+
+      if (!response.ok) {
+        throw new Error(result.error || "purchase_note_read_failed");
+      }
       const items = (result.financialDraft?.items ?? [])
         .filter((item) => item.name?.trim())
         .map((item): PurchaseDraftItem => ({
@@ -352,7 +358,11 @@ export function SalonMaterialsPage() {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima e nitida."
-          : "Nao consegui ler a nota de compra agora. Use a entrada manual de estoque."
+          : error instanceof Error && error.message === "document_too_large"
+            ? "O PDF ficou grande demais para leitura direta. Configure o Storage ou envie um PDF menor."
+            : error instanceof Error && error.message && !error.message.endsWith("_failed")
+              ? error.message
+              : "Nao consegui ler a nota de compra agora. Use a entrada manual de estoque."
       );
     } finally {
       setIsReadingPurchaseNote(false);
@@ -982,22 +992,15 @@ export function SalonMaterialsPage() {
           <CardHeader eyebrow="Nota de compra" title="Ler itens para estoque" action={<FileScan className="size-5 text-bronze" />} />
           <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="grid gap-3">
-              <Label>
-                Anexar foto da nota de material
-                <Input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={isReadingPurchaseNote}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      void handlePurchaseNoteFile(file);
-                    }
-                    event.currentTarget.value = "";
-                  }}
+              <div>
+                <p className="mb-2 text-sm font-black text-cream">Anexar nota de material</p>
+                <UniversalDocumentPicker
+                  loading={isReadingPurchaseNote}
+                  onFileSelected={handlePurchaseNoteFile}
+                  cameraLabel="Fotografar nota"
+                  fileLabel="Escolher foto ou PDF"
                 />
-              </Label>
+              </div>
               <p className="rounded-xl border border-cream/10 bg-cream/[0.035] p-3 text-sm text-muted">
                 A leitura cria apenas rascunhos para entrada de estoque. Ela nao lanca despesa, boleto ou Pix automaticamente.
               </p>

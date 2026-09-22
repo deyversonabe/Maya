@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Check, FileImage, FileText, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   fileToFinanceDocumentAttachment,
   type FinanceDocumentAttachmentUpload
 } from "../lib/image-upload";
+import { buildDocumentReadPayload } from "../lib/document-payload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import {
   buildReceiptExpenseDescription,
@@ -49,6 +50,7 @@ import type {
 import { DocumentItemsPanel } from "./document-items-panel";
 import { FinancialDocumentReview } from "./financial-document-review";
 import { AttachmentLink } from "./attachment-link";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 
 type ExpensePlan = "single" | "recurring" | "installment";
 
@@ -70,8 +72,6 @@ type BillReconciliationMatch = {
 
 export function ExpensesPage() {
   const { state, actions } = useFinanceStore();
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const statementRef = useRef<HTMLInputElement>(null);
   const months = useMemo(() => buildAvailableMonths(state.transactions), [state.transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
   const [feedback, setFeedback] = useState("Cadastre despesas manualmente ou envie uma nota para a MAYA salvar como despesa.");
@@ -284,12 +284,7 @@ export function ExpensesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl:
-            attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
-          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
-          mimeType: attachment.mimeType,
-          fileName: file.name,
+          ...buildDocumentReadPayload(attachment),
           documentKind: "expense",
           qrPayloads
         })
@@ -297,7 +292,12 @@ export function ExpensesPage() {
       const result = (await response.json()) as {
         financialDraft?: FinancialDocumentDraft;
         message?: string;
+        error?: string;
       };
+
+      if (!response.ok) {
+        throw new Error(result.error || "document_read_failed");
+      }
 
       const storedDraft = result.financialDraft ? withStoredAttachment(result.financialDraft, attachment) : undefined;
 
@@ -313,7 +313,9 @@ export function ExpensesPage() {
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
           : error instanceof Error && error.message === "document_too_large"
             ? "O PDF ficou grande demais para leitura. Envie uma versao menor ou uma imagem da nota."
-          : "Nao consegui ler o documento. Tente uma foto/arquivo mais nitido ou preencha manualmente."
+            : error instanceof Error && error.message && !error.message.endsWith("_failed")
+              ? error.message
+              : "Nao consegui ler o documento. Tente uma foto/arquivo mais nitido ou preencha manualmente."
       );
     } finally {
       setIsReadingReceipt(false);
@@ -329,17 +331,17 @@ export function ExpensesPage() {
       const response = await mayaFetch("/api/maya/statement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl: attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
-          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
-          fileName: file.name
-        })
+        body: JSON.stringify(buildDocumentReadPayload(attachment))
       });
       const result = (await response.json()) as {
         statementDraft?: BankStatementDraft;
         message?: string;
+        error?: string;
       };
+
+      if (!response.ok) {
+        throw new Error(result.error || "statement_read_failed");
+      }
 
       if (result.statementDraft) {
         setStatementDraft(withStoredStatementAttachment(result.statementDraft, attachment));
@@ -355,7 +357,9 @@ export function ExpensesPage() {
           ? "A imagem do extrato ficou grande demais. Tente um print mais proximo e nitido."
           : error instanceof Error && error.message === "document_too_large"
             ? "O PDF do extrato ficou grande demais. Envie uma versao menor ou divida o arquivo."
-            : "Nao consegui ler o extrato. Voce pode cadastrar as transacoes manualmente."
+            : error instanceof Error && error.message && !error.message.endsWith("_failed")
+              ? error.message
+              : "Nao consegui ler o extrato. Voce pode cadastrar as transacoes manualmente."
       );
     } finally {
       setIsReadingStatement(false);
@@ -673,37 +677,25 @@ export function ExpensesPage() {
             action={<Badge tone={receiptDraft ? "success" : "neutral"}>{receiptDraft ? "Revisao MAYA" : "Manual ou nota"}</Badge>}
           />
 
-          <div className="mb-3 grid gap-3 sm:grid-cols-2">
-            <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingReceipt}>
-              <FileImage className="size-4" aria-hidden="true" />
-              Ler documento
-            </Button>
-            <Button variant="secondary" onClick={() => statementRef.current?.click()} disabled={isReadingStatement}>
-              <FileText className="size-4" aria-hidden="true" />
-              Ler extrato
-            </Button>
-            <input
-              ref={uploadRef}
-              className="hidden"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleReceiptFile(file);
-                event.target.value = "";
-              }}
-            />
-            <input
-              ref={statementRef}
-              className="hidden"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleStatementFile(file);
-                event.target.value = "";
-              }}
-            />
+          <div className="mb-3 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-cream/10 bg-cream/[0.035] p-3">
+              <p className="mb-2 text-sm font-black text-cream">Nota, recibo ou comprovante</p>
+              <UniversalDocumentPicker
+                loading={isReadingReceipt}
+                onFileSelected={handleReceiptFile}
+                cameraLabel="Fotografar documento"
+                fileLabel="Escolher foto ou PDF"
+              />
+            </div>
+            <div className="rounded-xl border border-neon-cyan/15 bg-neon-cyan/[0.035] p-3">
+              <p className="mb-2 text-sm font-black text-cream">Extrato bancario</p>
+              <UniversalDocumentPicker
+                loading={isReadingStatement}
+                onFileSelected={handleStatementFile}
+                cameraLabel="Fotografar extrato"
+                fileLabel="Escolher extrato ou PDF"
+              />
+            </div>
           </div>
           <p className="mb-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-xs font-bold leading-5 text-cyan-50">
             Envie nota, recibo, boleto, foto, print ou PDF. A MAYA cria um rascunho editavel e detecta QR fiscal automaticamente.

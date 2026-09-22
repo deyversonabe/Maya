@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
   Calculator,
@@ -8,7 +8,6 @@ import {
   FileText,
   Landmark,
   type LucideIcon,
-  Paperclip,
   Plus,
   ShieldCheck,
   Trash2
@@ -21,10 +20,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LedPanel } from "@/components/ui/led-panel";
 import { cn, financialValueClass, formatCurrency, getCurrentMonthKey, parseFinancialAmountInput, toInputDate } from "@/lib/utils";
-import { fileToFinanceAttachment, type FinanceAttachmentUpload } from "../lib/image-upload";
+import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type { LaborBenefitType, PayrollRecordStatus, Person, TaxDocumentKind, TaxDocumentStatus } from "../types";
 import { AttachmentLink } from "./attachment-link";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 
 type PersonFilter = Person | "Todos";
 
@@ -82,18 +82,15 @@ export function FiscalToolsPage() {
   const { state, actions } = useFinanceStore();
   const currentYear = new Date().getFullYear();
   const currentMonth = getCurrentMonthKey();
-  const taxFileRef = useRef<HTMLInputElement>(null);
-  const laborFileRef = useRef<HTMLInputElement>(null);
-  const payrollFileRef = useRef<HTMLInputElement>(null);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedPerson, setSelectedPerson] = useState<PersonFilter>("Todos");
   const [feedback, setFeedback] = useState("Organize documentos fiscais e trabalhistas sem misturar com saldo livre.");
   const [isUploadingTax, setIsUploadingTax] = useState(false);
   const [isUploadingLabor, setIsUploadingLabor] = useState(false);
   const [isUploadingPayroll, setIsUploadingPayroll] = useState(false);
-  const [taxAttachment, setTaxAttachment] = useState<FinanceAttachmentUpload | null>(null);
-  const [laborAttachment, setLaborAttachment] = useState<FinanceAttachmentUpload | null>(null);
-  const [payrollAttachment, setPayrollAttachment] = useState<FinanceAttachmentUpload | null>(null);
+  const [taxAttachment, setTaxAttachment] = useState<FinanceDocumentAttachmentUpload | null>(null);
+  const [laborAttachment, setLaborAttachment] = useState<FinanceDocumentAttachmentUpload | null>(null);
+  const [payrollAttachment, setPayrollAttachment] = useState<FinanceDocumentAttachmentUpload | null>(null);
   const [taxForm, setTaxForm] = useState({
     year: String(currentYear),
     person: "Deyverson" as Person,
@@ -210,7 +207,7 @@ export function FiscalToolsPage() {
     setFeedback("Salvando anexo fiscal para revisao.");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       setTaxAttachment(attachment);
       setFeedback(
         attachment.storagePath
@@ -218,12 +215,9 @@ export function FiscalToolsPage() {
           : "Anexo fiscal carregado localmente. Verifique a configuracao do Storage para nuvem."
       );
     } catch {
-      setFeedback("Nao consegui anexar esse arquivo agora. Use imagem JPG/PNG e tente novamente.");
+      setFeedback("Nao consegui anexar esse arquivo agora. Use foto, imagem ou PDF e tente novamente.");
     } finally {
       setIsUploadingTax(false);
-      if (taxFileRef.current) {
-        taxFileRef.current.value = "";
-      }
     }
   }
 
@@ -236,7 +230,7 @@ export function FiscalToolsPage() {
     setFeedback("Salvando anexo trabalhista para revisao.");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       setLaborAttachment(attachment);
       setFeedback(
         attachment.storagePath
@@ -244,12 +238,9 @@ export function FiscalToolsPage() {
           : "Anexo trabalhista carregado localmente. Verifique a configuracao do Storage para nuvem."
       );
     } catch {
-      setFeedback("Nao consegui anexar esse arquivo agora. Use imagem JPG/PNG e tente novamente.");
+      setFeedback("Nao consegui anexar esse arquivo agora. Use foto, imagem ou PDF e tente novamente.");
     } finally {
       setIsUploadingLabor(false);
-      if (laborFileRef.current) {
-        laborFileRef.current.value = "";
-      }
     }
   }
 
@@ -262,7 +253,7 @@ export function FiscalToolsPage() {
     setFeedback("Salvando holerite/comprovante para revisao.");
 
     try {
-      const attachment = await fileToFinanceAttachment(file);
+      const attachment = await fileToFinanceDocumentAttachment(file);
       setPayrollAttachment(attachment);
       setFeedback(
         attachment.storagePath
@@ -270,12 +261,9 @@ export function FiscalToolsPage() {
           : "Holerite/comprovante carregado localmente. Verifique a configuracao do Storage para nuvem."
       );
     } catch {
-      setFeedback("Nao consegui anexar esse holerite agora. Use imagem JPG/PNG e tente novamente.");
+      setFeedback("Nao consegui anexar esse holerite agora. Use foto, imagem ou PDF e tente novamente.");
     } finally {
       setIsUploadingPayroll(false);
-      if (payrollFileRef.current) {
-        payrollFileRef.current.value = "";
-      }
     }
   }
 
@@ -305,7 +293,7 @@ export function FiscalToolsPage() {
       status: taxForm.status,
       notes: taxForm.notes.trim() || undefined,
       attachmentImageName: taxAttachment?.fileName,
-      attachmentDataUrl: taxAttachment?.storagePath ? undefined : taxAttachment?.imageDataUrl,
+      attachmentDataUrl: taxAttachment?.storagePath ? undefined : taxAttachment?.imageDataUrl ?? taxAttachment?.fileDataUrl,
       attachmentStoragePath: taxAttachment?.storagePath,
       attachmentMimeType: taxAttachment?.mimeType,
       attachmentSize: taxAttachment?.size
@@ -362,7 +350,7 @@ export function FiscalToolsPage() {
       documentDate: laborForm.documentDate || undefined,
       notes: laborForm.notes.trim() || undefined,
       attachmentImageName: laborAttachment?.fileName,
-      attachmentDataUrl: laborAttachment?.storagePath ? undefined : laborAttachment?.imageDataUrl,
+      attachmentDataUrl: laborAttachment?.storagePath ? undefined : laborAttachment?.imageDataUrl ?? laborAttachment?.fileDataUrl,
       attachmentStoragePath: laborAttachment?.storagePath,
       attachmentMimeType: laborAttachment?.mimeType,
       attachmentSize: laborAttachment?.size
@@ -417,7 +405,7 @@ export function FiscalToolsPage() {
       status: payrollForm.status,
       notes: payrollForm.notes.trim() || undefined,
       attachmentImageName: payrollAttachment?.fileName,
-      attachmentDataUrl: payrollAttachment?.storagePath ? undefined : payrollAttachment?.imageDataUrl,
+      attachmentDataUrl: payrollAttachment?.storagePath ? undefined : payrollAttachment?.imageDataUrl ?? payrollAttachment?.fileDataUrl,
       attachmentStoragePath: payrollAttachment?.storagePath,
       attachmentMimeType: payrollAttachment?.mimeType,
       attachmentSize: payrollAttachment?.size
@@ -612,27 +600,18 @@ export function FiscalToolsPage() {
               />
             </Label>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => taxFileRef.current?.click()}
-                disabled={isUploadingTax}
-              >
-                <Paperclip className="size-4" aria-hidden="true" />
-                {taxAttachment ? taxAttachment.fileName : "Anexar imagem"}
-              </Button>
+            <div className="grid gap-3">
+              <UniversalDocumentPicker
+                loading={isUploadingTax}
+                onFileSelected={(file) => handleTaxAttachment(file)}
+                cameraLabel="Fotografar documento fiscal"
+                fileLabel="Escolher foto ou PDF"
+              />
               <Button type="submit">
                 <Plus className="size-4" aria-hidden="true" />
                 Salvar documento
               </Button>
             </div>
-            <input
-              ref={taxFileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => void handleTaxAttachment(event.target.files?.[0])}
-            />
           </form>
         </Card>
 
@@ -743,27 +722,18 @@ export function FiscalToolsPage() {
               />
             </Label>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => laborFileRef.current?.click()}
-                disabled={isUploadingLabor}
-              >
-                <Paperclip className="size-4" aria-hidden="true" />
-                {laborAttachment ? laborAttachment.fileName : "Anexar imagem"}
-              </Button>
+            <div className="grid gap-3">
+              <UniversalDocumentPicker
+                loading={isUploadingLabor}
+                onFileSelected={(file) => handleLaborAttachment(file)}
+                cameraLabel="Fotografar documento trabalhista"
+                fileLabel="Escolher foto ou PDF"
+              />
               <Button type="submit">
                 <Plus className="size-4" aria-hidden="true" />
                 Salvar dado
               </Button>
             </div>
-            <input
-              ref={laborFileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => void handleLaborAttachment(event.target.files?.[0])}
-            />
           </form>
         </Card>
 
@@ -896,27 +866,18 @@ export function FiscalToolsPage() {
               sistemas oficiais.
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => payrollFileRef.current?.click()}
-                disabled={isUploadingPayroll}
-              >
-                <Paperclip className="size-4" aria-hidden="true" />
-                {payrollAttachment ? payrollAttachment.fileName : "Anexar holerite"}
-              </Button>
+            <div className="grid gap-3">
+              <UniversalDocumentPicker
+                loading={isUploadingPayroll}
+                onFileSelected={(file) => handlePayrollAttachment(file)}
+                cameraLabel="Fotografar holerite"
+                fileLabel="Escolher foto ou PDF"
+              />
               <Button type="submit">
                 <Plus className="size-4" aria-hidden="true" />
                 Salvar holerite
               </Button>
             </div>
-            <input
-              ref={payrollFileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => void handlePayrollAttachment(event.target.files?.[0])}
-            />
           </form>
         </Card>
       </div>

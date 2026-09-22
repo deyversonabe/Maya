@@ -1,14 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   BellRing,
   CalendarClock,
-  Camera,
   CheckCircle2,
   Copy,
-  FileImage,
   Pencil,
   ReceiptText,
   Trash2
@@ -41,6 +39,7 @@ import {
 import { findBillDuplicateMatches, type BillDuplicateMatch } from "../lib/duplicates";
 import { getFinanceDateIssue, getFinanceDateIssueMessage } from "../lib/date-validation";
 import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
+import { buildDocumentReadPayload } from "../lib/document-payload";
 import { useFinanceStore } from "../lib/use-finance-store";
 import type {
   BillStatus,
@@ -53,6 +52,7 @@ import { DocumentItemsPanel } from "./document-items-panel";
 import { FinancialDocumentReview } from "./financial-document-review";
 import { AttachmentLink } from "./attachment-link";
 import { FinanceNotificationPanel } from "./finance-notification-panel";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 
 type BillPlan = "single" | "recurring" | "installment";
 
@@ -79,8 +79,6 @@ type BillDuplicateReview = {
 
 export function BillsPage() {
   const { state, actions } = useFinanceStore();
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
   const [feedback, setFeedback] = useState("Cadastre contas, boletos e Pix para acompanhar vencimentos.");
   const [documentDraft, setDocumentDraft] = useState<FinancialDocumentDraft | null>(null);
@@ -178,18 +176,19 @@ export function BillsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl: attachment.fileDataUrl,
-          fileUrl: attachment.signedUrl,
-          mimeType: attachment.mimeType,
-          fileName: file.name,
+          ...buildDocumentReadPayload(attachment),
           documentKind: "bill"
         })
       });
       const result = (await response.json()) as {
         financialDraft?: FinancialDocumentDraft;
         message?: string;
+        error?: string;
       };
+
+      if (!response.ok) {
+        throw new Error(result.error || "bill_document_read_failed");
+      }
 
       if (result.financialDraft) {
         applyDraft(withStoredAttachment(result.financialDraft, attachment));
@@ -200,7 +199,11 @@ export function BillsPage() {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
-          : "Nao consegui ler a imagem. Preencha a conta manualmente."
+          : error instanceof Error && error.message === "document_too_large"
+            ? "O PDF ficou grande demais para leitura direta. Configure o Storage ou envie um PDF menor."
+            : error instanceof Error && error.message && !error.message.endsWith("_failed")
+              ? error.message
+              : "Nao consegui ler o documento. Preencha a conta manualmente."
       );
     } finally {
       setIsReadingDocument(false);
@@ -444,41 +447,12 @@ export function BillsPage() {
             action={<Badge tone={editingBillId ? "info" : documentDraft ? "success" : "neutral"}>{editingBillId ? "Edicao" : documentDraft ? "Anexo lido" : "Manual"}</Badge>}
           />
 
-          <div className="mb-4 grid gap-3 sm:grid-cols-2">
-            <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={isReadingDocument}>
-              <FileImage className="size-4" aria-hidden="true" />
-              Anexar conta
-            </Button>
-            <Button variant="ghost" onClick={() => cameraRef.current?.click()} disabled={isReadingDocument}>
-              <Camera className="size-4" aria-hidden="true" />
-              Abrir camera
-            </Button>
-            <input
-              ref={uploadRef}
-              className="hidden"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleDocumentFile(file);
-                }
-                event.target.value = "";
-              }}
-            />
-            <input
-              ref={cameraRef}
-              className="hidden"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleDocumentFile(file);
-                }
-                event.target.value = "";
-              }}
+          <div className="mb-4 rounded-xl border border-cream/10 bg-cream/[0.035] p-3">
+            <UniversalDocumentPicker
+              loading={isReadingDocument}
+              onFileSelected={handleDocumentFile}
+              cameraLabel="Fotografar conta"
+              fileLabel="Escolher foto ou PDF"
             />
           </div>
 

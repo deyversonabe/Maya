@@ -6,7 +6,6 @@ import {
   ArrowUpCircle,
   BadgeCheck,
   CalendarDays,
-  FileImage,
   HeartPulse,
   Download,
   LineChart,
@@ -46,13 +45,10 @@ import {
   findTransactionDuplicateMatches,
   type TransactionDuplicateMatch
 } from "../lib/duplicates";
-import {
-  buildReceiptExpenseDescription,
-  getReceiptDraftDate,
-  getReceiptDraftMissingSaveFields
-} from "../lib/receipt-validation";
+import { buildDocumentReadPayload } from "../lib/document-payload";
 import { fileToFinanceDocumentAttachment, type FinanceDocumentAttachmentUpload } from "../lib/image-upload";
 import { useFinanceStore } from "../lib/use-finance-store";
+import { UniversalDocumentPicker } from "./universal-document-picker";
 import type {
   FinancialDocumentDraft,
   GoalPriority,
@@ -101,8 +97,8 @@ type TransactionImportDuplicateReview = {
 export function FinanceDashboard() {
   const { state, isHydrated, actions } = useFinanceStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const transactionImageRef = useRef<HTMLInputElement>(null);
   const [transactionDraft, setTransactionDraft] = useState<FinancialDocumentDraft | null>(null);
+  const [isReadingTransactionDocument, setIsReadingTransactionDocument] = useState(false);
   const [duplicateReview, setDuplicateReview] = useState<TransactionDuplicateReview | null>(null);
   const [importDuplicateReview, setImportDuplicateReview] = useState<TransactionImportDuplicateReview | null>(null);
   const [transactionForm, setTransactionForm] = useState({
@@ -143,7 +139,8 @@ export function FinanceDashboard() {
   const maxFlowValue = Math.max(...flow.flatMap((item) => [item.income, item.expenses, item.investments]), 1);
 
   async function importTransactionImage(file: File) {
-    setFeedback("MAYA esta lendo o anexo e preparando um rascunho...");
+    setIsReadingTransactionDocument(true);
+    setFeedback("MAYA esta lendo o anexo e preparando um rascunho revisavel...");
 
     try {
       const attachment = await fileToFinanceDocumentAttachment(file);
@@ -152,75 +149,27 @@ export function FinanceDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: attachment.imageDataUrl,
-          fileDataUrl:
-            attachment.mimeType === "application/pdf" && !attachment.signedUrl ? attachment.fileDataUrl : undefined,
-          fileUrl: attachment.mimeType === "application/pdf" ? attachment.signedUrl : undefined,
-          mimeType: attachment.mimeType,
-          fileName: file.name,
+          ...buildDocumentReadPayload(attachment),
           documentKind
         })
       });
       const result = (await response.json()) as {
         financialDraft?: FinancialDocumentDraft;
         message?: string;
+        error?: string;
       };
 
+      if (!response.ok) {
+        throw new Error(result.error || "document_read_failed");
+      }
+
       if (!result.financialDraft) {
-        setFeedback(result.message ?? "Nao consegui ler o anexo. Preencha manualmente.");
+        setFeedback(result.message ?? "Nao consegui extrair dados confiaveis. Preencha manualmente.");
         return;
       }
 
       const draft = withStoredAttachment(result.financialDraft, attachment);
       const date = draft.entryDate || draft.documentDate || draft.dueDate || "";
-
-      if (draft.kind === "expense" && getReceiptDraftMissingSaveFields(draft).length === 0) {
-        const transaction = {
-          type: "expense" as const,
-          description: buildReceiptExpenseDescription(draft),
-          amount: draft.amount,
-          category: draft.category || "Outros",
-          otherCategoryDescription: draft.category === "Outros" ? draft.otherCategoryDescription : undefined,
-          person: draft.person,
-          date: getReceiptDraftDate(draft) || date,
-          recurring: false,
-          source: "receipt" as const,
-          paymentMethod: draft.paymentMethod ?? "other",
-          paymentRecipient: draft.paymentRecipient?.trim() || undefined,
-          receiptImageName: draft.attachmentImageName,
-          attachmentImageName: draft.attachmentImageName,
-          attachmentDataUrl: draft.attachmentDataUrl,
-          attachmentStoragePath: draft.attachmentStoragePath,
-          attachmentMimeType: draft.attachmentMimeType,
-          attachmentSize: draft.attachmentSize,
-          documentItems: draft.items,
-          fiscalDocument: draft.fiscalDocument,
-          notes: draft.notes
-        } satisfies Omit<Transaction, "id" | "createdAt">;
-        const fiscalIdentityMatch = findTransactionByFiscalAccessKey(
-          state.transactions,
-          transaction.fiscalDocument?.accessKey,
-          "expense"
-        );
-
-        if (fiscalIdentityMatch) {
-          mergeReceiptIntoExistingExpense(fiscalIdentityMatch, transaction);
-          return;
-        }
-
-        const duplicates = findTransactionDuplicateMatches(state.transactions, [transaction]);
-
-        if (duplicates.length > 0) {
-          setTransactionDraft(draft);
-          setDuplicateReview({ transaction, matches: duplicates });
-          setFeedback("Nota lida, mas encontrei possivel duplicidade. Confirme antes de computar novamente.");
-          return;
-        }
-
-        saveTransaction(transaction);
-        setFeedback(`Nota salva como despesa em ${transaction.date}. Os indicadores do mes foram recalculados.`);
-        return;
-      }
 
       setTransactionDraft(draft);
       setTransactionForm((current) => ({
@@ -235,15 +184,19 @@ export function FinanceDashboard() {
         paymentMethod: draft.paymentMethod ?? current.paymentMethod,
         paymentRecipient: draft.paymentRecipient ?? current.paymentRecipient
       }));
-      setFeedback(buildDraftFeedback(result.message, draft));
+      setFeedback(`${buildDraftFeedback(result.message, draft)} Nada foi salvo automaticamente; confirme no formulario.`);
     } catch (error) {
       setFeedback(
         error instanceof Error && error.message === "image_too_large"
           ? "A imagem ficou grande demais para leitura. Tente uma foto mais proxima, nitida e com menos fundo ao redor."
           : error instanceof Error && error.message === "document_too_large"
-            ? "O PDF ficou grande demais para leitura. Envie uma versao menor."
-            : "Nao consegui ler o anexo. Preencha a transacao manualmente."
+            ? "O PDF ficou grande demais para leitura direta. Configure o Storage ou envie um PDF menor."
+            : error instanceof Error && error.message && !error.message.endsWith("_failed")
+              ? error.message
+              : "Nao consegui ler o anexo. Preencha a transacao manualmente."
       );
+    } finally {
+      setIsReadingTransactionDocument(false);
     }
   }
 
@@ -657,26 +610,15 @@ export function FinanceDashboard() {
                 action={<Badge tone="neutral">{state.transactions.length} registros</Badge>}
               />
               <form className="grid gap-3 rounded-lg border border-cream/10 bg-cream/[0.04] p-4" onSubmit={submitTransaction}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="grid gap-3">
                   <p className="text-sm leading-6 text-muted">
-                    Cadastre manualmente ou anexe uma imagem para a MAYA preencher um rascunho revisavel.
+                    Cadastre manualmente ou use foto, camera ou PDF. A MAYA preenche somente um rascunho revisavel.
                   </p>
-                  <Button variant="secondary" onClick={() => transactionImageRef.current?.click()}>
-                    <FileImage className="size-4" aria-hidden="true" />
-                    Ler anexo
-                  </Button>
-                  <input
-                    ref={transactionImageRef}
-                    className="hidden"
-                    type="file"
-                    accept="image/*,.pdf,application/pdf"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) {
-                        void importTransactionImage(file);
-                      }
-                      event.target.value = "";
-                    }}
+                  <UniversalDocumentPicker
+                    loading={isReadingTransactionDocument}
+                    onFileSelected={importTransactionImage}
+                    cameraLabel="Fotografar documento"
+                    fileLabel="Escolher foto ou PDF"
                   />
                 </div>
                 {transactionDraft ? (
