@@ -1,26 +1,41 @@
-# MAYA Elevada — checklist para atualizar o GitHub
+# Checklist de atualização do GitHub — MAYA
 
-## Conteúdo deste pacote
+## Forma recomendada
 
-Este diretório é a raiz completa do projeto. Ele inclui `.github/`, `app/`, `components/`, `docs/`, `lib/`, `modules/`, `public/`, `scripts/`, `supabase/`, `tests/`, arquivos de configuração e o guia de implantação em `docs/reference/`.
+Evite **Add files via upload** para substituir o projeto inteiro. Foi esse tipo de fluxo que anteriormente gerou árvores como `modules/modules` e `tests/tests`.
 
-## Antes de publicar
+Use Git em uma branch nova:
 
-1. Não envie `.env`, `.env.local` ou qualquer arquivo com credenciais reais.
-2. Use `.env.example` apenas como referência e configure segredos no GitHub/Vercel/Supabase/Meta/OpenAI/Pluggy.
-3. Execute as migrations do Supabase, em especial:
-   - `20260920_finance_capture_inbox.sql`
-   - `20260920_open_finance_items.sql`
-4. Rode localmente:
-   - `npm ci`
-   - `npm test`
-   - `npm run typecheck`
-   - `npm run audit:production`
-   - `npm run build`
-5. Só faça deploy em produção se todos os gates passarem.
+```bash
+git checkout main
+git pull --ff-only
+git checkout -b fix/universal-document-capture-2026-09-22
+```
 
-## Upload para GitHub
+Substitua o conteúdo do repositório pelo conteúdo **interno** deste pacote, preservando apenas a pasta `.git` do clone.
 
-Você pode descompactar este ZIP e copiar **todo o conteúdo da pasta raiz**, incluindo arquivos/pastas ocultos como `.github`, `.gitignore` e `.env.example`, para a raiz do repositório.
+Depois confira que não existem pastas duplicadas e rode:
 
-Se estiver substituindo uma versão antiga, faça backup/branch antes e revise o diff antes do merge.
+```bash
+npm ci
+npm test
+npm run typecheck
+npm run audit:production
+npm run audit:documents
+npm run build
+npm audit
+```
+
+Somente com os gates verdes:
+
+```bash
+git add -A
+git commit -m "Unify document capture for camera images and PDFs"
+git push -u origin fix/universal-document-capture-2026-09-22
+```
+
+Abra PR para `main`, valide o Vercel Preview e teste um PDF real de extrato antes do merge.
+
+## Critério de aceite do Extrato
+
+Um PDF real deve gerar `BankStatementDraft` revisável, com todas as páginas consideradas. Antes de confirmar, o saldo não pode mudar. Após a confirmação, cada movimento deve ser aplicado no máximo uma vez e passar pelas regras de duplicidade/reconciliação.

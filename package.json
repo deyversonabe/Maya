@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "auth:create-users": "node scripts/create-supabase-auth-users.mjs",
     "push:generate-keys": "web-push generate-vapid-keys",
-    "audit:production": "node scripts/audit-production.mjs"
+    "audit:production": "node scripts/audit-production.mjs",
+    "audit:documents": "node scripts/audit-document-capture.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

@@ -17,6 +17,7 @@ Na Home, o usuario encontra quatro caminhos claros:
 
 ## O que esta implementado
 
+- captura universal em documentos humanos: **Tirar foto** + **Escolher foto ou PDF**;
 - leitura de foto/print/PDF e rascunho editavel;
 - leitura de extrato em imagem/PDF com linhas editaveis e reconciliacao;
 - validacao `Pronto / Revisar / Bloqueado`;
@@ -47,6 +48,9 @@ app/
 modules/
   captures/
   finance/
+    components/universal-document-picker.tsx
+    lib/file-kind.ts
+    lib/document-payload.ts
   ai/
   whatsapp/
   open-finance/
@@ -85,10 +89,11 @@ npm ci
 npm test
 npm run typecheck
 npm run audit:production
+npm run audit:documents
 npm run build
 ```
 
-O workflow `.github/workflows/ci.yml` executa os mesmos gates em push/PR para `main`.
+O workflow `.github/workflows/ci.yml` executa os gates principais em push/PR para `main`. A auditoria `audit:documents` garante que os caminhos universais de foto/camera/PDF e os importadores especializados continuem separados.
 
 ## Open Finance
 
@@ -114,3 +119,8 @@ Toda captura recebida pelo WhatsApp deve aparecer em `/captures`; nao deve alter
 - [Go-live](docs/GO_LIVE_MAYA_ELEVADA.md)
 - [Prompt para Claude](docs/PROMPT_CLAUDE_REVISAO_MAYA_ELEVADA.md)
 - [Guia-base](docs/reference/Guia-Implantacao-Maya-Elevada-2026-09-20.pdf)
+
+
+## Revisao de 22/09/2026
+
+A unificacao de captura e o diagnostico do extrato PDF estao documentados em [Revisao de captura universal](docs/REVISAO_UNIFICACAO_CAPTURA_2026-09-22.md).
