@@ -382,7 +382,11 @@ Permissoes: sem autenticacao nesta etapa local, mas sem exposicao de segredos ao
 Entrada:
 
 - `imageDataUrl`: imagem em data URL.
+- `fileDataUrl`: PDF pequeno em data URL, usado apenas como fallback.
+- `fileUrl`: URL assinada temporaria do bucket privado de anexos para PDF.
+- `documentText`: texto opcional do extrato.
 - `fileName`: nome do arquivo, opcional.
+- `mimeType` / `fileSize`: metadados nao sensiveis para validacao e log seguro.
 - `documentKind`: `expense`, `income` ou `bill`, opcional.
 - `qrPayloads`: lista opcional de conteudos de QR Code detectados no navegador antes do envio, usada como apoio fiscal para NFC-e/NF-e/cupom.
 
@@ -416,8 +420,8 @@ Regras:
 
 Erros esperados:
 
-- `400`: imagem ausente ou invalida.
-- `413`: imagem maior que o limite permitido.
+- `400`: imagem/PDF ausente, URL assinada invalida ou PDF vazio/corrompido.
+- `413`: imagem ou PDF direto maior que o limite permitido.
 - `500`: falha inesperada de leitura.
 
 Efeitos colaterais:
@@ -427,14 +431,18 @@ Efeitos colaterais:
 
 ### POST `/api/maya/statement`
 
-Objetivo: ler uma imagem de extrato bancario e devolver linhas revisaveis separadas entre renda e despesa.
+Objetivo: ler foto, print, PDF ou texto de extrato bancario e devolver linhas revisaveis separadas entre renda e despesa.
 
 Permissoes: mesma regra da rota de comprovante; a chave de IA permanece somente no servidor.
 
 Entrada:
 
 - `imageDataUrl`: imagem em data URL.
+- `fileDataUrl`: PDF pequeno em data URL, usado apenas como fallback.
+- `fileUrl`: URL assinada temporaria do bucket privado de anexos para PDF.
+- `documentText`: texto opcional do extrato.
 - `fileName`: nome do arquivo, opcional.
+- `mimeType` / `fileSize`: metadados nao sensiveis para validacao e log seguro.
 
 Saida:
 
@@ -445,7 +453,9 @@ Saida:
 
 Regras:
 
-- A rota aceita somente `data:image/*` e limita payload antes da chamada de IA.
+- A rota aceita imagem, PDF por URL assinada, PDF pequeno em base64 ou texto; todos os payloads sao validados antes da chamada de IA.
+- Em PDF, a MAYA deve ler todas as paginas e reunir as movimentacoes reais do documento inteiro.
+- URL de PDF deve pertencer ao host Supabase configurado, bucket privado autorizado e conter token de assinatura.
 - A MAYA deve ignorar saldo, total, cabecalho, limite, subtotal e qualquer linha que nao seja transacao real.
 - Valores retornam positivos; o campo `type` indica entrada ou saida.
 - Se a IA ou o extrato retornar um valor negativo em uma linha de saida, o backend normaliza o valor como positivo e preserva `type = expense`.

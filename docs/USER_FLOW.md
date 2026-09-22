@@ -230,8 +230,8 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 ### Contas a pagar
 
 1. Usuario acessa Contas.
-2. Usuario escolhe cadastrar manualmente ou anexar uma imagem.
-3. Quando houver imagem, MAYA le o documento e preenche um rascunho com titulo, descricao, valor, vencimento, categoria, tipo de pagamento e codigo quando existir.
+2. Usuario escolhe cadastrar manualmente, tirar uma foto ou selecionar uma foto/PDF.
+3. Quando houver documento, MAYA le a foto/PDF e preenche um rascunho com titulo, descricao, valor, vencimento, categoria, tipo de pagamento e codigo quando existir.
 4. Sistema exibe os dados do anexo em painel editavel e deixa vazios os campos que nao foram identificados com confianca.
 5. Usuario pode abrir o anexo original para conferencia.
 6. Usuario revisa e completa titulo, valor e vencimento antes de salvar.
@@ -241,10 +241,10 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 10. Usuario pode marcar como pago.
 11. Sistema mostra contas vencendo, alerta 48h antes, alerta do dia e resumo mensal.
 
-### Leitura de renda por imagem
+### Leitura de renda por foto/PDF
 
 1. Usuario acessa Dashboard.
-2. Usuario seleciona tipo Receita e anexa imagem de comprovante ou documento de entrada.
+2. Usuario seleciona tipo Receita e tira uma foto ou escolhe uma foto/PDF de comprovante ou documento de entrada.
 3. MAYA cria rascunho revisavel com descricao, valor, categoria e data de entrada quando legivel.
 4. Usuario completa campos faltantes.
 5. Sistema verifica se ja existe renda ou despesa com valor igual em data igual ou proxima.
@@ -260,12 +260,12 @@ Nesta etapa, o WhatsApp nao salva despesa automaticamente porque ainda nao ha lo
 5. Sistema so salva e soma a duplicidade apos aprovacao explicita.
 6. Quando a duplicidade exata vier de uma nota de despesa, sistema pode anexar somente os itens e o arquivo ao lancamento existente, sem somar novamente.
 
-### Importacao de extrato por imagem
+### Importacao de extrato por foto/PDF
 
 1. Usuario acessa Despesas.
-2. Usuario clica em Anexar extrato e envia uma imagem ou print do extrato.
-3. Sistema envia a imagem para `POST /api/maya/statement`.
-4. MAYA tenta separar apenas linhas reais em renda e despesa.
+2. Usuario escolhe fotografar o extrato ou selecionar uma foto/PDF do aparelho.
+3. Sistema envia imagem ou PDF para `POST /api/maya/statement`; PDF usa URL assinada do Storage quando disponivel e base64 apenas como fallback pequeno.
+4. Em PDF, MAYA le todas as paginas e tenta separar apenas linhas financeiras reais em renda e despesa.
 5. Sistema exibe linhas editaveis com tipo, descricao, valor, data, categoria, pessoa, forma de pagamento e destinatario Pix.
 6. Usuario remove ou corrige linhas antes de importar.
 7. Se uma linha de despesa estiver marcada como Pix, sistema exige informar para quem foi feito.
