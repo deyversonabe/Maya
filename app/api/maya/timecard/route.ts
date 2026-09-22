@@ -4,7 +4,7 @@ import { normalizeAllowedAttachmentUrl } from "@/app/api/_shared/attachment-url"
 import { readTimeClockWithMaya } from "@/modules/ai/maya";
 
 const MAX_IMAGE_DATA_URL_LENGTH = 4_000_000;
-const MAX_PDF_DATA_URL_LENGTH = 4_000_000;
+const MAX_PDF_DATA_URL_LENGTH = 5_500_000;
 
 export const maxDuration = 60;
 

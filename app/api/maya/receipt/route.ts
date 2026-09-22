@@ -5,7 +5,7 @@ import { readReceiptWithMaya } from "@/modules/ai/maya";
 import type { FinancialDocumentKind } from "@/modules/finance/types";
 
 const MAX_IMAGE_DATA_URL_LENGTH = 4_000_000;
-const MAX_PDF_DATA_URL_LENGTH = 4_000_000;
+const MAX_PDF_DATA_URL_LENGTH = 5_500_000;
 
 export const maxDuration = 60;
 
